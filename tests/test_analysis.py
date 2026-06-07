@@ -124,6 +124,29 @@ def test_minimalist_profile_suppresses_extras(l_route_file):
     assert route.fuel_report is None
 
 
+def test_build_segments_no_degenerate_legs():
+    # Clustered decision points (3.0 and 3.05 mi apart) must not create a
+    # zero-length leg; legs stay sequentially numbered.
+    from gpxsheet.analysis import build_segments
+    from gpxsheet.models import DecisionPoint, GeoPoint, Route
+
+    route = Route(
+        name="x",
+        points=[GeoPoint(38.0, -123.0), GeoPoint(38.1, -123.0)],
+        distances_m=[0.0, 10 * 1609.344],
+        decision_points=[
+            DecisionPoint(3.0, "Right", 60, 38.0, -123.0),
+            DecisionPoint(3.05, "Left", 60, 38.0, -123.0),
+            DecisionPoint(7.0, "Right", 60, 38.0, -123.0),
+        ],
+    )
+    segs = build_segments(route)
+    assert all(s.length_miles >= 0.1 for s in segs)
+    assert [s.name for s in segs] == [f"Leg {i}" for i in range(1, len(segs) + 1)]
+    # Final leg reaches the route end.
+    assert segs[-1].end_mile == 10.0
+
+
 def test_analyze_report_renders(l_route_file):
     from gpxsheet.report import format_analysis
 

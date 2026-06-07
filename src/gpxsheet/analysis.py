@@ -15,6 +15,8 @@ fuel comes from GPX waypoints that look like fuel stops.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from .geo import bearing, bearing_delta, meters_to_miles
 from .models import (
     DecisionKind,
@@ -42,6 +44,9 @@ STRAIGHT_EPS_DEG = 8.0
 # (where it would be redundant with arrival). Small and fixed so a marker that
 # is genuinely far from the end is never dropped.
 END_MARKER_BUFFER_MILES = 0.5
+# Decision points closer than this do not each start a new segment (avoids
+# degenerate zero-length legs from clustered turns on noisy recorded tracks).
+MIN_SEGMENT_MILES = 0.1
 
 # Fuel-stop detection from waypoint names/symbols when OSM is unavailable.
 _FUEL_HINTS = ("fuel", "gas", "petrol", "station", "shell", "chevron", "76", "arco")
@@ -232,19 +237,30 @@ def analyze_fuel(route: Route, fuel_range: float | None) -> FuelReport:
 def build_segments(route: Route) -> list[Segment]:
     """Split the route into legs between decision points.
 
-    Without OSM road names these are generic ("Leg N"); enrichment renames them
-    to the dominant road name for each leg.
+    Decision points closer together than :data:`MIN_SEGMENT_MILES` (e.g. the
+    tight clusters real recorded tracks produce at complex intersections) do not
+    each start a new leg, so no degenerate zero-length segments are emitted.
+    Legs are numbered sequentially ("Leg N"); enrichment renames them to the
+    dominant road name for each leg.
     """
     boundaries = [0.0] + [d.mile for d in route.decision_points] + [route.length_miles]
     boundaries = sorted({round(b, 3) for b in boundaries})
     segments: list[Segment] = []
-    pairs = zip(boundaries, boundaries[1:], strict=False)
-    for i, (start, end) in enumerate(pairs, start=1):
-        if end - start <= 0.0:
-            continue
+    start = boundaries[0]
+    for end in boundaries[1:]:
+        if end - start < MIN_SEGMENT_MILES:
+            continue  # too short to be its own leg; fold into the next boundary
         segments.append(
-            Segment(name=f"Leg {i}", start_mile=round(start, 1), end_mile=round(end, 1))
+            Segment(
+                name=f"Leg {len(segments) + 1}",
+                start_mile=round(start, 1),
+                end_mile=round(end, 1),
+            )
         )
+        start = end
+    # Extend the final leg to the route end if a trailing sliver was folded in.
+    if segments and segments[-1].end_mile < round(route.length_miles, 1):
+        segments[-1] = replace(segments[-1], end_mile=round(route.length_miles, 1))
     return segments
 
 
@@ -267,19 +283,22 @@ def analyze_route(
         else prof.reassurance_interval_miles
     )
 
+    # 1. Geometry-based detection (works with or without OSM).
+    detected = detect_decision_points(route.points)
+    route.decision_points = [d for d in detected if d.significance >= prof.decision_threshold]
+    route.fuel_stops = detect_fuel_stops(route) if prof.include_fuel else []
+    route.segments = build_segments(route)
+
+    # 2. OSM enrichment annotates the structures built above (road names onto
+    #    decisions, named segments, OSM fuel stations). Must run after step 1.
     if use_osm:
         from .enrich import enrich_route
 
-        enrich_route(route)
+        enrich_route(route, include_fuel=prof.include_fuel)
 
-    detected = detect_decision_points(route.points)
-    route.decision_points = [d for d in detected if d.significance >= prof.decision_threshold]
-
-    route.fuel_stops = detect_fuel_stops(route) if prof.include_fuel else []
+    # 3. Derived products that depend on the (possibly enriched) fuel stops.
     route.fuel_report = analyze_fuel(route, fuel_range) if prof.include_fuel else None
-
     route.reassurance_markers = (
         generate_reassurance_markers(route, interval) if prof.include_reassurance else []
     )
-    route.segments = build_segments(route)
     return route

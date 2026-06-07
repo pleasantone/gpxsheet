@@ -24,11 +24,29 @@ v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
 - ✅ Reassurance markers (distance intervals + nearest-waypoint labels)
 - ✅ Fuel analysis (waypoint-based; longest gap + range warnings)
 - ✅ Route segmentation + `analyze` text output
-- 🚧 OSM enrichment (road names / fuel POIs) — optional `[osm]` extra, experimental
+- ✅ OSM enrichment (optional `[osm]` extra): road names on decision points
+  ("Left onto 15th Street"), segments named by dominant road, and fuel-station
+  discovery — validated against live OpenStreetMap data
 - ⏳ Milestone 2: schematic map-strip renderer
 - ⏳ Milestone 3: PDF generation
 
 Try it: `gpxsheet analyze examples/sample_route.gpx --fuel-range 6`
+
+### OSM enrichment
+
+```bash
+pip install -e ".[osm]"
+gpxsheet analyze your-route.gpx --osm
+```
+
+Enrichment queries the live Overpass API, so it needs network access and is
+slower than the geometry-only path — typically a few seconds for rural routes,
+but tens of seconds to a couple of minutes for dense urban areas. Results are
+cached by `osmnx`, so repeat runs over the same area are fast.
+
+The OSM helper functions are unit-tested; the end-to-end query is covered by an
+integration test that is skipped unless `GPXSHEET_LIVE_OSM=1` is set (so CI and
+offline runs don't depend on the network).
 
 ## Installation (development)
 
