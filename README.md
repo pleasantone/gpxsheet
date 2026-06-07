@@ -32,10 +32,18 @@ v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
 - ✅ Fuel analysis (waypoint-based, plus OSM fuel stations; longest gap + range warnings)
 - ✅ Route segmentation (named roads under `--osm`) + `analyze` text output
 - ✅ OSM enrichment (optional `[osm]` extra) — validated against live OpenStreetMap data
-- ⏳ Milestone 2: schematic map-strip renderer
+- ✅ **Milestone 2: schematic map-strip renderer** — a stylized transit-map-style
+  strip (`route_strip.png`) that jogs at each decision, compresses long roads,
+  and carries the decision/fuel/reassurance markers and road-name ribbon
 - ⏳ Milestone 3: PDF generation
 
-Try it: `gpxsheet analyze examples/sample_route.gpx --fuel-range 6`
+Try it:
+
+```bash
+gpxsheet analyze examples/sample_route.gpx --fuel-range 6
+gpxsheet strip  examples/sample_route.gpx -o route_strip.png   # Milestone 2
+gpxsheet strip  your-route.gpx --osm -o route_strip.png        # with real road names
+```
 
 ### OSM enrichment
 

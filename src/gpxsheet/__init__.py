@@ -12,7 +12,14 @@ if TYPE_CHECKING:
 
 __version__ = "0.1.0"
 
-__all__ = ["__version__", "generate_pdf", "analyze", "analyze_route", "load_route"]
+__all__ = [
+    "__version__",
+    "generate_pdf",
+    "generate_strip",
+    "analyze",
+    "analyze_route",
+    "load_route",
+]
 
 DEFAULT_PROFILE = "sport-touring"
 
@@ -81,3 +88,25 @@ def analyze_route(route: Route, **kwargs) -> Route:
     from .analysis import analyze_route as _analyze_route
 
     return _analyze_route(route, **kwargs)
+
+
+def generate_strip(
+    gpx_file: str,
+    output_file: str = "route_strip.png",
+    *,
+    profile: str = DEFAULT_PROFILE,
+    fuel_range: float | None = None,
+    use_osm: bool = False,
+    turn_style: str = "stylized",
+) -> str:
+    """Render a route to a schematic map-strip image (Milestone 2)."""
+    from .strip import generate_strip as _generate_strip
+
+    return _generate_strip(
+        gpx_file,
+        output_file,
+        profile=profile,
+        fuel_range=fuel_range,
+        use_osm=use_osm,
+        turn_style=turn_style,
+    )

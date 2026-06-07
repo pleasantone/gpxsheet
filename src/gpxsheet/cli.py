@@ -91,6 +91,37 @@ def analyze(
 
 
 @app.command()
+def strip(
+    gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
+    output: Path = typer.Option("route_strip.png", "--output", "-o", help="Output PNG path."),
+    profile: str = typer.Option(
+        DEFAULT_PROFILE, "--profile", help="minimalist | sport-touring | rally."
+    ),
+    fuel_range: float | None = typer.Option(
+        None, "--fuel-range", help="Rider fuel range in miles."
+    ),
+    osm: bool = typer.Option(
+        False, "--osm", help="Enrich with OpenStreetMap (needs the osm extra)."
+    ),
+    turns: str = typer.Option(
+        "stylized", "--turns", help="Bend style at turns: stylized | faithful."
+    ),
+) -> None:
+    """Render the schematic map strip (Milestone 2) to a PNG."""
+    from .strip import generate_strip
+
+    out = generate_strip(
+        str(gpx_file),
+        str(output),
+        profile=profile,
+        fuel_range=fuel_range,
+        use_osm=osm,
+        turn_style=turns,
+    )
+    typer.echo(f"Wrote {out}")
+
+
+@app.command()
 def validate(
     gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
     fuel_range: float | None = typer.Option(

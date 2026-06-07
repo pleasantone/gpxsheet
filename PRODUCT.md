@@ -968,7 +968,24 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   GPX loading (track/route/waypoint), geometry cleanup (RDP), decision-point
   detection, reassurance markers, fuel analysis, segmentation, `analyze` text
   output, and OSM enrichment — all implemented and tuned against real tracks.
-* **Milestone 2 — Schematic map-strip renderer: ⏳ not started.**
+* **Milestone 2 — Schematic map-strip renderer: ✅ first iteration.**
+  `gpxsheet.layout` (pure Schematic Layout Engine) turns the route graph into a
+  stylized strip: a ribbon that jogs at each decision, with segment length
+  compressed sub-linearly (`sqrt`) in real distance. Two turn styles:
+  **`stylized`** (default — quantized/exaggerated bends, reads like a transit
+  map) and **`faithful`** (bend by the real turn angle, capped). `gpxsheet.strip`
+  renders to `route_strip.png` (matplotlib) with decision/fuel/reassurance
+  markers, dashed leader lines, 2-line-wrapped road names, and the road-name
+  ribbon. Labels use a repulsion pass that pushes them off each other, the route
+  line, and every marker dot. CLI: `gpxsheet strip <gpx> [-o out.png] [--osm]
+  [--turns stylized|faithful]`.
+
+  **First-iteration caveats (see CLAUDE.md "Strip / Milestone 2 TODO"):** only
+  reviewed on synthetic routes and one Mt-Hamilton OSM clip — **not yet
+  stress-tested on dense real routes**, where label de-collision may still bunch.
+  Open polish: reassurance-label prominence, ribbon/inline redundancy, stylized
+  angle + compression tuning against real data, and possible heading drift on
+  long same-direction routes.
 * **Milestone 3 — PDF generation: ⏳ not started.** (`generate_pdf` /
   CLI `generate` are stubs that raise `NotImplementedError`.)
 * **Milestone 4 — Packaged CLI: 🟡 partial.** `pyproject.toml` defines the
