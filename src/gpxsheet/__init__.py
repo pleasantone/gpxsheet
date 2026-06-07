@@ -5,9 +5,14 @@ Public library API. See ``PRODUCT.md`` for the full design specification.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .models import Route
+
 __version__ = "0.1.0"
 
-__all__ = ["__version__", "generate_pdf", "analyze"]
+__all__ = ["__version__", "generate_pdf", "analyze", "analyze_route", "load_route"]
 
 DEFAULT_PROFILE = "sport-touring"
 
@@ -37,12 +42,42 @@ def generate_pdf(
     )
 
 
-def analyze(gpx_file: str, *, profile: str = DEFAULT_PROFILE) -> dict:
-    """Run the route analysis engine and return a structured summary.
+def analyze(
+    gpx_file: str,
+    *,
+    profile: str = DEFAULT_PROFILE,
+    fuel_range: float | None = None,
+    reassurance_interval: float | None = None,
+    use_osm: bool = False,
+) -> Route:
+    """Run the route analysis engine on a GPX file.
 
-    Returns a dict with decision points, fuel stops, reassurance markers and
-    road segments. See the ``analyze`` output mode in ``PRODUCT.md``.
+    Loads the GPX, runs decision-point detection, reassurance-marker placement,
+    fuel analysis and segmentation, and returns the populated :class:`Route`.
+    See the ``analyze`` output mode in ``PRODUCT.md``.
     """
-    raise NotImplementedError(
-        "Route analysis engine is not implemented yet (see Milestone 1 in PRODUCT.md)."
+    from .analysis import analyze_route as _analyze_route
+    from .gpx import load_route as _load_route
+
+    route = _load_route(gpx_file)
+    return _analyze_route(
+        route,
+        profile=profile,
+        fuel_range=fuel_range,
+        reassurance_interval=reassurance_interval,
+        use_osm=use_osm,
     )
+
+
+def load_route(gpx_file: str, *, name: str | None = None) -> Route:
+    """Load a GPX file into a :class:`Route` without running analysis."""
+    from .gpx import load_route as _load_route
+
+    return _load_route(gpx_file, name=name)
+
+
+def analyze_route(route: Route, **kwargs) -> Route:
+    """Run analysis on an already-loaded :class:`Route` (see :mod:`gpxsheet.analysis`)."""
+    from .analysis import analyze_route as _analyze_route
+
+    return _analyze_route(route, **kwargs)

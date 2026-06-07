@@ -16,9 +16,19 @@ See [PRODUCT.md](PRODUCT.md) for the full design specification.
 
 ## Status
 
-Early scaffolding (v0.1.0). The package layout, CLI, and library entry points
-are stubbed out against the spec; the analysis, layout, and rendering engines
-are being built out per the Phase 1 milestones in `PRODUCT.md`.
+v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
+
+- ✅ GPX loading (tracks / routes / waypoints) → route graph
+- ✅ Geometry cleanup (Ramer–Douglas–Peucker)
+- ✅ Decision-point detection (geometry-based turn detection)
+- ✅ Reassurance markers (distance intervals + nearest-waypoint labels)
+- ✅ Fuel analysis (waypoint-based; longest gap + range warnings)
+- ✅ Route segmentation + `analyze` text output
+- 🚧 OSM enrichment (road names / fuel POIs) — optional `[osm]` extra, experimental
+- ⏳ Milestone 2: schematic map-strip renderer
+- ⏳ Milestone 3: PDF generation
+
+Try it: `gpxsheet analyze examples/sample_route.gpx --fuel-range 6`
 
 ## Installation (development)
 

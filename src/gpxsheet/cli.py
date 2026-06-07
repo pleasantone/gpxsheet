@@ -66,11 +66,28 @@ def analyze(
     profile: str = typer.Option(
         DEFAULT_PROFILE, "--profile", help="minimalist | sport-touring | rally."
     ),
+    fuel_range: float | None = typer.Option(
+        None, "--fuel-range", help="Rider fuel range in miles."
+    ),
+    reassurance_interval: float | None = typer.Option(
+        None, "--reassurance-interval", help="Miles between reassurance markers."
+    ),
+    osm: bool = typer.Option(
+        False, "--osm", help="Enrich with OpenStreetMap road names/fuel (needs the osm extra)."
+    ),
 ) -> None:
     """Produce a text route analysis (decision points, fuel, segments)."""
     from . import analyze as _analyze
+    from .report import format_analysis
 
-    _analyze(str(gpx_file), profile=profile)
+    route = _analyze(
+        str(gpx_file),
+        profile=profile,
+        fuel_range=fuel_range,
+        reassurance_interval=reassurance_interval,
+        use_osm=osm,
+    )
+    typer.echo(format_analysis(route))
 
 
 @app.command()

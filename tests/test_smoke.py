@@ -17,10 +17,6 @@ def test_cli_app_imports():
 
 
 def test_generate_pdf_not_implemented_yet():
+    # PDF rendering arrives in Milestone 3.
     with pytest.raises(NotImplementedError):
         gpxsheet.generate_pdf("nope.gpx")
-
-
-def test_analyze_not_implemented_yet():
-    with pytest.raises(NotImplementedError):
-        gpxsheet.analyze("nope.gpx")

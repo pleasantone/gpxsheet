@@ -1,0 +1,123 @@
+"""Tests for the Milestone 1 route analysis engine."""
+
+import gpxsheet
+from gpxsheet.analysis import detect_decision_points
+from gpxsheet.gpx import load_route
+from gpxsheet.models import DecisionKind
+from gpxsheet.simplify import rdp
+
+
+def test_load_route_parses_geometry(l_route_file):
+    route = load_route(l_route_file)
+    assert route.name == "Test Route"
+    assert len(route.points) > 50
+    assert route.length_miles > 4.0
+    assert len(route.waypoints) == 1
+
+
+def test_detects_single_left_turn(l_route_file):
+    route = load_route(l_route_file)
+    decisions = detect_decision_points(route.points)
+    assert len(decisions) == 1
+    turn = decisions[0]
+    assert turn.kind == DecisionKind.CRITICAL_TURN
+    assert turn.instruction == "Left"
+    assert turn.turn_angle is not None and turn.turn_angle < -60
+    # The corner is roughly halfway through the route.
+    assert 1.5 < turn.mile < 3.5
+
+
+def test_detects_consecutive_same_direction_turns():
+    # Regression: two right turns separated by a long straight must NOT be merged
+    # into one run and rejected. Path: north -> (right) east -> (right) south.
+    from gpxsheet.models import GeoPoint
+
+    pts: list[GeoPoint] = []
+    lat, lon = 38.0, -123.0
+    for _ in range(40):  # north
+        pts.append(GeoPoint(lat, lon))
+        lat += 0.001
+    for _ in range(60):  # east (first right turn)
+        pts.append(GeoPoint(lat, lon))
+        lon += 0.001
+    for _ in range(40):  # south (second right turn)
+        pts.append(GeoPoint(lat, lon))
+        lat -= 0.001
+
+    decisions = detect_decision_points(pts)
+    assert len(decisions) == 2
+    assert all(d.instruction == "Right" for d in decisions)
+    assert decisions[0].mile < decisions[1].mile
+
+
+def test_sweeping_curve_is_not_a_decision():
+    # A gradual 90-degree bend spread over a long arc should not register as a
+    # junction-style turn.
+    import math
+
+    from gpxsheet.models import GeoPoint
+
+    pts: list[GeoPoint] = []
+    cx, cy = 38.0, -123.0
+    radius_deg = 0.05  # ~5.5 km radius -> very gentle
+    for k in range(60):
+        theta = math.radians(90 * k / 59)  # 0..90 degrees
+        pts.append(GeoPoint(cx + radius_deg * math.sin(theta), cy + radius_deg * math.cos(theta)))
+    assert detect_decision_points(pts) == []
+
+
+def test_straight_line_has_no_decisions():
+    straight = [(38.0, -123.0 + i * 0.001) for i in range(40)]
+    assert detect_decision_points(
+        [type("P", (), {"lat": la, "lon": lo, "ele": None})() for la, lo in straight]
+    ) == []
+
+
+def test_rdp_reduces_collinear_points():
+    from gpxsheet.models import GeoPoint
+
+    pts = [GeoPoint(38.0, -123.0 + i * 0.001) for i in range(50)]
+    simplified = rdp(pts, tolerance_m=5.0)
+    # A straight line collapses to its two endpoints.
+    assert simplified == [pts[0], pts[-1]]
+
+
+def test_analyze_end_to_end_sport_touring(l_route_file):
+    route = gpxsheet.analyze(str(l_route_file), profile="sport-touring", fuel_range=2.0)
+    assert len(route.decision_points) == 1
+    # Fuel waypoint near the corner should be detected.
+    assert len(route.fuel_stops) == 1
+    assert "Shell" in route.fuel_stops[0].name
+    assert route.fuel_report is not None
+    # Total ~5 mi with a fuel stop near the middle -> longest gap < full length.
+    assert route.fuel_report.longest_gap_miles < route.length_miles
+    # fuel_range of 2 mi is small -> should warn.
+    assert route.fuel_report.exceeds_range is True
+    # Segments split at the one decision point -> 2 legs.
+    assert len(route.segments) == 2
+
+
+def test_reassurance_markers_respect_interval(l_route_file):
+    route = gpxsheet.analyze(
+        str(l_route_file), profile="sport-touring", reassurance_interval=1.0
+    )
+    assert len(route.reassurance_markers) >= 3
+    miles = [m.mile for m in route.reassurance_markers]
+    assert miles == sorted(miles)
+
+
+def test_minimalist_profile_suppresses_extras(l_route_file):
+    route = gpxsheet.analyze(str(l_route_file), profile="minimalist")
+    assert route.fuel_stops == []
+    assert route.reassurance_markers == []
+    assert route.fuel_report is None
+
+
+def test_analyze_report_renders(l_route_file):
+    from gpxsheet.report import format_analysis
+
+    route = gpxsheet.analyze(str(l_route_file))
+    text = format_analysis(route)
+    assert "Route Length:" in text
+    assert "Decision Points:" in text
+    assert "Road Segments:" in text
