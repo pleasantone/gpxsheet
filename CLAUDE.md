@@ -63,11 +63,22 @@ malformed (loader rejects it). `examples/sample_route.gpx` is synthetic (offshor
 
 ## Status & next steps (Milestone 1 done)
 
+**Validation done (full real tracks, not just clips):** geometry-only sweep over
+all ~18 samples runs without crashes (bad-xml.gpx correctly rejected). Full
+`--osm` runs verified on gaia (75mi→22 decisions, 39s), inroute (93mi→16, 121s),
+ich-dual-gas (172mi→32, 31s, 0.19/mi). Twisty roads collapse correctly — Mines
+Road becomes ONE 27.8mi segment, etc. Timing scales with length + urban density.
+
 Open work, roughly prioritized:
-1. **Broaden validation** — run full real tracks (not just clips) through `--osm`,
-   characterize results/timing. (in progress when this note was written)
+1. **Down-weight straight "Continue onto" road-name changes.** Validation showed
+   most OSM decisions are "Continue onto <road>" (straight-through name changes),
+   which are lower navigational value than actual turns; residential stretches
+   (e.g. gaia mi 6–13) emit ~8 of them in 6mi. Consider scoring straight
+   non-highway name changes below the sport-touring threshold (needs care:
+   "Skyline Boulevard" is really CA-35 but OSM names it plainly). No ground-truth
+   set yet — that's the real blocker to confident significance tuning.
 2. **Junction-degree detection** — catch nameless forks (OSM node topology),
-   the main known gap in decision detection.
+   the main structural gap in decision detection.
 3. **Milestone 2** — schematic map-strip renderer (`route_strip.png`).
 4. **Milestone 3** — PDF generation (`generate_pdf` is currently a stub).
 5. Wire a vault project note via `/project-init` (Obsidian MCP was hanging when
