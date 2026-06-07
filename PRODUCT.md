@@ -954,3 +954,96 @@ The product succeeds if a rider can glance at the printed document for less than
 
 without needing to interpret a traditional map, tulip diagram, or turn-by-turn GPS interface.
 
+---
+
+# Implementation Status & Engineering Notes
+
+> This section records what is actually built and the engineering decisions made
+> while implementing the spec above. The sections above are the design intent;
+> this section is the as-built reality. Last updated: Milestone 1 complete.
+
+## Milestone progress
+
+* **Milestone 1 — Route analysis engine: ✅ complete.**
+  GPX loading (track/route/waypoint), geometry cleanup (RDP), decision-point
+  detection, reassurance markers, fuel analysis, segmentation, `analyze` text
+  output, and OSM enrichment — all implemented and tuned against real tracks.
+* **Milestone 2 — Schematic map-strip renderer: ⏳ not started.**
+* **Milestone 3 — PDF generation: ⏳ not started.** (`generate_pdf` /
+  CLI `generate` are stubs that raise `NotImplementedError`.)
+* **Milestone 4 — Packaged CLI: 🟡 partial.** `pyproject.toml` defines the
+  `gpxsheet` entry point and `[osm]`/`[dev]` extras; not yet published to PyPI.
+* **Milestone 5 — Web service: ⏳ not started.**
+
+`validate` (CLI) is also still a stub.
+
+## Decision Point Engine — as built
+
+The engine is **two-tier**, because pure geometry cannot tell a curving road
+from a junction (this is the central lesson from testing on real tracks — a
+recorded track of Mount Hamilton Road produced 100+ false "turns" from
+curvature alone):
+
+1. **Geometry baseline (no OSM).** Detects localized heading changes on the
+   RDP-cleaned track: same-direction deltas confined to a short arc are grouped
+   into one turn (`TURN_ANGLE_THRESHOLD_DEG=35`, `MAX_TURN_ARC_M=90`). Honest
+   but **over-detects on twisty roads** — it has no way to know you stayed on
+   the same road. Used as a fallback and to supply turn *direction*.
+
+2. **OSM mode (`--osm`).** Implements PRODUCT.md Rule Set 1 (road-name changes),
+   which is what the significance table is really about. The route is sampled
+   for OSM road names (~60 m spacing); a name that does not persist for at least
+   `MIN_ROAD_RUN_MILES=0.3` is discarded as nearest-edge "flapping" at junctions
+   (tuned via a threshold sweep on real tracks). Each surviving road-name change
+   becomes a decision: "Left/Right onto <road>" (or "Continue onto <road>" when
+   the heading change is < `CONTINUE_MAX_ANGLE_DEG=25`), with the turn direction
+   measured from the track geometry at that point. Segments become the durable
+   named roads (the road ribbon).
+
+**Cluster merging** (`merge_close_decisions`, `MERGE_MIN_SEPARATION_MILES=0.2`)
+collapses decisions that are closer together than the threshold into a single
+representative (highest significance), applied on both tiers — real recorded
+tracks produce tight clusters of firings at complex intersections.
+
+**Significance** currently uses a subset of the spec table: road-name change
+= 40, highway-like name (regex over "Freeway"/"Highway"/"CA-1" etc.) raises it
+to 50, and a sharp turn (≥60°) adds 10. Y/T-intersection and explicit
+junction-geometry scoring are **not yet implemented**.
+
+### Known limitations (decision detection)
+
+* **Nameless forks are missed in OSM mode.** A fork where you must bear one way
+  but the road keeps its name produces no road-name change, so it isn't caught.
+  Fixing this needs junction-degree / node topology from the OSM graph (future).
+* **Residential areas show more decisions** (~0.6/mi) than highways (~0.24/mi)
+  or mountain roads (~0.13/mi). These are real street-name changes (correctly
+  surfaced in `sport-touring`; the `minimalist` threshold filters them), not
+  noise — but worth knowing.
+* **No ground-truth dataset.** Tuning constants were validated by inspecting
+  known Bay Area routes, not against labeled correct answers.
+
+## OSM enrichment — operational notes
+
+* Optional, via `pip install -e ".[osm]"` (osmnx 2.x + geopandas stack;
+  installs cleanly on Python 3.14).
+* Queries the **live Overpass API**: needs network, slower than the geometry
+  path (≈3 s rural, but tens of seconds to minutes for dense urban areas).
+  `osmnx` caches responses, so repeat runs over the same area are fast.
+* Graph is built from a buffered route polygon (not the whole bbox).
+* Helper functions are unit-tested; the end-to-end query is an integration test
+  skipped unless `GPXSHEET_LIVE_OSM=1` (so CI/offline don't depend on network).
+
+## Real-world data quirks handled
+
+* OSM edge `name` may be a string, a **list** (a way with several names), or
+  NaN — normalized in `_edge_name`.
+* `features_from_polygon` **raises** `InsufficientResponseError` (not empty) when
+  a region has no matching features — caught in `_add_fuel`.
+* OSM string cells are often NaN, and `float('nan')` is truthy, so `or`-fallback
+  chains silently keep NaN — use `_clean_str`.
+
+## Tech stack (as installed)
+
+Python 3.14 · gpxpy · shapely · networkx · matplotlib · reportlab · typer
+(core); osmnx 2.1 + geopandas/pyproj/pyogrio (`[osm]`); pytest · ruff (`[dev]`).
+
