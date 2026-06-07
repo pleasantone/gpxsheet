@@ -47,6 +47,16 @@ END_MARKER_BUFFER_MILES = 0.5
 # Decision points closer than this do not each start a new segment (avoids
 # degenerate zero-length legs from clustered turns on noisy recorded tracks).
 MIN_SEGMENT_MILES = 0.1
+# Decision points within this distance of each other are collapsed into one
+# (real recorded tracks produce tight clusters at complex intersections).
+MERGE_MIN_SEPARATION_MILES = 0.2
+# OSM decision detection: a road name must hold for at least this distance to
+# count as a real road (filters nearest-edge flapping at junctions). Tuned
+# against real tracks (see git history / tests).
+MIN_ROAD_RUN_MILES = 0.3
+# A road-name change with a heading change below this reads as "Continue onto",
+# not "Left/Right onto".
+CONTINUE_MAX_ANGLE_DEG = 25.0
 
 # Fuel-stop detection from waypoint names/symbols when OSM is unavailable.
 _FUEL_HINTS = ("fuel", "gas", "petrol", "station", "shell", "chevron", "76", "arco")
@@ -66,6 +76,75 @@ def _significance_for_turn(total_angle: float) -> int:
     if mag >= 60.0:
         return 60
     return 45
+
+
+def coord_at_meters(route: Route, meters: float) -> tuple[float, float]:
+    """(lat, lon) interpolated along the route at a given along-track distance.
+
+    Linear interpolation between the two bracketing vertices, so results are
+    accurate even on sparsely sampled routes (important for measuring turn
+    angles around a point).
+    """
+    dist = route.distances_m
+    target = max(0.0, min(meters, dist[-1]))
+    hi = 1
+    lo_b, hi_b = 1, len(dist) - 1
+    while lo_b < hi_b:
+        mid = (lo_b + hi_b) // 2
+        if dist[mid] < target:
+            lo_b = mid + 1
+        else:
+            hi_b = mid
+    hi = lo_b
+    lo = hi - 1
+    span = dist[hi] - dist[lo]
+    f = 0.0 if span <= 0 else (target - dist[lo]) / span
+    a, b = route.points[lo], route.points[hi]
+    return a.lat + f * (b.lat - a.lat), a.lon + f * (b.lon - a.lon)
+
+
+def turn_angle_at_mile(route: Route, mile: float, window_m: float = 50.0) -> float:
+    """Signed heading change of the route across a point (+right / -left).
+
+    Compares the bearing approaching ``mile`` with the bearing departing it,
+    sampled ``window_m`` either side. Used to give an OSM road-name-change
+    decision its turn direction.
+    """
+    center_m = mile * 1609.344
+    before = coord_at_meters(route, center_m - window_m)
+    at = coord_at_meters(route, center_m)
+    after = coord_at_meters(route, center_m + window_m)
+    approach = bearing(before[0], before[1], at[0], at[1])
+    depart = bearing(at[0], at[1], after[0], after[1])
+    return bearing_delta(approach, depart)
+
+
+def merge_close_decisions(
+    decisions: list[DecisionPoint], min_separation_miles: float = MERGE_MIN_SEPARATION_MILES
+) -> list[DecisionPoint]:
+    """Collapse decisions closer than ``min_separation_miles`` into one each.
+
+    The representative of a cluster is its highest-significance member (ties
+    broken by sharpest turn), so the rider gets one prompt for a complex
+    intersection instead of several.
+    """
+    if min_separation_miles <= 0 or len(decisions) < 2:
+        return list(decisions)
+    ordered = sorted(decisions, key=lambda d: d.mile)
+    merged: list[DecisionPoint] = []
+    cluster: list[DecisionPoint] = [ordered[0]]
+    for d in ordered[1:]:
+        if d.mile - cluster[-1].mile <= min_separation_miles:
+            cluster.append(d)
+        else:
+            merged.append(_pick_representative(cluster))
+            cluster = [d]
+    merged.append(_pick_representative(cluster))
+    return merged
+
+
+def _pick_representative(cluster: list[DecisionPoint]) -> DecisionPoint:
+    return max(cluster, key=lambda d: (d.significance, abs(d.turn_angle or 0.0)))
 
 
 def detect_decision_points(points: list[GeoPoint]) -> list[DecisionPoint]:
@@ -283,20 +362,25 @@ def analyze_route(
         else prof.reassurance_interval_miles
     )
 
-    # 1. Geometry-based detection (works with or without OSM).
-    detected = detect_decision_points(route.points)
-    route.decision_points = [d for d in detected if d.significance >= prof.decision_threshold]
+    # 1. Geometry baseline: localized turns, clustered firings collapsed. On
+    #    twisty roads this over-detects (curves look like turns) -- OSM in step 2
+    #    replaces these with junction/road-name decisions when available.
+    route.decision_points = merge_close_decisions(detect_decision_points(route.points))
     route.fuel_stops = detect_fuel_stops(route) if prof.include_fuel else []
     route.segments = build_segments(route)
 
-    # 2. OSM enrichment annotates the structures built above (road names onto
-    #    decisions, named segments, OSM fuel stations). Must run after step 1.
+    # 2. OSM enrichment: replaces decisions with durable road-name changes,
+    #    segments with the named roads, and adds OSM fuel. Must run after step 1.
     if use_osm:
         from .enrich import enrich_route
 
         enrich_route(route, include_fuel=prof.include_fuel)
 
-    # 3. Derived products that depend on the (possibly enriched) fuel stops.
+    # 3. Apply the profile's display threshold to whatever decisions step 1/2
+    #    produced, then derive products that depend on the final fuel stops.
+    route.decision_points = [
+        d for d in route.decision_points if d.significance >= prof.decision_threshold
+    ]
     route.fuel_report = analyze_fuel(route, fuel_range) if prof.include_fuel else None
     route.reassurance_markers = (
         generate_reassurance_markers(route, interval) if prof.include_reassurance else []

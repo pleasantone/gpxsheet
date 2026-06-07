@@ -5,25 +5,48 @@ requires the heavy geo stack installed via the ``osm`` extra::
 
     pip install "gpxsheet[osm]"
 
-When available it:
+When available it derives navigation structure from OSM topology rather than raw
+geometry, which is what PRODUCT.md's significance scoring is actually about:
 
-* annotates geometry-detected decision points with the road being turned onto
-  ("Left" -> "Left onto Skaggs Springs Rd"),
-* names route segments by the dominant road along each leg (the road ribbon),
-* discovers fuel stations near the route and merges them with any GPX-waypoint
-  fuel stops.
+* decision points come from *durable* road-name changes (PRODUCT.md Rule Set 1):
+  the route is sampled for road names, names that don't persist for
+  :data:`~gpxsheet.analysis.MIN_ROAD_RUN_MILES` are discarded as nearest-edge
+  flapping at junctions, and each surviving change becomes "Left/Right/Continue
+  onto <road>" with the turn direction taken from the track geometry,
+* segments become those durable named roads (the road ribbon),
+* fuel stations (amenity=fuel) near the route are merged with GPX-waypoint fuel.
 
-The geometry-only analysis works without it, so absence of the extra degrades
-gracefully. Road/fuel queries hit the live Overpass API.
+This avoids the core failure of geometry-only detection, which cannot tell a
+curving road from a junction and so floods twisty sport-touring roads with false
+decisions. The geometry-only analysis still works without the extra (it just
+over-detects on twisty roads). Road/fuel queries hit the live Overpass API.
 """
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import replace
+import re
 
+from .analysis import (
+    CONTINUE_MAX_ANGLE_DEG,
+    MIN_ROAD_RUN_MILES,
+    MIN_SEGMENT_MILES,
+    _turn_word,
+    coord_at_meters,
+    merge_close_decisions,
+    turn_angle_at_mile,
+)
 from .geo import haversine, meters_to_miles
-from .models import DecisionPoint, FuelStop, Route, Segment
+from .models import DecisionKind, DecisionPoint, FuelStop, Route, Segment
+from .profiles import SCORE_ROAD_NAME_CHANGE, SCORE_STATE_HWY_JUNCTION
+
+_DEG_PER_M = 1.0 / 111_000.0  # crude latitude-degrees per meter, fine for buffering
+
+# Names that read as a numbered/limited-access highway (higher significance).
+_HIGHWAY_RE = re.compile(
+    r"\b(?:freeway|expressway|highway|turnpike|(?:I|US|CA|SR|US-?\d|state route))\b|"
+    r"\b[A-Z]{1,2}-\d+\b",
+    re.IGNORECASE,
+)
 
 _DEG_PER_M = 1.0 / 111_000.0  # crude latitude-degrees per meter, fine for buffering
 
@@ -72,31 +95,15 @@ def _edge_name(edges_gdf, edge_key) -> str | None:
     return str(name)
 
 
-def _coord_at_meters(route: Route, meters: float) -> tuple[float, float]:
-    """(lat, lon) of the route point nearest a given along-track distance."""
-    dist = route.distances_m
-    lo, hi = 0, len(dist) - 1
-    target = max(0.0, min(meters, dist[-1]))
-    while lo < hi:
-        mid = (lo + hi) // 2
-        if dist[mid] < target:
-            lo = mid + 1
-        else:
-            hi = mid
-    p = route.points[lo]
-    return p.lat, p.lon
-
-
 def enrich_route(
     route: Route,
     *,
     road_buffer_m: float = 50.0,
     fuel_buffer_m: float = 400.0,
-    decision_lookahead_m: float = 60.0,
-    sample_spacing_m: float = 150.0,
+    sample_spacing_m: float = 60.0,
     include_fuel: bool = True,
 ) -> Route:
-    """Annotate ``route`` with OSM road names and fuel stations, in place."""
+    """Replace decisions/segments with OSM-derived ones and add fuel, in place."""
     ox = _require_osm()
 
     line = _route_line(route)
@@ -108,69 +115,133 @@ def enrich_route(
     )
     edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
 
-    _name_decision_points(route, ox, graph, edges_gdf, decision_lookahead_m)
-    _name_segments(route, ox, graph, edges_gdf, sample_spacing_m)
+    sample_m, names = _sample_road_names(route, ox, graph, edges_gdf, sample_spacing_m)
+    runs = _durable_runs(sample_m, names, MIN_ROAD_RUN_MILES * 1609.344)
+    if runs:
+        route.segments = _segments_from_runs(route, runs)
+        route.decision_points = _decisions_from_runs(route, runs)
+
     if include_fuel:
         _add_fuel(route, ox, line, fuel_buffer_m)
     return route
 
 
-def _name_decision_points(route, ox, graph, edges_gdf, lookahead_m: float) -> None:
-    """Replace each turn's instruction with "<turn> onto <road>" when known.
-
-    The road named is the one *just past* the turn (the road you end up on).
-    """
-    if not route.decision_points:
-        return
-    targets = []
-    for dp in route.decision_points:
-        meters = dp.mile * 1609.344 + lookahead_m
-        targets.append(_coord_at_meters(route, meters))
-    xs = [lon for _, lon in targets]
-    ys = [lat for lat, _ in targets]
-    edge_keys = ox.distance.nearest_edges(graph, xs, ys)
-
-    renamed: list[DecisionPoint] = []
-    for dp, key in zip(route.decision_points, edge_keys, strict=True):
-        name = _edge_name(edges_gdf, tuple(key))
-        instruction = f"{dp.instruction} onto {name}" if name else dp.instruction
-        renamed.append(replace(dp, instruction=instruction))
-    route.decision_points = renamed
-
-
-def _name_segments(route, ox, graph, edges_gdf, spacing_m: float) -> None:
-    """Rename each segment to the most common road name along its mileage."""
-    if not route.segments:
-        return
+def _sample_road_names(route, ox, graph, edges_gdf, spacing_m: float):
+    """Sample the OSM road name at evenly spaced points along the route."""
     total_m = route.length_m
     n = max(2, int(total_m / spacing_m) + 1)
     sample_m = [total_m * i / (n - 1) for i in range(n)]
-    coords = [_coord_at_meters(route, m) for m in sample_m]
-    xs = [lon for _, lon in coords]
-    ys = [lat for lat, _ in coords]
-    edge_keys = ox.distance.nearest_edges(graph, xs, ys)
-    sample_names = [_edge_name(edges_gdf, tuple(k)) for k in edge_keys]
+    coords = [coord_at_meters(route, m) for m in sample_m]
+    edge_keys = ox.distance.nearest_edges(graph, [c[1] for c in coords], [c[0] for c in coords])
+    names = [_edge_name(edges_gdf, tuple(k)) for k in edge_keys]
+    return sample_m, names
 
-    renamed: list[Segment] = []
-    for seg in route.segments:
-        names = [
-            sample_names[i]
-            for i, m in enumerate(sample_m)
-            if seg.start_mile <= meters_to_miles(m) <= seg.end_mile and sample_names[i]
-        ]
-        if names:
-            best = Counter(names).most_common(1)[0][0]
-            renamed.append(replace(seg, name=best))
+
+def _durable_runs(sample_m, names, min_run_m: float) -> list[tuple[float, str]]:
+    """Collapse sampled names into runs of road, dropping transient flaps.
+
+    A run shorter than ``min_run_m`` is discarded as nearest-edge snapping at a
+    junction (unless it's the first/last run); the surrounding road then joins
+    up. Returns ``(start_mile, name)`` for each surviving road in order.
+    """
+    # Forward-fill gaps (None) with the previous known name.
+    filled: list[str | None] = []
+    prev: str | None = None
+    for nm in names:
+        prev = nm or prev
+        filled.append(prev)
+
+    # Run-length encode into [start_m, name, end_m].
+    runs: list[list] = []
+    for m, nm in zip(sample_m, filled, strict=True):
+        if runs and runs[-1][1] == nm:
+            runs[-1][2] = m
         else:
-            renamed.append(seg)
-    route.segments = renamed
+            runs.append([m, nm, m])
+
+    # Drop short interior runs and None runs, then merge now-adjacent same names.
+    kept: list[list] = []
+    for i, run in enumerate(runs):
+        if run[1] is None:
+            continue
+        is_edge = i == 0 or i == len(runs) - 1
+        if (run[2] - run[0]) >= min_run_m or is_edge:
+            if kept and kept[-1][1] == run[1]:
+                kept[-1][2] = run[2]
+            else:
+                kept.append(run)
+
+    return [(meters_to_miles(r[0]), r[1]) for r in kept]
+
+
+def _segments_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[Segment]:
+    segments: list[Segment] = []
+    for i, (start, name) in enumerate(runs):
+        end = runs[i + 1][0] if i + 1 < len(runs) else route.length_miles
+        if segments and end - start < MIN_SEGMENT_MILES:
+            segments[-1] = Segment(segments[-1].name, segments[-1].start_mile, round(end, 1))
+            continue
+        segments.append(Segment(name=name, start_mile=round(start, 1), end_mile=round(end, 1)))
+    return segments
+
+
+def _is_highway(name: str) -> bool:
+    return bool(_HIGHWAY_RE.search(name))
+
+
+def _road_change_significance(name: str, angle: float) -> int:
+    sig = SCORE_ROAD_NAME_CHANGE
+    if _is_highway(name):
+        sig = max(sig, SCORE_STATE_HWY_JUNCTION)
+    if abs(angle) >= 60.0:
+        sig += 10
+    return sig
+
+
+def _decisions_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[DecisionPoint]:
+    """Each durable road-name change is a decision: turn direction from geometry."""
+    decisions: list[DecisionPoint] = []
+    for start_mile, name in runs[1:]:  # the first road is where you start, not a decision
+        angle = turn_angle_at_mile(route, start_mile)
+        lat, lon = coord_at_meters(route, start_mile * 1609.344)
+        if abs(angle) < CONTINUE_MAX_ANGLE_DEG:
+            instruction = f"Continue onto {name}"
+        else:
+            instruction = f"{_turn_word(angle)} onto {name}"
+        decisions.append(
+            DecisionPoint(
+                mile=round(start_mile, 1),
+                instruction=instruction,
+                significance=_road_change_significance(name, angle),
+                lat=lat,
+                lon=lon,
+                kind=DecisionKind.CRITICAL_TURN,
+                turn_angle=round(angle, 1),
+            )
+        )
+    return merge_close_decisions(decisions)
+
+
+def _clean_str(value) -> str | None:
+    """A non-empty string, or None for NaN/None/blank (OSM cells are often NaN)."""
+    if value is None:
+        return None
+    if isinstance(value, float):  # NaN
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _add_fuel(route, ox, line, fuel_buffer_m: float) -> None:
     """Merge OSM amenity=fuel stations near the route into route.fuel_stops."""
-    feats = ox.features_from_polygon(
-        line.buffer(fuel_buffer_m * _DEG_PER_M), tags={"amenity": "fuel"}
-    )
+    from osmnx._errors import InsufficientResponseError
+
+    try:
+        feats = ox.features_from_polygon(
+            line.buffer(fuel_buffer_m * _DEG_PER_M), tags={"amenity": "fuel"}
+        )
+    except InsufficientResponseError:
+        return  # no fuel stations anywhere near the route
     if feats.empty:
         return
 
@@ -182,7 +253,7 @@ def _add_fuel(route, ox, line, fuel_buffer_m: float) -> None:
             range(len(route.points)),
             key=lambda i: haversine(route.points[i].lat, route.points[i].lon, pt.y, pt.x),
         )
-        name = row.get("name") or row.get("brand") or "Fuel"
+        name = _clean_str(row.get("name")) or _clean_str(row.get("brand")) or "Fuel"
         osm_stops.append(
             FuelStop(
                 mile=round(meters_to_miles(route.distances_m[nearest]), 1),

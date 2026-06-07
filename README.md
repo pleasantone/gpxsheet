@@ -20,13 +20,18 @@ v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
 
 - ✅ GPX loading (tracks / routes / waypoints) → route graph
 - ✅ Geometry cleanup (Ramer–Douglas–Peucker)
-- ✅ Decision-point detection (geometry-based turn detection)
+- ✅ Decision-point detection — two-tier:
+  - **geometry baseline** (no OSM): localized turns with clustered firings
+    collapsed. Honest but over-detects on twisty roads (it can't tell a curve
+    from a junction).
+  - **OSM mode** (`--osm`): decisions come from *durable* road-name changes
+    ("Left/Continue onto Mount Hamilton Road"), so a 22 mi switchback climb is
+    one segment with zero false turns. This is what PRODUCT.md's significance
+    scoring is actually about (road-name changes / junctions).
 - ✅ Reassurance markers (distance intervals + nearest-waypoint labels)
-- ✅ Fuel analysis (waypoint-based; longest gap + range warnings)
-- ✅ Route segmentation + `analyze` text output
-- ✅ OSM enrichment (optional `[osm]` extra): road names on decision points
-  ("Left onto 15th Street"), segments named by dominant road, and fuel-station
-  discovery — validated against live OpenStreetMap data
+- ✅ Fuel analysis (waypoint-based, plus OSM fuel stations; longest gap + range warnings)
+- ✅ Route segmentation (named roads under `--osm`) + `analyze` text output
+- ✅ OSM enrichment (optional `[osm]` extra) — validated against live OpenStreetMap data
 - ⏳ Milestone 2: schematic map-strip renderer
 - ⏳ Milestone 3: PDF generation
 

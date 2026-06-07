@@ -147,6 +147,43 @@ def test_build_segments_no_degenerate_legs():
     assert segs[-1].end_mile == 10.0
 
 
+def test_merge_close_decisions_collapses_clusters():
+    from gpxsheet.analysis import merge_close_decisions
+    from gpxsheet.models import DecisionPoint
+
+    dps = [
+        DecisionPoint(5.00, "Right", 45, 0, 0, turn_angle=40),
+        DecisionPoint(5.05, "Sharp right", 80, 0, 0, turn_angle=120),  # most significant
+        DecisionPoint(5.08, "Right", 60, 0, 0, turn_angle=70),
+        DecisionPoint(9.00, "Left", 60, 0, 0, turn_angle=-70),  # separate
+    ]
+    merged = merge_close_decisions(dps, min_separation_miles=0.2)
+    assert len(merged) == 2
+    assert merged[0].significance == 80  # representative is the sharpest/most significant
+    assert merged[1].mile == 9.0
+
+
+def test_coord_at_meters():
+    from gpxsheet.analysis import coord_at_meters
+    from gpxsheet.models import GeoPoint, Route
+
+    pts = [GeoPoint(0.0, float(i)) for i in range(5)]
+    route = Route(name="x", points=pts, distances_m=[0.0, 100.0, 200.0, 300.0, 400.0])
+    assert coord_at_meters(route, 0.0) == (0.0, 0.0)
+    assert coord_at_meters(route, 250.0) == (0.0, 2.5)  # interpolated between vertices
+    assert coord_at_meters(route, 10_000.0) == (0.0, 4.0)  # clamped to end
+
+
+def test_turn_angle_at_mile_detects_left_turn(l_route_file):
+    from gpxsheet.analysis import turn_angle_at_mile
+    from gpxsheet.gpx import load_route
+
+    route = load_route(l_route_file)
+    # The L-route turns left (east -> north) at its midpoint (~2.5 mi).
+    angle = turn_angle_at_mile(route, route.length_miles / 2)
+    assert angle < -45  # left = negative
+
+
 def test_analyze_report_renders(l_route_file):
     from gpxsheet.report import format_analysis
 
