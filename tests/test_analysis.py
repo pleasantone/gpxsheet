@@ -106,6 +106,17 @@ def test_reassurance_markers_respect_interval(l_route_file):
     assert miles == sorted(miles)
 
 
+def test_reassurance_marker_not_dropped_near_end(l_route_file):
+    # Regression: a route between 1x and 1.5x the interval must still get its one
+    # marker. The l-route is ~5 mi; with a 4 mi interval the single marker at
+    # mile 4 (~1 mi from the end) must be kept, not suppressed by an end buffer.
+    route = gpxsheet.analyze(
+        str(l_route_file), profile="sport-touring", reassurance_interval=4.0
+    )
+    assert len(route.reassurance_markers) == 1
+    assert route.reassurance_markers[0].mile == 4.0
+
+
 def test_minimalist_profile_suppresses_extras(l_route_file):
     route = gpxsheet.analyze(str(l_route_file), profile="minimalist")
     assert route.fuel_stops == []

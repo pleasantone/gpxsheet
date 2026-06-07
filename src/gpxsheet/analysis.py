@@ -38,6 +38,10 @@ TURN_ANGLE_THRESHOLD_DEG = 35.0
 MAX_TURN_ARC_M = 90.0
 # Heading change below this at a vertex is treated as "straight" (breaks a run).
 STRAIGHT_EPS_DEG = 8.0
+# Suppress a reassurance marker only if it falls this close to the route end
+# (where it would be redundant with arrival). Small and fixed so a marker that
+# is genuinely far from the end is never dropped.
+END_MARKER_BUFFER_MILES = 0.5
 
 # Fuel-stop detection from waypoint names/symbols when OSM is unavailable.
 _FUEL_HINTS = ("fuel", "gas", "petrol", "station", "shell", "chevron", "76", "arco")
@@ -138,7 +142,7 @@ def generate_reassurance_markers(
 
     markers: list[ReassuranceMarker] = []
     mile = interval_miles
-    while mile < route.length_miles - 0.5 * interval_miles:
+    while mile < route.length_miles - END_MARKER_BUFFER_MILES:
         idx = _index_at_mile(route, mile)
         pt = route.points[idx]
         label, reason = _label_near(route, idx)
