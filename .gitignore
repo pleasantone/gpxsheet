@@ -33,3 +33,6 @@ htmlcov/
 *.swp
 .idea/
 .vscode/
+
+# osmnx Overpass response cache
+cache/
