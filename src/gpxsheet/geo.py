@@ -17,6 +17,10 @@ def meters_to_miles(meters: float) -> float:
     return meters / METERS_PER_MILE
 
 
+def miles_to_meters(miles: float) -> float:
+    return miles * METERS_PER_MILE
+
+
 def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance between two points, in meters."""
     p1, p2 = math.radians(lat1), math.radians(lat2)

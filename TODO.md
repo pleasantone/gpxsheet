@@ -23,12 +23,6 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   presigned expiry; CORS + security headers (HSTS/CSP/etc.); secrets via
   env/secret-store not defaults; `pip-audit` / dependency CVEs; run the worker
   non-root (already) and least-privilege. Produce a findings doc + fixes.
-- **Magic-numbers sweep** — find hard-coded constants that should be
-  named/commented (e.g. `1609.344` mi↔m everywhere, enrich buffers
-  `road_buffer_m`/`fuel_buffer_m`/sample spacing, strip placement pixels
-  `_OFFSET/_PAD/_LINE_CLEAR/...`, layout `MIN_SEGMENT_LEN/DIST_SCALE`, pagination
-  caps, Dramatiq `time_limit`). Promote to documented module constants; add a
-  `METERS_PER_MILE`-style helper where missing.
 - **A4 paper size** — add a page-size option (letter | a4) to `generate_pdf`
   (figure dims + the layout fraction math), the CLI (`--paper`), and the service
   params. US Letter is currently hard-coded (11×8.5 / 8.5×11).

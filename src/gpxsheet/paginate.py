@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from .geo import miles_to_meters
 from .models import Route
 
 # A page holds at most this many decisions; the last page absorbs the run-out.
@@ -82,7 +83,7 @@ def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) 
     return Route(
         name=route.name,
         points=edge_points,
-        distances_m=[0.0, (end - off) * 1609.344],
+        distances_m=[0.0, miles_to_meters(end - off)],
         segments=segments,
         decision_points=decisions,
         fuel_stops=fuel,

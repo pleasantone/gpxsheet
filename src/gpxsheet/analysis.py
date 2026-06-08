@@ -18,7 +18,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import replace
 
-from .geo import bearing, bearing_delta, meters_to_miles
+from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters
 from .models import (
     DecisionKind,
     DecisionPoint,
@@ -127,7 +127,7 @@ def turn_angle_at_mile(route: Route, mile: float, window_m: float = 50.0) -> flo
     sampled ``window_m`` either side. Used to give an OSM road-name-change
     decision its turn direction.
     """
-    center_m = mile * 1609.344
+    center_m = miles_to_meters(mile)
     before = coord_at_meters(route, center_m - window_m)
     at = coord_at_meters(route, center_m)
     after = coord_at_meters(route, center_m + window_m)
@@ -257,7 +257,7 @@ def generate_reassurance_markers(
 
 
 def _index_at_mile(route: Route, mile: float) -> int:
-    target_m = mile * 1609.344
+    target_m = miles_to_meters(mile)
     # distances_m is sorted ascending.
     lo, hi = 0, len(route.distances_m) - 1
     while lo < hi:
@@ -272,7 +272,7 @@ def _index_at_mile(route: Route, mile: float) -> int:
 def _label_near(route: Route, idx: int, max_miles: float = 1.0) -> tuple[str, str]:
     """Best label for a point: nearest named waypoint, else the mileage."""
     pt = route.points[idx]
-    best_name, best_d = None, max_miles * 1609.344
+    best_name, best_d = None, miles_to_meters(max_miles)
     from .geo import haversine
 
     for wp in route.waypoints:

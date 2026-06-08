@@ -37,6 +37,11 @@ else:
     dramatiq.set_broker(StubBroker())
 
 
+# A render holds the worker for the whole job; big OSM routes can take minutes,
+# so cap a single render generously rather than letting it run unbounded.
+RENDER_TIME_LIMIT_MS = 1_200_000  # 20 minutes (Dramatiq time_limit is in ms)
+
+
 @dataclass
 class JobRecord:
     id: str
@@ -162,7 +167,7 @@ def prod_components() -> tuple[RedisJobStore, Storage]:
     return RedisJobStore(settings.redis_url()), MinioStorage(**settings.minio_config())
 
 
-@dramatiq.actor(max_retries=0, time_limit=1_200_000)  # 20 min; renders can be long
+@dramatiq.actor(max_retries=0, time_limit=RENDER_TIME_LIMIT_MS)
 def render_actor(job_id: str, gpx_b64: str, params_dict: dict) -> None:
     store, storage = prod_components()
     process_job(store, storage, job_id, base64.b64decode(gpx_b64), GenerateParams(**params_dict))

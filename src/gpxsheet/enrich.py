@@ -35,7 +35,7 @@ from .analysis import (
     merge_close_decisions,
     turn_angle_at_mile,
 )
-from .geo import haversine, meters_to_miles
+from .geo import haversine, meters_to_miles, miles_to_meters
 from .models import DecisionKind, DecisionPoint, FuelStop, Route, Segment
 from .profiles import SCORE_ROAD_NAME_CHANGE, SCORE_STATE_HWY_JUNCTION
 
@@ -173,7 +173,7 @@ def enrich_route(
                 _edge_value(edges_gdf, edge, "highway"),
             )
 
-    runs = _durable_runs(sample_m, names, MIN_ROAD_RUN_MILES * 1609.344)
+    runs = _durable_runs(sample_m, names, miles_to_meters(MIN_ROAD_RUN_MILES))
     if runs:
         route.segments = _segments_from_runs(route, runs)
         route.decision_points = _decisions_from_runs(route, runs)
@@ -220,7 +220,7 @@ def _chunk_ranges(
     n = len(route.points)
     if n < 2:
         return [(0, n - 1)] if n else []
-    max_m = max_miles * 1609.344
+    max_m = miles_to_meters(max_miles)
     dist = route.distances_m
     ranges: list[tuple[int, int]] = []
     i0 = 0
@@ -301,7 +301,7 @@ def _decisions_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[De
     decisions: list[DecisionPoint] = []
     for start_mile, name in runs[1:]:  # the first road is where you start, not a decision
         angle = turn_angle_at_mile(route, start_mile)
-        lat, lon = coord_at_meters(route, start_mile * 1609.344)
+        lat, lon = coord_at_meters(route, miles_to_meters(start_mile))
         if abs(angle) < CONTINUE_MAX_ANGLE_DEG:
             instruction = f"Continue onto {name}"
         else:
