@@ -55,6 +55,9 @@ def generate(
         False, "--landscape",
         help="One big strip per page instead of the default portrait roadbook.",
     ),
+    paper: str = typer.Option(
+        "letter", "--paper", help="Page size: letter | a4."
+    ),
     lanes: int = typer.Option(
         4, "--lanes", min=1, help="Portrait only: strip lanes per page."
     ),
@@ -73,6 +76,7 @@ def generate(
         use_osm=osm,
         turn_style=turns,
         orientation="landscape" if landscape else "portrait",
+        paper=paper,
         lanes_per_page=lanes,
         decisions_per_lane=lane_decisions,
     )

@@ -13,6 +13,7 @@ class GenerateParams(BaseModel):
     use_osm: bool = True
     turn_style: str = Field("stylized", pattern="^(stylized|faithful)$")
     orientation: str = Field("portrait", pattern="^(portrait|landscape)$")
+    paper: str = Field("letter", pattern="^(letter|a4)$")
     lanes_per_page: int = Field(4, ge=1)
     decisions_per_lane: int = Field(4, ge=1)
 

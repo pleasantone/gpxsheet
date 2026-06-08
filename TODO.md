@@ -23,9 +23,6 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   presigned expiry; CORS + security headers (HSTS/CSP/etc.); secrets via
   env/secret-store not defaults; `pip-audit` / dependency CVEs; run the worker
   non-root (already) and least-privilege. Produce a findings doc + fixes.
-- **A4 paper size** — add a page-size option (letter | a4) to `generate_pdf`
-  (figure dims + the layout fraction math), the CLI (`--paper`), and the service
-  params. US Letter is currently hard-coded (11×8.5 / 8.5×11).
 - **Preview image output** — a single overview image (PNG/JPEG), no pagination:
   reuse the strip renderer (`gpxsheet.strip`) for the whole route. Add a CLI flag
   and a service endpoint (e.g. `POST /v1/preview` returning an image, or a

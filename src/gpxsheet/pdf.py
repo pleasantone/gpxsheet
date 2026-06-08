@@ -1,6 +1,6 @@
 """PDF generation (Milestone 3).
 
-Composes the tank-bag document: one landscape US-Letter page per route-aware
+Composes the tank-bag document: one landscape page (US Letter or A4) per route-aware
 page (see :mod:`gpxsheet.paginate`), each with a header, the schematic map strip
 (Map Zone), a large-text cue zone (NEXT / AFTER / FUEL / TOTAL), and a progress
 indicator. Built with matplotlib (vector PDF via ``PdfPages``), reusing
@@ -27,12 +27,23 @@ LANES_PER_PAGE = 4
 DECISIONS_PER_LANE = 4
 
 
+# Physical page sizes in inches, given as portrait (width, height). Landscape
+# swaps the two. The layout math below works in figure fractions, so only the
+# figure dims and the landscape aspect ratio depend on the paper choice.
+PAGE_SIZES = {
+    "letter": (8.5, 11.0),  # US Letter
+    "a4": (8.27, 11.69),  # ISO A4, 210 x 297 mm
+}
+DEFAULT_PAPER = "letter"
+
+
 def render_pdf(
     route: Route,
     output_path: str | Path,
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     orientation: str = "landscape",
+    paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int = DECISIONS_PER_LANE,
 ) -> Path:
@@ -40,10 +51,15 @@ def render_pdf(
 
     ``orientation`` is ``"landscape"`` (one strip per page, big map) or
     ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page, each holding
-    up to ``decisions_per_lane`` decisions, roadbook-style).
+    up to ``decisions_per_lane`` decisions, roadbook-style). ``paper`` is one of
+    :data:`PAGE_SIZES` (``"letter"`` or ``"a4"``).
     """
     if orientation not in ("landscape", "portrait"):
         raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
+    paper = paper.lower()
+    if paper not in PAGE_SIZES:
+        raise ValueError(f"paper must be one of {sorted(PAGE_SIZES)}, got {paper!r}")
+    page_w_in, page_h_in = PAGE_SIZES[paper]  # portrait (width, height) inches
     lanes_per_page = max(1, lanes_per_page)
     decisions_per_lane = max(1, decisions_per_lane)
     import matplotlib
@@ -62,7 +78,7 @@ def render_pdf(
                 lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
             ]
             for i, group in enumerate(page_groups, start=1):
-                fig = plt.figure(figsize=(8.5, 11))  # portrait US Letter
+                fig = plt.figure(figsize=(page_w_in, page_h_in))  # portrait
                 _compose_portrait_page(
                     fig, route, group, i, len(page_groups), total, turn_style, lanes_per_page
                 )
@@ -71,15 +87,25 @@ def render_pdf(
         else:
             pages = paginate(route)
             for i, (start, end) in enumerate(pages, start=1):
-                fig = plt.figure(figsize=(11, 8.5))  # landscape US Letter
-                _compose_page(fig, route, start, end, i, len(pages), total, turn_style)
+                fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
+                _compose_page(
+                    fig, route, start, end, i, len(pages), total, turn_style,
+                    page_h_in, page_w_in,
+                )
                 pdf.savefig(fig, facecolor="white")
                 plt.close(fig)
     return output_path
 
 
-def _compose_page(fig, route, start, end, page_no, page_count, total, turn_style) -> None:
-    """Lay out a single page (header, map strip, cue zone, progress) into ``fig``."""
+def _compose_page(
+    fig, route, start, end, page_no, page_count, total, turn_style,
+    page_w_in, page_h_in,
+) -> None:
+    """Lay out a single page (header, map strip, cue zone, progress) into ``fig``.
+
+    ``page_w_in``/``page_h_in`` are the physical page width/height in inches for
+    the rendered (landscape) orientation, used to keep the strip's aspect ratio.
+    """
     page = slice_route(route, start, end)
     layout = build_strip_layout(
         page,
@@ -105,7 +131,7 @@ def _compose_page(fig, route, start, end, page_no, page_count, total, turn_style
     span_y = 1.6 * (layout.height or 0.0) + 2.0
     aspect = span_x / span_y
     map_w = panel_w - 0.02
-    map_h = (map_w * 11.0 / aspect) / 8.5
+    map_h = (map_w * page_w_in / aspect) / page_h_in
     map_h = max(0.12, min(map_h, (avail_hi - avail_lo) - 2 * margin - ribbon_band))
 
     panel_h = map_h + 2 * margin + ribbon_band
@@ -227,6 +253,7 @@ def generate_pdf(
     use_osm: bool = False,
     turn_style: str = TURN_STYLE_STYLIZED,
     orientation: str = "landscape",
+    paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int = DECISIONS_PER_LANE,
 ) -> str:
@@ -242,6 +269,7 @@ def generate_pdf(
         output_file,
         turn_style=turn_style,
         orientation=orientation,
+        paper=paper,
         lanes_per_page=lanes_per_page,
         decisions_per_lane=decisions_per_lane,
     )

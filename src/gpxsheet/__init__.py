@@ -33,6 +33,7 @@ def generate_pdf(
     use_osm: bool = False,
     turn_style: str = "stylized",
     orientation: str = "landscape",
+    paper: str = "letter",
     lanes_per_page: int = 4,
     decisions_per_lane: int = 4,
 ) -> str:
@@ -47,6 +48,7 @@ def generate_pdf(
         turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
         orientation: ``"landscape"`` (one big strip per page) or ``"portrait"``
             (several stacked strip lanes per page, roadbook-style).
+        paper: Page size, ``"letter"`` or ``"a4"``.
         lanes_per_page: Portrait only -- number of strip lanes per page.
         decisions_per_lane: Portrait only -- max decisions per lane.
 
@@ -63,6 +65,7 @@ def generate_pdf(
         use_osm=use_osm,
         turn_style=turn_style,
         orientation=orientation,
+        paper=paper,
         lanes_per_page=lanes_per_page,
         decisions_per_lane=decisions_per_lane,
     )

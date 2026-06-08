@@ -28,6 +28,7 @@ def render_pdf_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
             use_osm=params.use_osm,
             turn_style=params.turn_style,
             orientation=params.orientation,
+            paper=params.paper,
             lanes_per_page=params.lanes_per_page,
             decisions_per_lane=params.decisions_per_lane,
         )

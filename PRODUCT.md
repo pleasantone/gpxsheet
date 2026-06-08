@@ -638,8 +638,9 @@ Allow navigation by road names.
 
 # Page Layout
 
-US Letter, optimized for color printing, tank-bag viewing, and sunlight
-readability. Two layouts (CLI default is **portrait**):
+US Letter or A4 (`--paper`, default Letter), optimized for color printing,
+tank-bag viewing, and sunlight readability. Two layouts (CLI default is
+**portrait**):
 
 **Header** (both layouts): route name (left) · page mileage `start / total`
 in green (right of center) · `Page X of Y` (right).
@@ -832,7 +833,7 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   <gpx> [-o out.png] [--turns stylized|faithful]`. Validated on real OSM tracks.
   Remaining polish (non-blocking) is tracked in TODO.md.
 * **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
-  US-Letter document with route-aware pagination (`gpxsheet.paginate`,
+  US-Letter/A4 document with route-aware pagination (`gpxsheet.paginate`,
   decision-cap only — breaks at decisions, never mid-road). Header shows the
   (truncated) route name, page mileage in green, and page counter. Two layouts:
   - **portrait** (CLI default): stacked strip "lanes" per page (roadbook/TripTik),
