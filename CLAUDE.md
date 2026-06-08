@@ -125,6 +125,14 @@ Overpass hangs intermittently in this sandbox.
   in/out across runs; consider hysteresis.
 - **Down-weight straight "Continue onto"** name changes (residential noise);
   needs a ground-truth set. **Junction-degree detection** for nameless forks.
+- **Roads/directions NOT taken at a junction** — at each decision, surface the
+  other branch(es) you do *not* take (road name / direction) to disambiguate
+  forks and multi-way intersections, e.g. a ghosted stub or "(not Foo Rd)".
+  Needs OSM node degree + the junction's other edges (builds on junction-degree
+  detection).
+- **Roundabout exit numbers** — detect roundabouts (OSM `junction=roundabout` /
+  circular ways) and emit "take the Nth exit" instructions + a roundabout glyph
+  on the strip, instead of a plain turn.
 - ✅ **Milestone 5 DONE (verified live)** — `gpxsheet.service` FastAPI app
   (`[service]` extra): `POST /v1/jobs` (async render via Dramatiq+Redis, result in
   MinIO), `GET /v1/jobs/{id}[/result]`, `POST /v1/analyze`, `/healthz`, `/docs`.
