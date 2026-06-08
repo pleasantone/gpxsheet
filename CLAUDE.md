@@ -85,6 +85,35 @@ Overpass hangs intermittently in this sandbox.
 
 ## Open work / TODO
 
+### Phase 2 (requested)
+- **Security audit (architecture + code, esp. the service) — required before
+  public internet exposure.** Cover: auth/API keys + per-key quotas; XML upload
+  safety (XXE/billion-laughs — check whether gpxpy uses lxml; harden the parser);
+  SSRF & egress from OSM/Overpass fetches; upload validation beyond size (content
+  sniffing, point/length caps that reject monster routes early); DoS/resource
+  limits (worker time/memory, queue depth); MinIO creds + bucket policy + presigned
+  expiry; CORS + security headers (HSTS/CSP/etc.); secrets via env/secret-store not
+  defaults; `pip-audit` / dependency CVEs; run the worker non-root (already) and
+  least-privilege. Produce a findings doc + fixes.
+- **Magic-numbers sweep** — find hard-coded constants that should be named/commented
+  (e.g. `1609.344` mi↔m everywhere, enrich buffers `road_buffer_m`/`fuel_buffer_m`/
+  sample spacing, strip placement pixels `_OFFSET/_PAD/_LINE_CLEAR/...`, layout
+  `MIN_SEGMENT_LEN/DIST_SCALE`, pagination caps, Dramatiq `time_limit`). Promote to
+  documented module constants; add a `METERS_PER_MILE`-style helper where missing.
+- **A4 paper size** — add a page-size option (letter | a4) to `generate_pdf`
+  (figure dims + the layout fraction math), the CLI (`--paper`), and the service
+  params. US Letter is currently hard-coded (11×8.5 / 8.5×11).
+- **Preview image output** — a single overview image (PNG/JPEG), no pagination:
+  reuse the strip renderer (`gpxsheet.strip`) for the whole route. Add a CLI flag
+  and a service endpoint (e.g. `POST /v1/preview` returning an image, or a
+  `format=png` option on jobs). Fast/low-res; good for a UI thumbnail.
+- **Front end for the service** — a small, secure web UI (upload GPX → choose
+  profile/orientation/paper/OSM → live preview image → download PDF). Must be
+  hardened for **public internet exposure** (ties into the security audit: auth,
+  CSRF, CSP, rate limits, no creds in the browser, served behind TLS/reverse
+  proxy). Decide SPA vs server-rendered; keep deps minimal.
+
+### Rendering / analysis polish
 - **Strip label de-collision** (`_place_labels_with_leaders`) is heuristic; can
   bunch on very dense routes. Possible: leader routing, smarter side selection,
   per-page label caps.
