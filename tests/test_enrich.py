@@ -108,6 +108,52 @@ def test_road_change_instruction_and_significance():
     assert _road_change_significance("CA-1", 10.0) > _road_change_significance("Elm St", 10.0)
 
 
+class _FakeOx:
+    """Minimal stand-in for osmnx returning canned ferry features."""
+
+    def __init__(self, feats):
+        self._feats = feats
+
+    def features_from_polygon(self, poly, tags):  # noqa: ARG002 (signature match)
+        return self._feats
+
+
+def _ferry_feats(geoms, names):
+    import geopandas as gpd
+
+    return gpd.GeoDataFrame({"name": names}, geometry=geoms)
+
+
+def _vertical_route():
+    from gpxsheet.models import GeoPoint, Route
+
+    # Runs north along lon=0 from lat 0.0 to 0.1.
+    pts = [GeoPoint(lat, 0.0) for lat in (0.0, 0.05, 0.1)]
+    return Route(name="t", points=pts, distances_m=[0.0, 0.0, 0.0])
+
+
+def test_detect_ferries_ignores_passed_terminal():
+    import shapely.geometry as sg
+
+    from gpxsheet.enrich import _detect_ferries
+
+    # A long ferry that merely crosses the route once (riding past its terminal).
+    passing = sg.LineString([(0.0, 0.05), (0.2, 0.05)])
+    feats = _ferry_feats([passing], ["Bay Ferry"])
+    assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == []
+
+
+def test_detect_ferries_reports_ride_along():
+    import shapely.geometry as sg
+
+    from gpxsheet.enrich import _detect_ferries
+
+    # A ferry the route rides along (coincides with the route corridor).
+    along = sg.LineString([(0.0, 0.02), (0.0, 0.08)])
+    feats = _ferry_feats([along], ["River Ferry"])
+    assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == ["River Ferry"]
+
+
 @pytest.mark.skipif(
     os.environ.get("GPXSHEET_LIVE_OSM") != "1",
     reason="live Overpass query; set GPXSHEET_LIVE_OSM=1 to run",

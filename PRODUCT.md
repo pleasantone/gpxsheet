@@ -321,6 +321,10 @@ T intersection
 Fork
 ```
 
+```text
+Roundabouts and Rotarys
+```
+
 Situations where a rider could easily choose the wrong path.
 
 ---
@@ -336,6 +340,7 @@ Example scoring:
 | Road name change       | +40   |
 | State highway junction | +50   |
 | County road junction   | +30   |
+| Roundabout intersection| +60   |
 | Y intersection         | +60   |
 | T intersection         | +60   |
 | Fuel opportunity       | +20   |
@@ -445,7 +450,7 @@ User configurable.
 Example:
 
 ```bash
---fuel-range 180
+--fuel-range 120
 ```
 
 ---
@@ -787,70 +792,6 @@ it directly. The OSM extra also brings `geopandas`/`pyproj`/`pyogrio`.
 
 ---
 
-# Phase 1 Deliverables
-
-## Milestone 1
-
-Route analysis engine.
-
-Outputs:
-
-* Decision points
-* Fuel points
-* Reassurance markers
-
----
-
-## Milestone 2
-
-Schematic map-strip renderer.
-
-Outputs:
-
-```text
-route_strip.png
-```
-
----
-
-## Milestone 3
-
-PDF generation.
-
-Outputs:
-
-```text
-route.pdf
-```
-
-Including:
-
-* Map strip
-* Cue blocks
-* Road ribbon
-* Fuel analysis
-* Progress indicator
-
----
-
-## Milestone 4
-
-Packaged CLI.
-
-```bash
-pip install gpxsheet
-```
-
----
-
-## Milestone 5
-
-Web service extraction.
-
-Expose the same engine through REST APIs.
-
----
-
 # Success Criteria
 
 The product succeeds if a rider can glance at the printed document for less than one second and reliably determine:
@@ -870,8 +811,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 
 > This section records what is actually built and the engineering decisions made
 > while implementing the spec above. The sections above are the design intent;
-> this section is the as-built reality. Last updated: Phase 1 (milestones 1–4)
-> complete.
+> this section is the as-built reality. Last updated: Phase 1 (milestones 1–5)
+> complete. Planned/queued work is tracked in [TODO.md](TODO.md).
 
 ## Milestone progress
 
@@ -889,8 +830,7 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   markers, dashed leader lines (collision-placed and connected to their dots),
   2-line-wrapped road names, and the road-name ribbon. CLI: `gpxsheet strip
   <gpx> [-o out.png] [--turns stylized|faithful]`. Validated on real OSM tracks.
-  Remaining polish (non-blocking, in CLAUDE.md): reassurance-label prominence,
-  stylized-angle/compression tuning, heading drift on long same-direction routes.
+  Remaining polish (non-blocking) is tracked in TODO.md.
 * **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
   US-Letter document with route-aware pagination (`gpxsheet.paginate`,
   decision-cap only — breaks at decisions, never mid-road). Header shows the
@@ -902,7 +842,7 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
     hugs the strip, with the road ribbon and a progress (YOU) bar.
 
   `generate_pdf` is wired into the API and `gpxsheet generate <gpx> -o route.pdf`.
-  Open polish (CLAUDE.md): fuel-at-mile-0 overlaps the START label.
+  Open polish (e.g. fuel-at-mile-0 overlapping START) is tracked in TODO.md.
 * **Defaults & graceful degradation:** the CLI defaults to **portrait + OSM**
   (`--landscape` / `--no-osm` opt out). OSM enrichment falls back to geometry-only
   (with a warning) when the `osm` extra is missing, the route `looks_sparse`
@@ -933,8 +873,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   hits. Tests: dev path end-to-end via `TestClient` (incl. cache/cap/limit); the
   Redis/MinIO prod path has a gated integration test (`GPXSHEET_SERVICE_IT=1`).
 
-`validate` (CLI) is still a stub. Possible future hardening: auth/API keys,
-metrics, distributed (Redis-backed) rate limiting.
+`validate` (CLI) is still a stub. Planned work — including future service
+hardening (auth/API keys, metrics, distributed rate limiting) — is in TODO.md.
 
 ## Decision Point Engine — as built
 

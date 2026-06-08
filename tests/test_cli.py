@@ -51,7 +51,17 @@ def test_generate_command_writes_pdf(l_route_file, tmp_path):
     assert out.exists() and out.read_bytes()[:4] == b"%PDF"
 
 
-def test_validate_command_not_implemented(l_route_file):
-    result = runner.invoke(app, ["validate", str(l_route_file)])
-    assert result.exit_code != 0
-    assert isinstance(result.exception, NotImplementedError)
+def test_validate_command_ok(l_route_file):
+    # No fuel-range and --no-osm -> no warnings -> exit 0.
+    result = runner.invoke(app, ["validate", str(l_route_file), "--no-osm"])
+    assert result.exit_code == 0, result.output
+    assert "Validate:" in result.stdout
+    assert "Unpaved check skipped" in result.stdout  # OSM off
+
+
+def test_validate_command_warns_on_fuel_gap(l_route_file):
+    # Tiny fuel range -> the route exceeds it -> warning -> exit 1.
+    result = runner.invoke(app, ["validate", str(l_route_file), "--no-osm", "--fuel-range", "1"])
+    assert result.exit_code == 1
+    assert "⚠" in result.stdout
+    assert "fuel gap" in result.stdout.lower() or "range" in result.stdout.lower()

@@ -148,9 +148,23 @@ def validate(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
+    osm: bool = typer.Option(
+        True, "--osm/--no-osm",
+        help="Use OpenStreetMap for unpaved/ferry checks (default on; else skipped).",
+    ),
 ) -> None:
-    """Validate a route for fuel gaps, unpaved segments and other hazards."""
-    raise NotImplementedError("Route validation is not implemented yet (see PRODUCT.md).")
+    """Validate a route for fuel gaps, unpaved segments and ferry crossings.
+
+    Exits non-zero if any warnings are found.
+    """
+    from . import analyze as _analyze
+    from .validate import WARNING, format_findings, validate_route
+
+    route = _analyze(str(gpx_file), fuel_range=fuel_range, use_osm=osm, include_hazards=osm)
+    findings = validate_route(route, fuel_range=fuel_range)
+    typer.echo(format_findings(route, findings))
+    if any(f.level == WARNING for f in findings):
+        raise typer.Exit(code=1)
 
 
 if __name__ == "__main__":  # pragma: no cover

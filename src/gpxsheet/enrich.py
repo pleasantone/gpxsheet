@@ -68,23 +68,47 @@ def _require_osm():
     return ox
 
 
-def _edge_name(edges_gdf, edge_key) -> str | None:
-    """Pull a single road name out of an edges GeoDataFrame row.
+def _edge_value(edges_gdf, edge_key, attr: str) -> str | None:
+    """Pull a single OSM tag value off an edges GeoDataFrame row.
 
-    OSM edge names may be missing (NaN), a string, or a list (a way carrying
-    several names); normalize all three to one string or None.
+    OSM values may be missing (NaN), a string, or a list (a way carrying several
+    values); normalize all three to one string or None.
     """
-    if "name" not in edges_gdf.columns:
+    if attr not in edges_gdf.columns:
         return None
     try:
-        name = edges_gdf.loc[edge_key, "name"]
+        value = edges_gdf.loc[edge_key, attr]
     except KeyError:
         return None
-    if isinstance(name, list):
-        name = name[0] if name else None
-    if name is None or (isinstance(name, float)):  # float == NaN here
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if value is None or isinstance(value, float):  # float == NaN here
         return None
-    return str(name)
+    return str(value)
+
+
+def _edge_name(edges_gdf, edge_key) -> str | None:
+    """The road name for an edge (see :func:`_edge_value`)."""
+    return _edge_value(edges_gdf, edge_key, "name")
+
+
+# OSM `surface` values (and highway=track) that mean the road is not paved.
+_UNPAVED_SURFACES = frozenset(
+    {
+        "unpaved", "gravel", "fine_gravel", "compacted", "dirt", "ground", "earth",
+        "mud", "sand", "grass", "pebblestone", "rock", "woodchips",
+    }
+)
+
+
+def _is_unpaved(surface: str | None, highway: str | None) -> bool:
+    return (surface or "").lower() in _UNPAVED_SURFACES or (highway or "").lower() == "track"
+
+
+# A ferry only counts as a crossing if the route actually rides along this much
+# of it. Merely passing within the corridor buffer of a terminal (e.g. riding
+# past a bay ferry pier) leaves only a sliver of the long ferry way overlapping.
+FERRY_FOLLOW_FRACTION = 0.5
 
 
 # A single OSM (graph/feature) query must stay tractable, so a long route is
@@ -100,12 +124,17 @@ def enrich_route(
     fuel_buffer_m: float = 400.0,
     sample_spacing_m: float = 60.0,
     include_fuel: bool = True,
+    include_hazards: bool = False,
 ) -> Route:
     """Replace decisions/segments with OSM-derived ones and add fuel, in place.
 
     Large routes are split into chunks (bounded points + mileage) so each OSM
     query stays tractable; the per-chunk road-name samples are stitched back
     together before durable-run detection. Small routes use a single chunk.
+
+    ``unpaved_miles`` is always estimated from the sampled ``surface`` tags (it
+    reuses the road-name nearest-edge lookups, so it's free). ``include_hazards``
+    additionally runs a ferry query (an extra Overpass call) for :mod:`validate`.
     """
     ox = _require_osm()
     import shapely.geometry as sg
@@ -115,6 +144,7 @@ def enrich_route(
     sample_m = [total_m * i / (n - 1) for i in range(n)]
     coords = [coord_at_meters(route, m) for m in sample_m]
     names: list[str | None] = [None] * len(sample_m)
+    unpaved: list[bool] = [False] * len(sample_m)
 
     chunks = _chunk_ranges(route)
     for i0, i1 in chunks:
@@ -136,16 +166,50 @@ def enrich_route(
             graph, [coords[k][1] for k in idxs], [coords[k][0] for k in idxs]
         )
         for k, key in zip(idxs, keys, strict=True):
-            names[k] = _edge_name(edges_gdf, tuple(key))
+            edge = tuple(key)
+            names[k] = _edge_name(edges_gdf, edge)
+            unpaved[k] = _is_unpaved(
+                _edge_value(edges_gdf, edge, "surface"),
+                _edge_value(edges_gdf, edge, "highway"),
+            )
 
     runs = _durable_runs(sample_m, names, MIN_ROAD_RUN_MILES * 1609.344)
     if runs:
         route.segments = _segments_from_runs(route, runs)
         route.decision_points = _decisions_from_runs(route, runs)
 
+    spacing_m = total_m / (n - 1) if n > 1 else 0.0
+    route.unpaved_miles = round(meters_to_miles(sum(unpaved) * spacing_m), 1)
+
     if include_fuel:
         _add_fuel(route, ox, chunks, fuel_buffer_m)
+    if include_hazards:
+        route.ferry_crossings = _detect_ferries(route, ox, sg, road_buffer_m)
     return route
+
+
+def _detect_ferries(route: Route, ox, sg, buffer_m: float) -> list[str]:
+    """Names/types of OSM ferry ways (route=ferry) crossing the route corridor."""
+    from osmnx._errors import InsufficientResponseError
+
+    line = sg.LineString([(p.lon, p.lat) for p in route.points])
+    corridor = line.buffer(buffer_m * _DEG_PER_M)
+    try:
+        feats = ox.features_from_polygon(corridor, tags={"route": "ferry"})
+    except InsufficientResponseError:
+        return []
+    if feats.empty:
+        return []
+    names = []
+    for _, row in feats.iterrows():
+        ferry_len = getattr(row.geometry, "length", 0.0)
+        if not ferry_len:
+            continue
+        # Count only ferries the route rides along, not ones whose terminal we pass.
+        overlap = row.geometry.intersection(corridor).length
+        if overlap >= FERRY_FOLLOW_FRACTION * ferry_len:
+            names.append(_clean_str(row.get("name")) or "ferry")
+    return sorted(set(names))
 
 
 def _chunk_ranges(

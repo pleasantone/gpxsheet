@@ -75,12 +75,14 @@ def analyze(
     fuel_range: float | None = None,
     reassurance_interval: float | None = None,
     use_osm: bool = False,
+    include_hazards: bool = False,
 ) -> Route:
     """Run the route analysis engine on a GPX file.
 
     Loads the GPX, runs decision-point detection, reassurance-marker placement,
     fuel analysis and segmentation, and returns the populated :class:`Route`.
-    See the ``analyze`` output mode in ``PRODUCT.md``.
+    ``include_hazards`` adds OSM hazard data for validation. See the ``analyze``
+    output mode in ``PRODUCT.md``.
     """
     from .analysis import analyze_route as _analyze_route
     from .gpx import load_route as _load_route
@@ -92,6 +94,7 @@ def analyze(
         fuel_range=fuel_range,
         reassurance_interval=reassurance_interval,
         use_osm=use_osm,
+        include_hazards=include_hazards,
     )
 
 

@@ -367,9 +367,12 @@ def analyze_route(
     fuel_range: float | None = None,
     reassurance_interval: float | None = None,
     use_osm: bool = False,
+    include_hazards: bool = False,
 ) -> Route:
     """Run the full Milestone 1 analysis, populating ``route`` in place.
 
+    ``include_hazards`` adds OSM hazard data (ferry crossings; unpaved mileage is
+    always captured when OSM runs) for :func:`gpxsheet.validate.validate_route`.
     Returns the same :class:`Route` for convenience.
     """
     prof = profile if isinstance(profile, Profile) else get_profile(profile)
@@ -411,7 +414,9 @@ def analyze_route(
             from .enrich import enrich_route
 
             try:
-                enrich_route(route, include_fuel=prof.include_fuel)
+                enrich_route(
+                    route, include_fuel=prof.include_fuel, include_hazards=include_hazards
+                )
             except Exception as exc:  # network/Overpass/data failure -> fall back
                 warnings.warn(
                     f"OSM enrichment failed ({type(exc).__name__}: {exc}); "

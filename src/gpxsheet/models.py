@@ -114,6 +114,9 @@ class Route:
     fuel_stops: list[FuelStop] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
     fuel_report: FuelReport | None = None
+    # Hazard data from OSM enrichment; None means "not assessed" (no OSM run).
+    unpaved_miles: float | None = None
+    ferry_crossings: list[str] | None = None
 
     @property
     def length_m(self) -> float:
