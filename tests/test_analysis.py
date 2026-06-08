@@ -184,6 +184,45 @@ def test_turn_angle_at_mile_detects_left_turn(l_route_file):
     assert angle < -45  # left = negative
 
 
+def test_looks_sparse_detection():
+    from gpxsheet.analysis import looks_sparse
+    from gpxsheet.models import GeoPoint, Route
+
+    # 4 points over 60 mi -> sparse (a waypoint-only route).
+    sparse = Route(
+        name="s",
+        points=[GeoPoint(0, 0), GeoPoint(0, 1), GeoPoint(0, 2), GeoPoint(0, 3)],
+        distances_m=[0.0, 20 * 1609.344, 40 * 1609.344, 60 * 1609.344],
+    )
+    assert looks_sparse(sparse)
+
+
+def test_dense_route_not_sparse(l_route_file):
+    from gpxsheet.analysis import looks_sparse
+    from gpxsheet.gpx import load_route
+
+    assert not looks_sparse(load_route(l_route_file))
+
+
+def test_analyze_skips_osm_for_sparse_route():
+    import pytest
+
+    from gpxsheet.analysis import analyze_route
+    from gpxsheet.models import GeoPoint, Route
+
+    # Straight sparse route; use_osm=True must warn and NOT hit the network
+    # (looks_sparse short-circuits before importing enrich).
+    sparse = Route(
+        name="s",
+        points=[GeoPoint(0, 0.0), GeoPoint(0, 0.5), GeoPoint(0, 1.0)],
+        distances_m=[0.0, 30 * 1609.344, 60 * 1609.344],
+    )
+    with pytest.warns(UserWarning, match="sparse"):
+        analyze_route(sparse, profile="sport-touring", use_osm=True)
+    # falls back to geometry-only: a straight line has no decisions
+    assert sparse.decision_points == []
+
+
 def test_analyze_report_renders(l_route_file):
     from gpxsheet.report import format_analysis
 

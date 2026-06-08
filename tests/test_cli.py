@@ -41,10 +41,11 @@ def test_analyze_missing_file_errors():
     assert result.exit_code != 0
 
 
-def test_generate_command_not_implemented(l_route_file):
-    result = runner.invoke(app, ["generate", str(l_route_file)])
-    assert result.exit_code != 0
-    assert isinstance(result.exception, NotImplementedError)
+def test_generate_command_writes_pdf(l_route_file, tmp_path):
+    out = tmp_path / "g.pdf"
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert out.exists() and out.read_bytes()[:4] == b"%PDF"
 
 
 def test_validate_command_not_implemented(l_route_file):

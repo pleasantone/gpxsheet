@@ -58,6 +58,37 @@ def test_durable_runs_drops_transient_flaps():
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
 
 
+def test_chunk_ranges_tile_with_shared_boundaries():
+    from gpxsheet.enrich import _chunk_ranges
+    from gpxsheet.models import GeoPoint, Route
+
+    pts = [GeoPoint(0.0, i * 0.01) for i in range(20)]  # 20 points
+    dists = [i * 1000.0 for i in range(20)]  # 1 km apart
+    route = Route(name="x", points=pts, distances_m=dists)
+
+    chunks = _chunk_ranges(route, max_points=5, max_miles=1e9)
+    # cover the whole route, in order
+    assert chunks[0][0] == 0
+    assert chunks[-1][1] == 19
+    # consecutive chunks share their boundary point (no sampling gap)
+    for (_, end), (start2, _) in zip(chunks, chunks[1:], strict=False):
+        assert end == start2
+    # each chunk respects the point cap (inclusive range -> <= max_points spans)
+    assert all(i1 - i0 <= 5 for i0, i1 in chunks)
+
+
+def test_chunk_ranges_respects_mileage():
+    from gpxsheet.enrich import _chunk_ranges
+    from gpxsheet.models import GeoPoint, Route
+
+    pts = [GeoPoint(0.0, i * 0.01) for i in range(40)]
+    dists = [i * 1609.344 for i in range(40)]  # 1 mile apart
+    route = Route(name="x", points=pts, distances_m=dists)
+    chunks = _chunk_ranges(route, max_points=10_000, max_miles=10.0)
+    assert all((dists[i1] - dists[i0]) <= 10 * 1609.344 + 1 for i0, i1 in chunks)
+    assert chunks[-1][1] == 39
+
+
 def test_clean_str_handles_nan_and_blanks():
     from gpxsheet.enrich import _clean_str
 

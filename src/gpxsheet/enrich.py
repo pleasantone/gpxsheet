@@ -48,8 +48,6 @@ _HIGHWAY_RE = re.compile(
     re.IGNORECASE,
 )
 
-_DEG_PER_M = 1.0 / 111_000.0  # crude latitude-degrees per meter, fine for buffering
-
 
 def osm_available() -> bool:
     """True if the optional OSM dependency (osmnx) is importable."""
@@ -68,12 +66,6 @@ def _require_osm():
             'OSM enrichment requires the optional "osm" extra: pip install "gpxsheet[osm]"'
         ) from exc
     return ox
-
-
-def _route_line(route: Route):
-    import shapely.geometry as sg
-
-    return sg.LineString([(p.lon, p.lat) for p in route.points])
 
 
 def _edge_name(edges_gdf, edge_key) -> str | None:
@@ -95,6 +87,12 @@ def _edge_name(edges_gdf, edge_key) -> str | None:
     return str(name)
 
 
+# A single OSM (graph/feature) query must stay tractable, so a long route is
+# processed in chunks bounded by both point count and mileage.
+MAX_CHUNK_POINTS = 4000
+MAX_CHUNK_MILES = 120.0
+
+
 def enrich_route(
     route: Route,
     *,
@@ -103,38 +101,74 @@ def enrich_route(
     sample_spacing_m: float = 60.0,
     include_fuel: bool = True,
 ) -> Route:
-    """Replace decisions/segments with OSM-derived ones and add fuel, in place."""
+    """Replace decisions/segments with OSM-derived ones and add fuel, in place.
+
+    Large routes are split into chunks (bounded points + mileage) so each OSM
+    query stays tractable; the per-chunk road-name samples are stitched back
+    together before durable-run detection. Small routes use a single chunk.
+    """
     ox = _require_osm()
+    import shapely.geometry as sg
 
-    line = _route_line(route)
-    graph = ox.graph_from_polygon(
-        line.buffer(road_buffer_m * _DEG_PER_M),
-        network_type="drive",
-        retain_all=True,
-        truncate_by_edge=True,
-    )
-    edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
+    total_m = route.length_m
+    n = max(2, int(total_m / sample_spacing_m) + 1)
+    sample_m = [total_m * i / (n - 1) for i in range(n)]
+    coords = [coord_at_meters(route, m) for m in sample_m]
+    names: list[str | None] = [None] * len(sample_m)
 
-    sample_m, names = _sample_road_names(route, ox, graph, edges_gdf, sample_spacing_m)
+    chunks = _chunk_ranges(route)
+    for i0, i1 in chunks:
+        cs, ce = route.distances_m[i0], route.distances_m[i1]
+        sub = [(route.points[k].lon, route.points[k].lat) for k in range(i0, i1 + 1)]
+        if len(sub) < 2:
+            continue
+        graph = ox.graph_from_polygon(
+            sg.LineString(sub).buffer(road_buffer_m * _DEG_PER_M),
+            network_type="drive",
+            retain_all=True,
+            truncate_by_edge=True,
+        )
+        edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
+        idxs = [k for k, m in enumerate(sample_m) if cs - 1e-6 <= m <= ce + 1e-6]
+        if not idxs:
+            continue
+        keys = ox.distance.nearest_edges(
+            graph, [coords[k][1] for k in idxs], [coords[k][0] for k in idxs]
+        )
+        for k, key in zip(idxs, keys, strict=True):
+            names[k] = _edge_name(edges_gdf, tuple(key))
+
     runs = _durable_runs(sample_m, names, MIN_ROAD_RUN_MILES * 1609.344)
     if runs:
         route.segments = _segments_from_runs(route, runs)
         route.decision_points = _decisions_from_runs(route, runs)
 
     if include_fuel:
-        _add_fuel(route, ox, line, fuel_buffer_m)
+        _add_fuel(route, ox, chunks, fuel_buffer_m)
     return route
 
 
-def _sample_road_names(route, ox, graph, edges_gdf, spacing_m: float):
-    """Sample the OSM road name at evenly spaced points along the route."""
-    total_m = route.length_m
-    n = max(2, int(total_m / spacing_m) + 1)
-    sample_m = [total_m * i / (n - 1) for i in range(n)]
-    coords = [coord_at_meters(route, m) for m in sample_m]
-    edge_keys = ox.distance.nearest_edges(graph, [c[1] for c in coords], [c[0] for c in coords])
-    names = [_edge_name(edges_gdf, tuple(k)) for k in edge_keys]
-    return sample_m, names
+def _chunk_ranges(
+    route: Route, max_points: int = MAX_CHUNK_POINTS, max_miles: float = MAX_CHUNK_MILES
+) -> list[tuple[int, int]]:
+    """Inclusive point-index ranges tiling the route; consecutive chunks share a
+    boundary point so road-name sampling has no gap between them."""
+    n = len(route.points)
+    if n < 2:
+        return [(0, n - 1)] if n else []
+    max_m = max_miles * 1609.344
+    dist = route.distances_m
+    ranges: list[tuple[int, int]] = []
+    i0 = 0
+    while i0 < n - 1:
+        i1 = i0
+        while i1 + 1 < n and (i1 + 1 - i0) < max_points and (dist[i1 + 1] - dist[i0]) <= max_m:
+            i1 += 1
+        if i1 == i0:  # always make progress, even across one very long segment
+            i1 = i0 + 1
+        ranges.append((i0, i1))
+        i0 = i1
+    return ranges
 
 
 def _durable_runs(sample_m, names, min_run_m: float) -> list[tuple[float, str]]:
@@ -232,38 +266,42 @@ def _clean_str(value) -> str | None:
     return text or None
 
 
-def _add_fuel(route, ox, line, fuel_buffer_m: float) -> None:
-    """Merge OSM amenity=fuel stations near the route into route.fuel_stops."""
+def _add_fuel(route, ox, chunks, fuel_buffer_m: float) -> None:
+    """Merge OSM amenity=fuel stations near the route into route.fuel_stops.
+
+    Queried per chunk so a long route's fuel search stays tractable; duplicates
+    (incl. those near chunk boundaries) are dropped by mileage.
+    """
+    import shapely.geometry as sg
     from osmnx._errors import InsufficientResponseError
 
-    try:
-        feats = ox.features_from_polygon(
-            line.buffer(fuel_buffer_m * _DEG_PER_M), tags={"amenity": "fuel"}
+    def nearest_mile(lat, lon):
+        i = min(
+            range(len(route.points)),
+            key=lambda k: haversine(route.points[k].lat, route.points[k].lon, lat, lon),
         )
-    except InsufficientResponseError:
-        return  # no fuel stations anywhere near the route
-    if feats.empty:
-        return
+        return round(meters_to_miles(route.distances_m[i]), 1)
 
     osm_stops: list[FuelStop] = []
-    for _, row in feats.iterrows():
-        geom = row.geometry
-        pt = geom.centroid if geom.geom_type != "Point" else geom
-        nearest = min(
-            range(len(route.points)),
-            key=lambda i: haversine(route.points[i].lat, route.points[i].lon, pt.y, pt.x),
-        )
-        name = _clean_str(row.get("name")) or _clean_str(row.get("brand")) or "Fuel"
-        osm_stops.append(
-            FuelStop(
-                mile=round(meters_to_miles(route.distances_m[nearest]), 1),
-                name=str(name),
-                lat=pt.y,
-                lon=pt.x,
+    for i0, i1 in chunks:
+        sub = [(route.points[k].lon, route.points[k].lat) for k in range(i0, i1 + 1)]
+        if len(sub) < 2:
+            continue
+        try:
+            feats = ox.features_from_polygon(
+                sg.LineString(sub).buffer(fuel_buffer_m * _DEG_PER_M), tags={"amenity": "fuel"}
             )
-        )
+        except InsufficientResponseError:
+            continue
+        if feats.empty:
+            continue
+        for _, row in feats.iterrows():
+            geom = row.geometry
+            pt = geom.centroid if geom.geom_type != "Point" else geom
+            name = _clean_str(row.get("name")) or _clean_str(row.get("brand")) or "Fuel"
+            osm_stops.append(FuelStop(nearest_mile(pt.y, pt.x), str(name), pt.y, pt.x))
 
-    # Merge with existing (waypoint) stops, dropping near-duplicates by mileage.
+    osm_stops.sort(key=lambda s: s.mile)
     merged = list(route.fuel_stops)
     for stop in osm_stops:
         if not any(abs(stop.mile - e.mile) < 0.3 for e in merged):

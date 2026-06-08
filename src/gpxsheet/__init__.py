@@ -30,7 +30,8 @@ def generate_pdf(
     *,
     profile: str = DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    reassurance_interval: float = 15.0,
+    use_osm: bool = False,
+    turn_style: str = "stylized",
 ) -> str:
     """Generate a tank-bag navigation PDF from a GPX file.
 
@@ -39,13 +40,21 @@ def generate_pdf(
         output_file: Path to write the rendered PDF to.
         profile: One of ``minimalist``, ``sport-touring``, ``rally``.
         fuel_range: Rider fuel range in miles, used for fuel-gap analysis.
-        reassurance_interval: Distance (miles) between reassurance markers.
+        use_osm: Enrich with OpenStreetMap road names/fuel (needs the osm extra).
+        turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
 
     Returns:
         The path to the written PDF.
     """
-    raise NotImplementedError(
-        "PDF rendering pipeline is not implemented yet (see Milestone 3 in PRODUCT.md)."
+    from .pdf import generate_pdf as _generate_pdf
+
+    return _generate_pdf(
+        gpx_file,
+        output_file,
+        profile=profile,
+        fuel_range=fuel_range,
+        use_osm=use_osm,
+        turn_style=turn_style,
     )
 
 

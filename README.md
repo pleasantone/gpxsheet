@@ -34,15 +34,17 @@ v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
 - ✅ OSM enrichment (optional `[osm]` extra) — validated against live OpenStreetMap data
 - ✅ **Milestone 2: schematic map-strip renderer** — a stylized transit-map-style
   strip (`route_strip.png`) that jogs at each decision, compresses long roads,
-  and carries the decision/fuel/reassurance markers and road-name ribbon
-- ⏳ Milestone 3: PDF generation
+  and carries the decision/fuel/reassurance markers, dashed leaders, and ribbon
+- ✅ **Milestone 3: PDF generation** — a landscape US-Letter tank-bag document
+  with route-aware pagination, per-page map strip, cue zone (NEXT/AFTER/FUEL/
+  TOTAL), and a progress indicator
 
 Try it:
 
 ```bash
-gpxsheet analyze examples/sample_route.gpx --fuel-range 6
-gpxsheet strip  examples/sample_route.gpx -o route_strip.png   # Milestone 2
-gpxsheet strip  your-route.gpx --osm -o route_strip.png        # with real road names
+gpxsheet analyze  examples/sample_route.gpx --fuel-range 6
+gpxsheet strip    examples/sample_route.gpx -o route_strip.png   # Milestone 2
+gpxsheet generate your-route.gpx --osm -o route.pdf              # Milestone 3 (real road names)
 ```
 
 ### OSM enrichment

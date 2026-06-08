@@ -113,11 +113,19 @@ def _decision_at(route: Route, mile: float) -> DecisionPoint | None:
     return best
 
 
-def build_strip_layout(route: Route, *, turn_style: str = TURN_STYLE_STYLIZED) -> StripLayout:
+def build_strip_layout(
+    route: Route,
+    *,
+    turn_style: str = TURN_STYLE_STYLIZED,
+    show_start: bool = True,
+    show_end: bool = True,
+) -> StripLayout:
     """Lay out ``route`` as a schematic strip.
 
     ``turn_style`` is ``"stylized"`` (default: quantized, exaggerated bends) or
-    ``"faithful"`` (bend by the route's actual turn angle).
+    ``"faithful"`` (bend by the route's actual turn angle). ``show_start`` /
+    ``show_end`` control the START/END markers -- the PDF suppresses them on
+    interior pages, where the page edge is already marked by a decision.
     """
     if turn_style not in TURN_STYLES:
         raise ValueError(f"turn_style must be one of {TURN_STYLES}, got {turn_style!r}")
@@ -146,7 +154,8 @@ def build_strip_layout(route: Route, *, turn_style: str = TURN_STYLE_STYLIZED) -
 
     # 3. Place markers.
     markers: list[PlacedMarker] = []
-    markers.append(PlacedMarker(*nodes[0], 0.0, "start", "START"))
+    if show_start:
+        markers.append(PlacedMarker(*nodes[0], 0.0, "start", "START"))
     for d in route.decision_points:
         x, y = pos_at_mile(d.mile)
         markers.append(
@@ -158,7 +167,8 @@ def build_strip_layout(route: Route, *, turn_style: str = TURN_STYLE_STYLIZED) -
     for m in route.reassurance_markers:
         x, y = pos_at_mile(m.mile)
         markers.append(PlacedMarker(x, y, m.mile, "reassurance", m.label))
-    markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
+    if show_end:
+        markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
 
     # 4. Normalize to a (0,0)-anchored box.
     xs = [p[0] for p in nodes]

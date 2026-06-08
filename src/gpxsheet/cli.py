@@ -44,20 +44,25 @@ def generate(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    reassurance_interval: float = typer.Option(
-        15.0, "--reassurance-interval", help="Miles between reassurance markers."
+    osm: bool = typer.Option(
+        False, "--osm", help="Enrich with OpenStreetMap (needs the osm extra)."
+    ),
+    turns: str = typer.Option(
+        "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
 ) -> None:
     """Generate a tank-bag navigation PDF (default mode)."""
     from . import generate_pdf
 
-    generate_pdf(
+    out = generate_pdf(
         str(gpx_file),
         str(output),
         profile=profile,
         fuel_range=fuel_range,
-        reassurance_interval=reassurance_interval,
+        use_osm=osm,
+        turn_style=turns,
     )
+    typer.echo(f"Wrote {out}")
 
 
 @app.command()

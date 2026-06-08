@@ -66,7 +66,7 @@ ich-dual-gas=Mt Hamilton, basecamp-tracks, …). `bad-xml.gpx` is intentionally
 malformed (loader rejects it). `examples/sample_route.gpx` is synthetic (offshore
 — no OSM coverage, don't use with --osm).
 
-## Status & next steps (M1 done; M2 first iteration done)
+## Status & next steps (Milestones 1, 2 & 3 complete)
 
 **M1 validation done (full real tracks, not just clips):** geometry-only sweep
 over all ~18 samples runs without crashes (bad-xml.gpx correctly rejected). Full
@@ -90,6 +90,8 @@ Mt-Hamilton OSM clip — NOT yet stress-tested on dense real routes.
   leader routing, smarter side selection, capping labels shown per page.
 - **Reassurance town labels** (Stewarts Point/Yorkville) render small/gray —
   decide on prominence; generic "N mi" markers are ticks only (intentional).
+- **PDF: fuel stop at mile 0 overlaps the START label** (both at the page-start
+  point). Minor; needs a small offset/de-collision in the page composition.
 - **Ribbon vs inline labels redundancy** — the bottom `A › B › C` ribbon repeats
   the inline road names; consider restyling or dropping one.
 - **Tuning knobs** to revisit with real data: stylized angles
@@ -111,6 +113,12 @@ Mt-Hamilton OSM clip — NOT yet stress-tested on dense real routes.
 - **Down-weight straight "Continue onto" road-name changes** (residential
   stretches emit many; lower nav value than turns). Needs a ground-truth set.
 - **Junction-degree detection** — catch nameless forks (OSM node topology).
+- **Sparse-route detection** (`analysis.looks_sparse`, < 1 pt/mile) skips OSM on
+  waypoint-only `<rte>` files and warns. Heuristic threshold; revisit if it
+  false-positives on legit sparse highway tracks.
+- **Monster-track OSM is chunked** (`enrich._chunk_ranges`, ≤4000 pts / ≤120 mi
+  per Overpass query). Works but slow: twixtmas (583 mi, 6 chunks) took ~7 min.
+  Per-chunk results stitch cleanly (verified identical to single-chunk on gaia).
 
 ### Then
 - **Milestone 3** — PDF generation (`generate_pdf` is a stub): compose the strip

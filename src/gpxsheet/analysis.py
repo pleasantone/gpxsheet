@@ -15,6 +15,7 @@ fuel comes from GPX waypoints that look like fuel stops.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import replace
 
 from .geo import bearing, bearing_delta, meters_to_miles
@@ -57,6 +58,22 @@ MIN_ROAD_RUN_MILES = 0.3
 # A road-name change with a heading change below this reads as "Continue onto",
 # not "Left/Right onto".
 CONTINUE_MAX_ANGLE_DEG = 25.0
+# Below this point density the geometry is too sparse to follow roads (e.g. a
+# waypoint-only <rte> with long straight legs); OSM road-name sampling along such
+# straight lines snaps to whatever streets it crosses, so we skip enrichment.
+MIN_POINTS_PER_MILE_FOR_OSM = 1.0
+
+
+def looks_sparse(route: Route) -> bool:
+    """True if the route geometry is too sparse for reliable OSM enrichment.
+
+    Sparse routes (few points over long distances, e.g. device ``<rte>`` exports)
+    are drawn as straight lines between waypoints that do not follow real roads,
+    so sampling OSM road names along them is meaningless.
+    """
+    if route.length_miles <= 0:
+        return False
+    return len(route.points) / route.length_miles < MIN_POINTS_PER_MILE_FOR_OSM
 
 # Fuel-stop detection from waypoint names/symbols when OSM is unavailable.
 _FUEL_HINTS = ("fuel", "gas", "petrol", "station", "shell", "chevron", "76", "arco")
@@ -372,9 +389,17 @@ def analyze_route(
     # 2. OSM enrichment: replaces decisions with durable road-name changes,
     #    segments with the named roads, and adds OSM fuel. Must run after step 1.
     if use_osm:
-        from .enrich import enrich_route
+        if looks_sparse(route):
+            warnings.warn(
+                "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
+                "OSM enrichment, which would sample road names along straight lines "
+                "that do not follow roads. Using geometry-only analysis.",
+                stacklevel=2,
+            )
+        else:
+            from .enrich import enrich_route
 
-        enrich_route(route, include_fuel=prof.include_fuel)
+            enrich_route(route, include_fuel=prof.include_fuel)
 
     # 3. Apply the profile's display threshold to whatever decisions step 1/2
     #    produced, then derive products that depend on the final fuel stops.

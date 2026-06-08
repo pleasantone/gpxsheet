@@ -63,11 +63,25 @@ def render_route_strip(
     fig_h = min(max(fig_w / aspect, 3.5), 16.0)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
+    draw_strip(fig, ax, layout)
+
+    header = title or route.name or "Route"
+    fig.suptitle(header, fontsize=12, fontweight="bold", y=0.99)
+
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", pad_inches=0.4, facecolor="white")
+    plt.close(fig)
+    return output_path
+
+
+def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> None:
+    """Draw a schematic strip (path, markers, collision-placed labels) into ``ax``.
+
+    Shared by the standalone PNG renderer and the per-page PDF composition.
+    """
     xs = [p[0] for p in layout.path]
     ys = [p[1] for p in layout.path]
     ax.plot(xs, ys, color="#333333", linewidth=4, solid_capstyle="round", zorder=2)
 
-    # Markers (dots) first.
     for m in layout.markers:
         color, marker, z = _MARKER_STYLE.get(m.kind, ("#000000", "o", 5))
         size = 11 if m.kind in ("start", "end") else (9 if m.kind == "decision" else 7)
@@ -85,15 +99,11 @@ def render_route_strip(
     obstacles = [(m.x, m.y) for m in layout.markers]  # all dots, for label avoidance
     _place_labels_with_leaders(fig, ax, layout.path, labeled, obstacles)
 
-    header = title or route.name or "Route"
-    ribbon = "  ›  ".join(layout.ribbon)
-    fig.suptitle(header, fontsize=12, fontweight="bold", y=0.99)
-    if ribbon:
-        fig.text(0.5, 0.01, ribbon, ha="center", va="bottom", fontsize=8, color="#444444")
-
-    fig.savefig(output_path, dpi=dpi, bbox_inches="tight", pad_inches=0.4, facecolor="white")
-    plt.close(fig)
-    return output_path
+    if draw_ribbon and layout.ribbon:
+        ax.text(
+            0.5, -0.02, "  ›  ".join(layout.ribbon), transform=ax.transAxes,
+            ha="center", va="top", fontsize=8, color="#444444",
+        )
 
 
 def _marker_label(m) -> str:
@@ -102,7 +112,7 @@ def _marker_label(m) -> str:
         text = f"{m.mile:.1f}  {m.label}"
         return text.replace(" onto ", " onto\n", 1)
     if m.kind == "fuel":
-        return f"Fuel: {m.label}"
+        return "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
     if m.kind == "reassurance":
         # Generic mileage markers ("15 mi") get a tick but no text; only named
         # places (towns/landmarks) are worth the label clutter.
@@ -138,9 +148,6 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     """
     if not markers:
         return
-    trans = ax.transData.transform
-    inv = ax.transData.inverted().transform
-    obstacles_px = [trans(o) for o in obstacles]
 
     texts = []
     for m in markers:
@@ -152,8 +159,14 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
         )
         texts.append(t)
 
+    # Capture the transforms only AFTER drawing: set_aspect("equal") finalizes
+    # the data<->pixel mapping during the draw, so transforms taken earlier would
+    # be stale (which previously left leader lines disconnected from their dots).
     fig.canvas.draw()
     r = fig.canvas.get_renderer()
+    trans = ax.transData.transform
+    inv = ax.transData.inverted().transform
+    obstacles_px = [trans(o) for o in obstacles]
 
     markers_px = [trans((m.x, m.y)) for m in markers]
     nodes_px = [trans(p) for p in path_nodes]
