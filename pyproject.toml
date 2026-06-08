@@ -1,41 +1,47 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "gpxsheet"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Convert GPX routes into glanceable, map-centric motorcycle navigation PDFs for tank-bag use."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Paul Traina" }]
-keywords = ["gpx", "motorcycle", "navigation", "roadbook", "sport-touring", "pdf"]
+keywords = ["gpx", "motorcycle", "navigation", "roadbook", "sport-touring", "pdf", "osm"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 
+# Core: GPX parsing, the schematic renderer, and the CLI. The OSM enrichment
+# stack (osmnx + shapely + geopandas ...) is an optional extra.
 dependencies = [
     "gpxpy>=1.6",
-    "shapely>=2.0",
-    "networkx>=3.0",
     "matplotlib>=3.8",
-    "reportlab>=4.0",
     "typer>=0.12",
 ]
 
 [project.optional-dependencies]
-# OSM enrichment is heavy (pulls geopandas, scipy, etc.). Kept optional so the
-# core analysis/render path can be installed without the full geo stack.
-osm = ["osmnx>=2.0"]
+osm = ["osmnx>=2.0", "shapely>=2.0"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.10",
+    "build>=1.2",
+    "twine>=5.0",
 ]
 
 [project.scripts]
@@ -44,9 +50,16 @@ gpxsheet = "gpxsheet.cli:app"
 [project.urls]
 Homepage = "https://github.com/pleasantone/gpxsheet"
 Source = "https://github.com/pleasantone/gpxsheet"
+Issues = "https://github.com/pleasantone/gpxsheet/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "gpxsheet.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+gpxsheet = ["py.typed"]
 
 [tool.ruff]
 line-length = 100

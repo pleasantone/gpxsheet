@@ -633,87 +633,26 @@ Allow navigation by road names.
 
 # Page Layout
 
-## Format
+US Letter, optimized for color printing, tank-bag viewing, and sunlight
+readability. Two layouts (CLI default is **portrait**):
 
-Landscape US Letter.
+**Header** (both layouts): route name (left) · page mileage `start / total`
+in green (right of center) · `Page X of Y` (right).
 
-Optimized for:
+**Landscape** — one page per route-aware page: a framed Map Zone that hugs the
+schematic strip (decisions, fuel, reassurance/town markers, road-name ribbon),
+plus a horizontal progress bar with a YOU marker for at-a-glance route position.
 
-* Color printing
-* Tank-bag viewing
-* Sunlight readability
+**Portrait** (roadbook / TripTik) — several stacked strip "lanes" per page,
+clearly separated, each a framed strip over its **absolute** mile range (shown in
+green) with its own road ribbon. `--lanes N` / `--lane-decisions M`.
 
----
-
-## Header
-
-```text
-Route Name
-Page X of Y
-```
-
----
-
-## Map Zone
-
-Approximately:
-
-```text
-70% of page height
-```
-
-Contains:
-
-* Hybrid schematic route strip
-* Decision points
-* Fuel markers
-* Reassurance markers
-* Town labels
-
----
-
-## Cue Zone
-
-Large text.
-
-Example:
-
-```text
-NEXT
-7.3 mi
-
-Left CA-1
-
-AFTER
-12.8 mi
-
-Fuel Gualala
-
-TOTAL
-64 / 217 mi
-```
-
----
-
-## Progress Indicator
-
-Every page contains:
-
-```text
-START
-│
-│========
-│============
-│==== YOU
-│
-│==========
-│
-END
-```
-
-Purpose:
-
-Immediate route progress awareness.
+> **As-built note:** the original spec had a separate large-text *Cue Zone*
+> (NEXT / AFTER / FUEL / TOTAL). In practice that duplicated information already
+> on the strip (each decision is labeled "`<mi>  <turn> onto <road>`") and the
+> ribbon, so it was dropped: the **TOTAL** moved to the header (green mileage) and
+> the rest is read directly off the map strip. The progress bar is landscape-only;
+> portrait conveys position via the per-lane mile ranges.
 
 ---
 
@@ -831,49 +770,20 @@ Detects:
 
 ---
 
-# Recommended Technology Stack
+# Technology Stack (as built)
 
-## GPX Parsing
+| Concern            | Library              | Notes                                    |
+| ------------------ | -------------------- | ---------------------------------------- |
+| GPX parsing        | `gpxpy`              | core                                     |
+| Mapping / PDF      | `matplotlib`         | core; strip + PDF (Agg, `PdfPages`)      |
+| CLI                | `typer`              | core                                     |
+| OSM integration    | `osmnx`              | optional `[osm]` extra                   |
+| Geometry           | `shapely`            | optional `[osm]` extra (used by enrich)  |
 
-```python
-gpxpy
-```
-
-## OSM Integration
-
-```python
-osmnx
-```
-
-## Geometry
-
-```python
-shapely
-```
-
-## Graph Analysis
-
-```python
-networkx
-```
-
-## Mapping
-
-```python
-matplotlib
-```
-
-## PDF Generation
-
-```python
-reportlab
-```
-
-## CLI
-
-```python
-typer
-```
+Notes: the strip and PDF are rendered with **matplotlib**, not `reportlab` (the
+single matplotlib stack keeps the strip and page composition consistent and
+vector). `networkx` is pulled in transitively by `osmnx`; GPXSheet does not use
+it directly. The OSM extra also brings `geopandas`/`pyproj`/`pyogrio`.
 
 ---
 
@@ -960,7 +870,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 
 > This section records what is actually built and the engineering decisions made
 > while implementing the spec above. The sections above are the design intent;
-> this section is the as-built reality. Last updated: Milestone 1 complete.
+> this section is the as-built reality. Last updated: Phase 1 (milestones 1–4)
+> complete.
 
 ## Milestone progress
 
@@ -977,27 +888,35 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   renders to `route_strip.png` (matplotlib) with decision/fuel/reassurance
   markers, dashed leader lines (collision-placed and connected to their dots),
   2-line-wrapped road names, and the road-name ribbon. CLI: `gpxsheet strip
-  <gpx> [-o out.png] [--osm] [--turns stylized|faithful]`. Validated on real
-  OSM-enriched tracks. Remaining polish (non-blocking) tracked in CLAUDE.md:
-  reassurance-label prominence, stylized-angle/compression tuning, and heading
-  drift on long same-direction routes.
+  <gpx> [-o out.png] [--turns stylized|faithful]`. Validated on real OSM tracks.
+  Remaining polish (non-blocking, in CLAUDE.md): reassurance-label prominence,
+  stylized-angle/compression tuning, heading drift on long same-direction routes.
 * **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
   US-Letter document with route-aware pagination (`gpxsheet.paginate`,
   decision-cap only — breaks at decisions, never mid-road). Header shows the
   (truncated) route name, page mileage in green, and page counter. Two layouts:
-  - **landscape** (default): one strip per page in a framed Map Zone that hugs
-    the strip, with the road ribbon and a progress (YOU) bar.
-  - **portrait** (`--portrait`): several stacked strip "lanes" per page
-    (roadbook/TripTik), each a framed strip over its absolute mile range, with
-    its own road ribbon. Tunable via `--lanes N` / `--lane-decisions M`; partial
-    pages are top-aligned.
+  - **portrait** (CLI default): stacked strip "lanes" per page (roadbook/TripTik),
+    each a framed strip over its absolute mile range with its own road ribbon.
+    Tunable via `--lanes N` / `--lane-decisions M`; partial pages top-aligned.
+  - **landscape** (`--landscape`): one strip per page in a framed Map Zone that
+    hugs the strip, with the road ribbon and a progress (YOU) bar.
 
-  `generate_pdf` is wired into the API and
-  `gpxsheet generate <gpx> -o route.pdf [--osm] [--turns ...] [--portrait ...]`.
-  Sparse `<rte>` files skip OSM (warned); monster tracks are OSM-enriched in
-  chunks. Open polish (CLAUDE.md): fuel-at-mile-0 overlaps the START label.
-* **Milestone 4 — Packaged CLI: 🟡 partial.** `pyproject.toml` defines the
-  `gpxsheet` entry point and `[osm]`/`[dev]` extras; not yet published to PyPI.
+  `generate_pdf` is wired into the API and `gpxsheet generate <gpx> -o route.pdf`.
+  Open polish (CLAUDE.md): fuel-at-mile-0 overlaps the START label.
+* **Defaults & graceful degradation:** the CLI defaults to **portrait + OSM**
+  (`--landscape` / `--no-osm` opt out). OSM enrichment falls back to geometry-only
+  (with a warning) when the `osm` extra is missing, the route `looks_sparse`
+  (waypoint-only `<rte>`), or the live Overpass query fails — so the default works
+  on core installs and offline. Sparse routes skip OSM; monster tracks are
+  enriched in chunks. The *library* functions keep `use_osm=False` / landscape
+  defaults for predictable programmatic use; only the CLI flips.
+* **Milestone 4 — Packaged CLI: ✅ complete (publish-ready).** `pyproject.toml`
+  builds a clean sdist + wheel (PEP 639 license, PEP 561 `py.typed`, dynamic
+  version from `gpxsheet.__version__`). Core deps slimmed to gpxpy + matplotlib
+  + typer (reportlab/networkx were unused; shapely moved to the `osm` extra).
+  `twine check` passes; verified that a fresh **core-only** install runs the CLI
+  and produces a PDF, degrading gracefully without the `osm` extra. Actual
+  `twine upload` to PyPI is the maintainer's step (needs PyPI credentials).
 * **Milestone 5 — Web service: ⏳ not started.**
 
 `validate` (CLI) is still a stub.
@@ -1069,6 +988,7 @@ junction-geometry scoring are **not yet implemented**.
 
 ## Tech stack (as installed)
 
-Python 3.14 · gpxpy · shapely · networkx · matplotlib · reportlab · typer
-(core); osmnx 2.1 + geopandas/pyproj/pyogrio (`[osm]`); pytest · ruff (`[dev]`).
+See the "Technology Stack (as built)" table above. Verified on Python 3.14: core
+= gpxpy + matplotlib + typer; `[osm]` = osmnx 2.1 + shapely + geopandas/pyproj/
+pyogrio; `[dev]` = pytest + ruff + mypy + build + twine.
 

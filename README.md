@@ -16,100 +16,70 @@ See [PRODUCT.md](PRODUCT.md) for the full design specification.
 
 ## Status
 
-v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
+v0.1.0 — **Phase 1 (milestones 1–4) complete:** analysis engine, schematic strip,
+tank-bag PDF, and a publish-ready package.
 
-- ✅ GPX loading (tracks / routes / waypoints) → route graph
-- ✅ Geometry cleanup (Ramer–Douglas–Peucker)
-- ✅ Decision-point detection — two-tier:
-  - **geometry baseline** (no OSM): localized turns with clustered firings
-    collapsed. Honest but over-detects on twisty roads (it can't tell a curve
-    from a junction).
-  - **OSM mode** (`--osm`): decisions come from *durable* road-name changes
-    ("Left/Continue onto Mount Hamilton Road"), so a 22 mi switchback climb is
-    one segment with zero false turns. This is what PRODUCT.md's significance
-    scoring is actually about (road-name changes / junctions).
-- ✅ Reassurance markers (distance intervals + nearest-waypoint labels)
-- ✅ Fuel analysis (waypoint-based, plus OSM fuel stations; longest gap + range warnings)
-- ✅ Route segmentation (named roads under `--osm`) + `analyze` text output
-- ✅ OSM enrichment (optional `[osm]` extra) — validated against live OpenStreetMap data
-- ✅ **Milestone 2: schematic map-strip renderer** — a stylized transit-map-style
-  strip (`route_strip.png`) that jogs at each decision, compresses long roads,
-  and carries the decision/fuel/reassurance markers, dashed leaders, and ribbon
-- ✅ **Milestone 3: PDF generation** — a US-Letter tank-bag document with
-  route-aware pagination, map strip(s), road ribbon, progress indicator, and the
-  page mileage in the header. Two layouts: **landscape** (one big strip per page)
-  and **portrait** (several stacked strip "lanes" per page, roadbook/TripTik
-  style)
+- **Route analysis** — GPX (track/route/waypoints) → decision points, fuel,
+  reassurance markers, road segments; `analyze` text output.
+- **Decision detection is two-tier.** A geometry baseline (honest, but
+  over-detects on twisty roads — it can't tell a curve from a junction) and an
+  OSM mode that derives decisions from *durable road-name changes*, so a 22 mi
+  switchback climb collapses to one clean segment ("onto Mount Hamilton Road").
+- **Schematic map strip** — stylized (default) or faithful turns, collision-placed
+  labels with dashed leaders, and the road-name ribbon.
+- **Tank-bag PDF** — route-aware pagination; **portrait** roadbook (stacked strip
+  lanes, the default) or **landscape** (one strip/page); page mileage in the
+  header, progress bar.
+- **Packaged** for `pip install gpxsheet` (+ `[osm]` extra); PEP 561 typed.
 
-Try it (OpenStreetMap enrichment and the portrait roadbook layout are **on by
-default**; both degrade gracefully and can be turned off):
+`validate` (CLI) is still a stub; a web service is future work.
+
+## Installation
 
 ```bash
-gpxsheet generate your-route.gpx -o route.pdf            # portrait roadbook + OSM (defaults)
-gpxsheet generate your-route.gpx --landscape -o route.pdf   # one big strip per page
-gpxsheet generate your-route.gpx --no-osm -o route.pdf      # geometry-only (no network)
-#   portrait knobs: --lanes N (lanes per page) --lane-decisions M (decisions per lane)
-
-gpxsheet analyze your-route.gpx                          # text analysis (OSM by default)
-gpxsheet strip   your-route.gpx -o route_strip.png       # single schematic strip PNG
+pip install gpxsheet            # core (GPX -> strip / PDF)
+pip install "gpxsheet[osm]"     # + OpenStreetMap enrichment (heavy geo stack)
 ```
 
-OSM enrichment falls back to geometry-only automatically when the `osm` extra
-isn't installed, the route geometry is too sparse to follow roads, or the live
-Overpass query fails.
-
-### OSM enrichment
+### Development
 
 ```bash
-pip install -e ".[osm]"
-gpxsheet analyze your-route.gpx --osm
-```
-
-Enrichment queries the live Overpass API, so it needs network access and is
-slower than the geometry-only path — typically a few seconds for rural routes,
-but tens of seconds to a couple of minutes for dense urban areas. Results are
-cached by `osmnx`, so repeat runs over the same area are fast.
-
-The OSM helper functions are unit-tested; the end-to-end query is covered by an
-integration test that is skipped unless `GPXSHEET_LIVE_OSM=1` is set (so CI and
-offline runs don't depend on the network).
-
-## Installation (development)
-
-```bash
-git clone <repo-url> gpxsheet
-cd gpxsheet
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-# Optional OSM enrichment stack (heavy: geopandas, scipy, ...):
-pip install -e ".[osm]"
+git clone <repo-url> gpxsheet && cd gpxsheet
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,osm]"             # drop ,osm to skip the OSM stack
+python -m build && twine check dist/*   # build + check the distribution
+# publish (maintainer only): twine upload dist/*
 ```
 
 ## Usage
 
+OpenStreetMap enrichment and the portrait roadbook layout are **on by default**;
+both can be turned off, and OSM degrades gracefully (to geometry-only, with a
+warning) when the `osm` extra is missing, the route is too sparse to follow
+roads, or the live Overpass query fails.
+
 ```bash
-# Generate a tank-bag PDF (default sport-touring profile)
-gpxsheet route.gpx
+gpxsheet generate route.gpx -o route.pdf            # portrait roadbook + OSM (defaults)
+gpxsheet generate route.gpx --landscape -o route.pdf
+gpxsheet generate route.gpx --no-osm -o route.pdf   # geometry-only (no network)
+#   portrait knobs: --lanes N (lanes/page) --lane-decisions M (decisions/lane)
 
-# Text route analysis
-gpxsheet analyze route.gpx
-
-# Validate a route for hazards / fuel gaps
-gpxsheet validate route.gpx
+gpxsheet analyze route.gpx                           # text analysis
+gpxsheet strip   route.gpx -o route_strip.png        # single schematic strip PNG
 ```
 
-Library:
+OSM queries the live Overpass API (seconds for rural routes, up to minutes for
+dense urban; cached by `osmnx`). The end-to-end query is covered by an
+integration test gated behind `GPXSHEET_LIVE_OSM=1` so CI/offline stay network-free.
+
+### Library
 
 ```python
 from gpxsheet import generate_pdf
 
-generate_pdf(
-    gpx_file="route.gpx",
-    output_file="route.pdf",
-    profile="sport-touring",
-    fuel_range=180,
-)
+# Library defaults are landscape + geometry-only (predictable/offline); pass
+# use_osm=True and/or orientation="portrait" to match the CLI product defaults.
+generate_pdf("route.gpx", "route.pdf", profile="sport-touring", fuel_range=180)
 ```
 
 ## License
