@@ -46,18 +46,22 @@ class JobRecord:
 
 
 class JobStore(Protocol):
-    def create(self) -> str: ...
+    def create(self, cache_key: str | None = None) -> str: ...
     def get(self, job_id: str) -> JobRecord | None: ...
     def update(self, job_id: str, **fields) -> None: ...
+    def get_cached(self, cache_key: str) -> JobRecord | None: ...
 
 
 class InMemoryJobStore:
     def __init__(self) -> None:
         self._jobs: dict[str, JobRecord] = {}
+        self._by_key: dict[str, str] = {}
 
-    def create(self) -> str:
+    def create(self, cache_key: str | None = None) -> str:
         job_id = uuid.uuid4().hex
         self._jobs[job_id] = JobRecord(id=job_id)
+        if cache_key:
+            self._by_key[cache_key] = job_id
         return job_id
 
     def get(self, job_id: str) -> JobRecord | None:
@@ -68,6 +72,10 @@ class InMemoryJobStore:
         if rec:
             for k, v in fields.items():
                 setattr(rec, k, v)
+
+    def get_cached(self, cache_key: str) -> JobRecord | None:
+        rec = self._jobs.get(self._by_key.get(cache_key, ""))
+        return rec if rec and rec.status == "done" else None
 
 
 class RedisJobStore:
@@ -85,9 +93,11 @@ class RedisJobStore:
     def _put(self, rec: JobRecord) -> None:
         self._r.set(self._key(rec.id), json.dumps(asdict(rec)), ex=self._ttl)
 
-    def create(self) -> str:
+    def create(self, cache_key: str | None = None) -> str:
         job_id = uuid.uuid4().hex
         self._put(JobRecord(id=job_id))
+        if cache_key:
+            self._r.set(f"gpxsheet:cache:{cache_key}", job_id, ex=self._ttl)
         return job_id
 
     def get(self, job_id: str) -> JobRecord | None:
@@ -100,6 +110,13 @@ class RedisJobStore:
             for k, v in fields.items():
                 setattr(rec, k, v)
             self._put(rec)
+
+    def get_cached(self, cache_key: str) -> JobRecord | None:
+        job_id = self._r.get(f"gpxsheet:cache:{cache_key}")
+        if not job_id:
+            return None
+        rec = self.get(job_id.decode() if isinstance(job_id, bytes) else job_id)
+        return rec if rec and rec.status == "done" else None
 
 
 def process_job(

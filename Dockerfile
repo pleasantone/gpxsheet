@@ -2,16 +2,16 @@
 FROM python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     GPXSHEET_RESULTS_DIR=/tmp/gpxsheet-results
 
 WORKDIR /app
 
 # Install the package with the service + OSM extras. The geo wheels (shapely,
 # pyproj, pyogrio) bundle their native libs, so no system GDAL/GEOS is needed.
+# A BuildKit pip cache mount keeps rebuilds fast when only the source changes.
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN pip install ".[service,osm]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install ".[service,osm]"
 
 RUN useradd --create-home app && mkdir -p "$GPXSHEET_RESULTS_DIR" \
     && chown -R app "$GPXSHEET_RESULTS_DIR"

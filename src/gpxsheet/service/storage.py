@@ -58,10 +58,30 @@ class MinioStorage:
         *,
         secure: bool = False,
         url_expiry_seconds: int = 3600,
+        public_endpoint: str | None = None,
+        region: str = "us-east-1",
     ) -> None:
         from minio import Minio
 
-        self._client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
+        # Pin the region so presigning never needs a GetBucketLocation round-trip
+        # (the public endpoint isn't reachable from inside the container).
+        self._client = Minio(
+            endpoint, access_key=access_key, secret_key=secret_key, secure=secure, region=region
+        )
+        # Presigned download URLs are signed against the public (host-reachable)
+        # endpoint when given, since the internal endpoint isn't reachable outside
+        # the docker network; falls back to the internal client otherwise.
+        self._url_client = (
+            Minio(
+                public_endpoint,
+                access_key=access_key,
+                secret_key=secret_key,
+                secure=secure,
+                region=region,
+            )
+            if public_endpoint
+            else self._client
+        )
         self._bucket = bucket
         self._expiry = url_expiry_seconds
         self._bucket_ready = False
@@ -102,6 +122,6 @@ class MinioStorage:
     def url(self, key: str) -> str | None:
         from datetime import timedelta
 
-        return self._client.presigned_get_object(
+        return self._url_client.presigned_get_object(
             self._bucket, key, expires=timedelta(seconds=self._expiry)
         )

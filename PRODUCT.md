@@ -917,20 +917,24 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   `twine check` passes; verified that a fresh **core-only** install runs the CLI
   and produces a PDF, degrading gracefully without the `osm` extra. Actual
   `twine upload` to PyPI is the maintainer's step (needs PyPI credentials).
-* **Milestone 5 — Web service: 🟡 in progress.** `gpxsheet.service` is a FastAPI
-  app (the `service` extra) exposing the engine over REST: `POST /v1/jobs`
-  (upload GPX + params → 202 job), `GET /v1/jobs/{id}`, `.../result`,
-  `POST /v1/analyze`, `/healthz`, `/docs`. Slow renders run as background jobs
-  (Dramatiq + Redis) with results in MinIO; `process_job` is shared by an
-  `EagerRunner` (dev/sync, in-memory + local dir) and a `DramatiqRunner` (worker).
-  Self-hosted via `docker-compose.yml` (api/worker/redis/minio); the image builds
-  on `python:3.13-slim` with the geo wheels (no system GDAL). Tested: the dev path
-  end-to-end via `TestClient`; the Redis/MinIO prod path has a gated integration
-  test (`GPXSHEET_SERVICE_IT=1`). Remaining: live-stack verification + polish
-  (rate limits, input caps, result caching, the presigned-URL public-endpoint
-  caveat).
+* **Milestone 5 — Web service: ✅ complete (verified live).** `gpxsheet.service`
+  is a FastAPI app (the `service` extra) exposing the engine over REST:
+  `POST /v1/jobs` (upload GPX + params → 202 job), `GET /v1/jobs/{id}`,
+  `.../result` (streams or 303 → presigned URL), `POST /v1/analyze`, `/healthz`,
+  `/docs`. Slow renders run as background jobs (Dramatiq + Redis) with results in
+  MinIO; `process_job` is shared by an `EagerRunner` (dev/sync, in-memory + local
+  dir) and a `DramatiqRunner` (worker). Self-hosted via `docker-compose.yml`
+  (api/worker/redis/minio; `python:3.13-slim`, geo wheels, no system GDAL).
+  Hardening: per-client rate limiting, upload-size cap, result caching (by GPX +
+  params hash), and presigned download URLs signed against a host-reachable
+  public endpoint (region pinned to avoid a GetBucketLocation round-trip).
+  **Verified live** via `docker compose up`: async submit → worker render →
+  status `done` → external PDF download through the presigned URL, plus cache
+  hits. Tests: dev path end-to-end via `TestClient` (incl. cache/cap/limit); the
+  Redis/MinIO prod path has a gated integration test (`GPXSHEET_SERVICE_IT=1`).
 
-`validate` (CLI) is still a stub.
+`validate` (CLI) is still a stub. Possible future hardening: auth/API keys,
+metrics, distributed (Redis-backed) rate limiting.
 
 ## Decision Point Engine — as built
 

@@ -6,6 +6,9 @@
 x-service-env: &service-env
   GPXSHEET_REDIS_URL: redis://redis:6379/0
   GPXSHEET_MINIO_ENDPOINT: minio:9000
+  # Host-reachable endpoint used to sign download URLs (set to your public host
+  # in real deployments, e.g. files.example.com).
+  GPXSHEET_MINIO_PUBLIC_ENDPOINT: localhost:9000
   GPXSHEET_MINIO_ACCESS_KEY: minioadmin
   GPXSHEET_MINIO_SECRET_KEY: minioadmin
   GPXSHEET_MINIO_BUCKET: gpxsheet

@@ -14,11 +14,15 @@ from gpxsheet.service.jobs import EagerRunner, InMemoryJobStore  # noqa: E402
 from gpxsheet.service.storage import LocalStorage  # noqa: E402
 
 
-@pytest.fixture
-def client(tmp_path):
+def _make_client(tmp_path, **kwargs):
     store = InMemoryJobStore()
     storage = LocalStorage(tmp_path / "results")
-    return TestClient(create_app(store, storage, EagerRunner(store, storage)))
+    return TestClient(create_app(store, storage, EagerRunner(store, storage), **kwargs))
+
+
+@pytest.fixture
+def client(tmp_path):
+    return _make_client(tmp_path)
 
 
 def _post(client, path, gpx_path):
@@ -77,3 +81,29 @@ def test_invalid_param_rejected(client, l_route_file):
     # orientation must match the model pattern
     r = _post(client, "/v1/jobs?orientation=diagonal&use_osm=false", l_route_file)
     assert r.status_code == 422
+
+
+def test_result_cache_hit_reuses_job(client, l_route_file):
+    # Identical GPX + params -> the second request returns the first job.
+    first = _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file)
+    second = _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file)
+    assert first.json()["id"] == second.json()["id"]
+    # Different params -> a different job.
+    third = _post(client, "/v1/jobs?use_osm=false&orientation=portrait", l_route_file)
+    assert third.json()["id"] != first.json()["id"]
+
+
+def test_upload_size_cap(tmp_path, l_route_file):
+    client = _make_client(tmp_path, max_upload_bytes=10)
+    r = _post(client, "/v1/jobs?use_osm=false", l_route_file)
+    assert r.status_code == 413
+
+
+def test_rate_limit(tmp_path, l_route_file):
+    client = _make_client(tmp_path, rate_limit_per_minute=2)
+    codes = [
+        _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file).status_code
+        for _ in range(3)
+    ]
+    assert codes[:2] == [202, 202]
+    assert codes[2] == 429
