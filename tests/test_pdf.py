@@ -76,7 +76,7 @@ def test_invalid_orientation_raises(tmp_path):
 
 def test_generate_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli.pdf"
-    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out), "--no-osm"])
     assert result.exit_code == 0, result.output
     assert out.exists()
     assert out.read_bytes()[:4] == PDF_MAGIC

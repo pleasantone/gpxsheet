@@ -41,15 +41,22 @@ v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
   and **portrait** (several stacked strip "lanes" per page, roadbook/TripTik
   style)
 
-Try it:
+Try it (OpenStreetMap enrichment and the portrait roadbook layout are **on by
+default**; both degrade gracefully and can be turned off):
 
 ```bash
-gpxsheet analyze  examples/sample_route.gpx --fuel-range 6
-gpxsheet strip    examples/sample_route.gpx -o route_strip.png   # Milestone 2
-gpxsheet generate your-route.gpx --osm -o route.pdf              # Milestone 3, landscape
-gpxsheet generate your-route.gpx --osm --portrait -o route.pdf   # portrait roadbook
+gpxsheet generate your-route.gpx -o route.pdf            # portrait roadbook + OSM (defaults)
+gpxsheet generate your-route.gpx --landscape -o route.pdf   # one big strip per page
+gpxsheet generate your-route.gpx --no-osm -o route.pdf      # geometry-only (no network)
 #   portrait knobs: --lanes N (lanes per page) --lane-decisions M (decisions per lane)
+
+gpxsheet analyze your-route.gpx                          # text analysis (OSM by default)
+gpxsheet strip   your-route.gpx -o route_strip.png       # single schematic strip PNG
 ```
+
+OSM enrichment falls back to geometry-only automatically when the `osm` extra
+isn't installed, the route geometry is too sparse to follow roads, or the live
+Overpass query fails.
 
 ### OSM enrichment
 

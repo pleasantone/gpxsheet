@@ -45,13 +45,15 @@ def generate(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
     osm: bool = typer.Option(
-        False, "--osm", help="Enrich with OpenStreetMap (needs the osm extra)."
+        True, "--osm/--no-osm",
+        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
     ),
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
-    portrait: bool = typer.Option(
-        False, "--portrait", help="Portrait roadbook layout (stacked strip lanes per page)."
+    landscape: bool = typer.Option(
+        False, "--landscape",
+        help="One big strip per page instead of the default portrait roadbook.",
     ),
     lanes: int = typer.Option(
         4, "--lanes", min=1, help="Portrait only: strip lanes per page."
@@ -60,7 +62,7 @@ def generate(
         4, "--lane-decisions", min=1, help="Portrait only: max decisions per lane."
     ),
 ) -> None:
-    """Generate a tank-bag navigation PDF (default mode)."""
+    """Generate a tank-bag navigation PDF (portrait roadbook + OSM by default)."""
     from . import generate_pdf
 
     out = generate_pdf(
@@ -70,7 +72,7 @@ def generate(
         fuel_range=fuel_range,
         use_osm=osm,
         turn_style=turns,
-        orientation="portrait" if portrait else "landscape",
+        orientation="landscape" if landscape else "portrait",
         lanes_per_page=lanes,
         decisions_per_lane=lane_decisions,
     )
@@ -90,7 +92,8 @@ def analyze(
         None, "--reassurance-interval", help="Miles between reassurance markers."
     ),
     osm: bool = typer.Option(
-        False, "--osm", help="Enrich with OpenStreetMap road names/fuel (needs the osm extra)."
+        True, "--osm/--no-osm",
+        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
     ),
 ) -> None:
     """Produce a text route analysis (decision points, fuel, segments)."""
@@ -118,7 +121,8 @@ def strip(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
     osm: bool = typer.Option(
-        False, "--osm", help="Enrich with OpenStreetMap (needs the osm extra)."
+        True, "--osm/--no-osm",
+        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
     ),
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."

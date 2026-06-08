@@ -388,8 +388,19 @@ def analyze_route(
 
     # 2. OSM enrichment: replaces decisions with durable road-name changes,
     #    segments with the named roads, and adds OSM fuel. Must run after step 1.
+    #    Degrades to geometry-only (with a warning) when the extra is missing, the
+    #    route is too sparse, or the live Overpass query fails -- so OSM can be the
+    #    default without breaking core installs or offline use.
     if use_osm:
-        if looks_sparse(route):
+        from .enrich import osm_available
+
+        if not osm_available():
+            warnings.warn(
+                "OSM enrichment requested but the 'osm' extra is not installed "
+                "(pip install 'gpxsheet[osm]'); using geometry-only analysis.",
+                stacklevel=2,
+            )
+        elif looks_sparse(route):
             warnings.warn(
                 "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
                 "OSM enrichment, which would sample road names along straight lines "
@@ -399,7 +410,14 @@ def analyze_route(
         else:
             from .enrich import enrich_route
 
-            enrich_route(route, include_fuel=prof.include_fuel)
+            try:
+                enrich_route(route, include_fuel=prof.include_fuel)
+            except Exception as exc:  # network/Overpass/data failure -> fall back
+                warnings.warn(
+                    f"OSM enrichment failed ({type(exc).__name__}: {exc}); "
+                    "using geometry-only analysis.",
+                    stacklevel=2,
+                )
 
     # 3. Apply the profile's display threshold to whatever decisions step 1/2
     #    produced, then derive products that depend on the final fuel stops.

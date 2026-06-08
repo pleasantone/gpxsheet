@@ -126,12 +126,14 @@ Mt-Hamilton OSM clip — NOT yet stress-tested on dense real routes.
   per Overpass query). Works but slow: twixtmas (583 mi, 6 chunks) took ~7 min.
   Per-chunk results stitch cleanly (verified identical to single-chunk on gaia).
 
-### Product defaults / UX TODO
-- **Make portrait mode and OSM enrichment the DEFAULTS.** Today `generate`
-  defaults to landscape + geometry-only (`--portrait` / `--osm` are opt-in). The
-  intended product default is portrait roadbook + OSM road names. Flip the
-  defaults (likely add `--landscape` / `--no-osm` opt-outs), keeping geometry-only
-  as the automatic fallback when OSM is unavailable or the route `looks_sparse`.
+### Product defaults / UX
+- ✅ **DONE: portrait + OSM are the CLI defaults.** `generate` defaults to
+  portrait roadbook + OSM; opt out with `--landscape` / `--no-osm`. `analyze` and
+  `strip` default to `--osm` too (`--no-osm` to disable). `analyze_route` degrades
+  to geometry-only (with a warning) when osmnx is missing, the route
+  `looks_sparse`, or the Overpass query raises. NOTE: the *library* functions
+  (`analyze`, `generate_pdf`, ...) still default `use_osm=False` for predictable,
+  offline-by-default programmatic use — only the CLI flips the product defaults.
 
 ### Then
 - **Milestone 4** — PyPI packaging (entry point + extras already defined).

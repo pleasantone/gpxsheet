@@ -223,6 +223,36 @@ def test_analyze_skips_osm_for_sparse_route():
     assert sparse.decision_points == []
 
 
+def test_analyze_falls_back_when_osm_unavailable(l_route_file, monkeypatch):
+    import pytest
+
+    import gpxsheet
+    import gpxsheet.enrich as enrich
+
+    monkeypatch.setattr(enrich, "osm_available", lambda: False)
+    with pytest.warns(UserWarning, match="not installed"):
+        route = gpxsheet.analyze(str(l_route_file), use_osm=True)
+    # geometry-only fallback -> generic "Leg N" segments, no road names
+    assert all(s.name.startswith("Leg ") for s in route.segments)
+
+
+def test_analyze_falls_back_when_osm_query_fails(l_route_file, monkeypatch):
+    import pytest
+
+    import gpxsheet
+    import gpxsheet.enrich as enrich
+
+    monkeypatch.setattr(enrich, "osm_available", lambda: True)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("overpass unreachable")
+
+    monkeypatch.setattr(enrich, "enrich_route", boom)
+    with pytest.warns(UserWarning, match="OSM enrichment failed"):
+        route = gpxsheet.analyze(str(l_route_file), use_osm=True)
+    assert all(s.name.startswith("Leg ") for s in route.segments)
+
+
 def test_analyze_report_renders(l_route_file):
     from gpxsheet.report import format_analysis
 

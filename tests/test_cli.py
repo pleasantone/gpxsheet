@@ -15,7 +15,8 @@ def test_version_flag():
 
 
 def test_analyze_command_runs(l_route_file):
-    result = runner.invoke(app, ["analyze", str(l_route_file), "--fuel-range", "2"])
+    # --no-osm keeps the test offline (OSM is the CLI default).
+    result = runner.invoke(app, ["analyze", str(l_route_file), "--fuel-range", "2", "--no-osm"])
     assert result.exit_code == 0
     assert "Route Length:" in result.stdout
     assert "Decision Points:" in result.stdout
@@ -25,7 +26,9 @@ def test_analyze_command_runs(l_route_file):
 
 
 def test_analyze_minimalist_profile(l_route_file):
-    result = runner.invoke(app, ["analyze", str(l_route_file), "--profile", "minimalist"])
+    result = runner.invoke(
+        app, ["analyze", str(l_route_file), "--profile", "minimalist", "--no-osm"]
+    )
     assert result.exit_code == 0
     assert "Fuel:" not in result.stdout
     assert "Reassurance Markers:" not in result.stdout
@@ -43,7 +46,7 @@ def test_analyze_missing_file_errors():
 
 def test_generate_command_writes_pdf(l_route_file, tmp_path):
     out = tmp_path / "g.pdf"
-    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out), "--no-osm"])
     assert result.exit_code == 0, result.output
     assert out.exists() and out.read_bytes()[:4] == b"%PDF"
 
