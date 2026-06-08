@@ -1,0 +1,16 @@
+.git
+.venv
+venv
+dist
+build
+cache
+**/__pycache__
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+tests
+examples
+*.pdf
+*.png
+.DS_Store

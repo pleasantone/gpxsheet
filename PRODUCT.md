@@ -917,7 +917,18 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   `twine check` passes; verified that a fresh **core-only** install runs the CLI
   and produces a PDF, degrading gracefully without the `osm` extra. Actual
   `twine upload` to PyPI is the maintainer's step (needs PyPI credentials).
-* **Milestone 5 — Web service: ⏳ not started.**
+* **Milestone 5 — Web service: 🟡 in progress.** `gpxsheet.service` is a FastAPI
+  app (the `service` extra) exposing the engine over REST: `POST /v1/jobs`
+  (upload GPX + params → 202 job), `GET /v1/jobs/{id}`, `.../result`,
+  `POST /v1/analyze`, `/healthz`, `/docs`. Slow renders run as background jobs
+  (Dramatiq + Redis) with results in MinIO; `process_job` is shared by an
+  `EagerRunner` (dev/sync, in-memory + local dir) and a `DramatiqRunner` (worker).
+  Self-hosted via `docker-compose.yml` (api/worker/redis/minio); the image builds
+  on `python:3.13-slim` with the geo wheels (no system GDAL). Tested: the dev path
+  end-to-end via `TestClient`; the Redis/MinIO prod path has a gated integration
+  test (`GPXSHEET_SERVICE_IT=1`). Remaining: live-stack verification + polish
+  (rate limits, input caps, result caching, the presigned-URL public-endpoint
+  caveat).
 
 `validate` (CLI) is still a stub.
 

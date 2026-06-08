@@ -64,12 +64,20 @@ class MinioStorage:
         self._client = Minio(endpoint, access_key=access_key, secret_key=secret_key, secure=secure)
         self._bucket = bucket
         self._expiry = url_expiry_seconds
-        if not self._client.bucket_exists(bucket):
-            self._client.make_bucket(bucket)
+        self._bucket_ready = False
+
+    def _ensure_bucket(self) -> None:
+        # Lazy so constructing the storage (e.g. at API boot) needs no network,
+        # tolerating MinIO not being ready yet under docker-compose start order.
+        if not self._bucket_ready:
+            if not self._client.bucket_exists(self._bucket):
+                self._client.make_bucket(self._bucket)
+            self._bucket_ready = True
 
     def save(self, key: str, data: bytes, content_type: str = "application/pdf") -> None:
         import io
 
+        self._ensure_bucket()
         self._client.put_object(
             self._bucket, key, io.BytesIO(data), length=len(data), content_type=content_type
         )

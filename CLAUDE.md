@@ -96,7 +96,16 @@ Overpass hangs intermittently in this sandbox.
   in/out across runs; consider hysteresis.
 - **Down-weight straight "Continue onto"** name changes (residential noise);
   needs a ground-truth set. **Junction-degree detection** for nameless forks.
-- **Milestone 5** — web service (`POST /generate`). **`validate`** CLI is a stub.
+- **Milestone 5 (in progress)** — `gpxsheet.service` FastAPI app (`[service]`
+  extra): `POST /v1/jobs` (async render via Dramatiq+Redis, result in MinIO),
+  `GET /v1/jobs/{id}[/result]`, `POST /v1/analyze`, `/healthz`. Dev path
+  (EagerRunner + in-memory + LocalStorage) is `TestClient`-tested; prod path has a
+  gated integration test (`GPXSHEET_SERVICE_IT=1`). `docker-compose.yml` images
+  BUILD cleanly but the **live stack was not started in-session** (Paul declined)
+  — verify `docker compose up` later. Dev: `uvicorn gpxsheet.service.asgi:app`;
+  worker: `dramatiq gpxsheet.service.jobs`. TODO: live E2E, rate limits, input
+  caps, result caching, presigned-URL public-endpoint host caveat.
+- **`validate`** CLI is still a stub.
 - PyPI `twine upload` is the maintainer's step. Wire a vault note via
   `/project-init` when the Obsidian MCP is responsive.
 

@@ -82,6 +82,36 @@ from gpxsheet import generate_pdf
 generate_pdf("route.gpx", "route.pdf", profile="sport-touring", fuel_range=180)
 ```
 
+## Web service (Milestone 5)
+
+A FastAPI service exposes the engine over REST. Renders are slow (matplotlib +
+live OSM), so generation runs as a background job (Dramatiq + Redis) with results
+in object storage (MinIO); `/v1/analyze` returns the structured analysis as JSON.
+
+Self-hosted stack (API + worker + Redis + MinIO):
+
+```bash
+docker compose up --build
+#   API   -> http://localhost:8000/docs
+#   MinIO -> http://localhost:9001  (minioadmin / minioadmin)
+
+curl -F gpx=@route.gpx "http://localhost:8000/v1/jobs?orientation=portrait" # -> {id, status}
+curl http://localhost:8000/v1/jobs/<id>          # poll until status=done
+curl -L http://localhost:8000/v1/jobs/<id>/result -o route.pdf
+```
+
+Endpoints: `POST /v1/jobs` (upload GPX + params → 202), `GET /v1/jobs/{id}`,
+`GET /v1/jobs/{id}/result` (streams, or 303 → presigned URL), `POST /v1/analyze`,
+`GET /healthz`. Single-process dev mode (in-memory, synchronous, no Redis/MinIO):
+
+```bash
+pip install -e ".[service]"
+uvicorn gpxsheet.service.asgi:app        # worker not needed in dev mode
+```
+
+Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
+`gpxsheet/service/settings.py`).
+
 ## License
 
 MIT
