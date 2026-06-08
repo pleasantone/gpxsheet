@@ -147,6 +147,48 @@ def strip(
 
 
 @app.command()
+def preview(
+    gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
+    output: Path = typer.Option("route_preview.png", "--output", "-o", help="Output image path."),
+    profile: str = typer.Option(
+        DEFAULT_PROFILE, "--profile", help="minimalist | sport-touring | rally."
+    ),
+    fuel_range: float | None = typer.Option(
+        None, "--fuel-range", help="Rider fuel range in miles."
+    ),
+    osm: bool = typer.Option(
+        True, "--osm/--no-osm",
+        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
+    ),
+    turns: str = typer.Option(
+        "stylized", "--turns", help="Bend style at turns: stylized | faithful."
+    ),
+    lane_decisions: int = typer.Option(
+        4, "--lane-decisions", min=1, help="Max decisions per strip lane."
+    ),
+    dpi: int = typer.Option(150, "--dpi", min=1, help="Output image resolution."),
+) -> None:
+    """Render the whole route as one non-paginated image (stacked strip lanes).
+
+    An on-screen overview: the entire route as a column of strip blocks, no page
+    breaks. Format follows the ``-o`` extension (``.png``/``.jpg``).
+    """
+    from .pdf import generate_preview
+
+    out = generate_preview(
+        str(gpx_file),
+        str(output),
+        profile=profile,
+        fuel_range=fuel_range,
+        use_osm=osm,
+        turn_style=turns,
+        decisions_per_lane=lane_decisions,
+        dpi=dpi,
+    )
+    typer.echo(f"Wrote {out}")
+
+
+@app.command()
 def validate(
     gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
     fuel_range: float | None = typer.Option(

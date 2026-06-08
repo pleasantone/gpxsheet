@@ -8,6 +8,31 @@ from pathlib import Path
 from .models import GenerateParams
 
 
+def render_preview_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
+    """Render a non-paginated whole-route preview PNG and return its bytes.
+
+    The whole route as one tall image of stacked strip lanes (see
+    :func:`gpxsheet.pdf.render_preview`) -- a display-resolution overview for a
+    UI. ``orientation``/``paper`` are ignored (the preview is a single column).
+    """
+    from gpxsheet.pdf import generate_preview
+
+    with tempfile.TemporaryDirectory() as tmp:
+        gpx_path = Path(tmp) / "route.gpx"
+        out_path = Path(tmp) / "preview.png"
+        gpx_path.write_bytes(gpx_bytes)
+        generate_preview(
+            str(gpx_path),
+            str(out_path),
+            profile=params.profile,
+            fuel_range=params.fuel_range,
+            use_osm=params.use_osm,
+            turn_style=params.turn_style,
+            decisions_per_lane=params.decisions_per_lane,
+        )
+        return out_path.read_bytes()
+
+
 def render_pdf_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
     """Render a route PDF in a temp dir and return its bytes.
 

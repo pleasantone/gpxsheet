@@ -5,12 +5,8 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Phase 1 — remaining
 
-- **`validate` CLI command** — still a stub (the only remaining Phase-1 gap).
-  Should detect fuel-gap-exceeds-range, unpaved segments, seasonal-closure risk,
-  ferry crossings (see PRODUCT.md "Validate").
 - **PyPI `twine upload`** — maintainer step (needs PyPI credentials). The package
   already builds clean and `twine check` passes.
-- **Vault note** — wire one via `/project-init` when the Obsidian MCP is responsive.
 
 ## Phase 2 — features (requested)
 
@@ -23,10 +19,6 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   presigned expiry; CORS + security headers (HSTS/CSP/etc.); secrets via
   env/secret-store not defaults; `pip-audit` / dependency CVEs; run the worker
   non-root (already) and least-privilege. Produce a findings doc + fixes.
-- **Preview image output** — a single overview image (PNG/JPEG), no pagination:
-  reuse the strip renderer (`gpxsheet.strip`) for the whole route. Add a CLI flag
-  and a service endpoint (e.g. `POST /v1/preview` returning an image, or a
-  `format=png` option on jobs). Fast/low-res; good for a UI thumbnail.
 - **Front end for the service** — a small, secure web UI (upload GPX → choose
   profile/orientation/paper/OSM → live preview image → download PDF). Must be
   hardened for **public internet exposure** (ties into the security audit: auth,

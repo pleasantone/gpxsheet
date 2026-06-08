@@ -70,6 +70,13 @@ def test_analyze(client, l_route_file):
     assert "decision_points" in data and "segments" in data
 
 
+def test_preview_returns_png(client, l_route_file):
+    r = _post(client, "/v1/preview?use_osm=false", l_route_file)
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "image/png"
+    assert r.content[:8] == b"\x89PNG\r\n\x1a\n"  # valid PNG header
+
+
 def test_empty_upload_rejected(client):
     r = client.post(
         "/v1/jobs?use_osm=false", files={"gpx": ("empty.gpx", b"", "application/gpx+xml")}

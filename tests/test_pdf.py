@@ -113,6 +113,51 @@ def test_a4_page_size(tmp_path):
     assert round(lbox[3]) == 612
 
 
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_size(data: bytes) -> tuple[int, int]:
+    import struct
+
+    # PNG IHDR: width/height are big-endian uint32 at byte offsets 16 and 20.
+    return struct.unpack(">II", data[16:24])
+
+
+def _preview_route(n_decisions: int):
+    from gpxsheet.models import DecisionPoint, GeoPoint, Route, Segment
+
+    miles = list(range(10, 10 * (n_decisions + 1), 10))
+    decisions = [DecisionPoint(m, f"Turn {m}", 60, 0, 0, turn_angle=45) for m in miles]
+    end = miles[-1] + 10
+    return Route(
+        name="Preview",
+        points=[GeoPoint(0, 0), GeoPoint(1, 1)],
+        distances_m=[0.0, end * 1609.344],
+        decision_points=decisions,
+        segments=[Segment("Road", 0, end)],
+    )
+
+
+def test_render_preview_is_single_growing_image(tmp_path):
+    from gpxsheet.pdf import render_preview
+
+    # One image (PNG), no pagination -- a longer route just makes a taller image.
+    short = render_preview(_preview_route(3), tmp_path / "short.png").read_bytes()
+    long = render_preview(_preview_route(20), tmp_path / "long.png").read_bytes()
+    assert short[:8] == PNG_MAGIC and long[:8] == PNG_MAGIC
+    sw, sh = _png_size(short)
+    lw, lh = _png_size(long)
+    assert lw == sw  # same width
+    assert lh > sh  # more lanes stacked -> taller
+
+
+def test_preview_cli_command(l_route_file, tmp_path):
+    out = tmp_path / "cli_preview.png"
+    result = runner.invoke(app, ["preview", str(l_route_file), "-o", str(out), "--no-osm"])
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes()[:8] == PNG_MAGIC
+
+
 def test_generate_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli.pdf"
     result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out), "--no-osm"])

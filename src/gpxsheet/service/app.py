@@ -20,7 +20,7 @@ from .jobs import (
     prod_components,
 )
 from .models import GenerateParams, JobStatus
-from .render import analyze_to_dict
+from .render import analyze_to_dict, render_preview_bytes
 from .storage import LocalStorage, Storage
 
 
@@ -137,5 +137,11 @@ def create_app(
     @app.post("/v1/analyze", dependencies=[Depends(rate_limit)])
     def analyze(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> dict:
         return analyze_to_dict(read_gpx(gpx), params)
+
+    @app.post("/v1/preview", dependencies=[Depends(rate_limit)])
+    def preview(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> Response:
+        # Synchronous: a fast, low-res whole-route thumbnail (no job/pagination).
+        png = render_preview_bytes(read_gpx(gpx), params)
+        return Response(content=png, media_type="image/png")
 
     return app

@@ -861,7 +861,9 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 * **Milestone 5 — Web service: ✅ complete (verified live).** `gpxsheet.service`
   is a FastAPI app (the `service` extra) exposing the engine over REST:
   `POST /v1/jobs` (upload GPX + params → 202 job), `GET /v1/jobs/{id}`,
-  `.../result` (streams or 303 → presigned URL), `POST /v1/analyze`, `/healthz`,
+  `.../result` (streams or 303 → presigned URL), `POST /v1/analyze`,
+  `POST /v1/preview` (synchronous non-paginated whole-route preview PNG —
+  stacked strip lanes), `/healthz`,
   `/docs`. Slow renders run as background jobs (Dramatiq + Redis) with results in
   MinIO; `process_job` is shared by an `EagerRunner` (dev/sync, in-memory + local
   dir) and a `DramatiqRunner` (worker). Self-hosted via `docker-compose.yml`

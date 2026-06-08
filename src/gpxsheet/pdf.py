@@ -216,7 +216,10 @@ def _draw_lane(fig, route, start, end, rect, *, show_start, show_end, turn_style
     )
     # Strip fills the frame, leaving room for the mile label (top) and a clear
     # band for the ribbon (bottom) so the lowest decision labels don't touch it.
-    label_h, ribbon_h = 0.016, 0.040
+    # Bands scale with the lane height so lanes look the same on a portrait page
+    # and in the (variable-height) preview column. The fractions reproduce the
+    # original 0.016 / 0.040 figure-fractions at the default 4 lanes/page.
+    label_h, ribbon_h = 0.071 * h, 0.178 * h
     map_ax = fig.add_axes([x + 0.01, y + ribbon_h, w - 0.02, h - label_h - ribbon_h])
     draw_strip(fig, map_ax, layout, draw_ribbon=False)
     ribbon = "  ›  ".join(layout.ribbon)
@@ -272,5 +275,95 @@ def generate_pdf(
         paper=paper,
         lanes_per_page=lanes_per_page,
         decisions_per_lane=decisions_per_lane,
+    )
+    return str(output_file)
+
+
+# Preview: the whole route as one un-paginated column of strip lanes (a single
+# image, not a multi-page PDF) so the user can eyeball the entire route at once.
+PREVIEW_WIDTH_IN = 8.5
+PREVIEW_LANE_HEIGHT_IN = 1.7  # per stacked lane; good on-screen size at 150 dpi
+PREVIEW_HEADER_IN = 0.5
+
+
+def render_preview(
+    route: Route,
+    output_path: str | Path,
+    *,
+    turn_style: str = TURN_STYLE_STYLIZED,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
+    dpi: int = 150,
+) -> Path:
+    """Render the whole route as a single image of stacked strip lanes.
+
+    Like the portrait roadbook but with no page breaks: every lane (a strip
+    covering up to ``decisions_per_lane`` decisions, in absolute miles) is stacked
+    into one tall figure that grows with the route -- a scrollable on-screen
+    overview. The image format follows ``output_path``'s extension.
+    """
+    decisions_per_lane = max(1, decisions_per_lane)
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    output_path = Path(output_path)
+    total = route.length_miles
+    lanes = paginate(route, max_decisions=decisions_per_lane)
+    n = max(1, len(lanes))
+
+    fig_h = PREVIEW_HEADER_IN + n * PREVIEW_LANE_HEIGHT_IN
+    fig = plt.figure(figsize=(PREVIEW_WIDTH_IN, fig_h))
+
+    header_frac = PREVIEW_HEADER_IN / fig_h
+    lane_frac = PREVIEW_LANE_HEIGHT_IN / fig_h
+    gap = 0.18 * lane_frac
+
+    name = route.name or "Route"
+    display = name if len(name) <= 60 else name[:59].rstrip() + "…"
+    header_y = 1 - header_frac / 2
+    fig.text(0.04, header_y, display, ha="left", va="center", fontsize=13, fontweight="bold")
+    fig.text(
+        0.96, header_y, f"{total:.0f} mi",
+        ha="right", va="center", fontsize=11, color=_GREEN, fontweight="bold",
+    )
+
+    eps = 1e-6
+    for j, (start, end) in enumerate(lanes):
+        y_top = (1 - header_frac) - j * lane_frac
+        rect = (0.04, y_top - lane_frac + gap / 2, 0.92, lane_frac - gap)
+        _draw_lane(
+            fig, route, start, end, rect,
+            show_start=(start <= eps),
+            show_end=(end >= total - eps),
+            turn_style=turn_style,
+        )
+
+    fig.savefig(output_path, dpi=dpi, facecolor="white")
+    plt.close(fig)
+    return output_path
+
+
+def generate_preview(
+    gpx_file: str,
+    output_file: str = "route_preview.png",
+    *,
+    profile: str = "sport-touring",
+    fuel_range: float | None = None,
+    use_osm: bool = False,
+    turn_style: str = TURN_STYLE_STYLIZED,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
+    dpi: int = 150,
+) -> str:
+    """Load, analyze, and render a route to a non-paginated multi-strip preview image."""
+    from .analysis import analyze_route
+    from .gpx import load_route
+
+    route = analyze_route(
+        load_route(gpx_file), profile=profile, fuel_range=fuel_range, use_osm=use_osm
+    )
+    render_preview(
+        route, output_file,
+        turn_style=turn_style, decisions_per_lane=decisions_per_lane, dpi=dpi,
     )
     return str(output_file)
