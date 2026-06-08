@@ -78,11 +78,40 @@ missing / `looks_sparse` / Overpass fails) → profile threshold → fuel + reas
 
 ## Test data
 
-`~/gpxtable/samples/*.gpx` — gaia, scenic, ich-dual-gas (=Mt Hamilton),
-basecamp-tracks, twixtmas (583mi monster), zumo* (sparse `<rte>`), … `bad-xml.gpx`
-is intentionally malformed. `examples/sample_route.gpx` is synthetic & offshore
+`~/gpxtable/samples/*.gpx` — 19 real California/PNW moto routes, picked to stress
+every parser/analysis quirk. `examples/sample_route.gpx` is synthetic & offshore
 (no OSM coverage — use `--no-osm`). For iteration prefer synthetic Routes; live
 Overpass hangs intermittently in this sandbox.
+
+By data type (what the pipeline keys on):
+- **Dense tracks** (`<trk>`, ~30–40 pts/mi): `ich-dual-gas` ("sep02 174mi" =
+  Mt Hamilton; geometry-only floods it w/ 100+ false turns), `basecamp-tracks`,
+  `ich-north*` (24k–31k pts), `twixtmas` (583mi).
+- **Routes** (`<rte>`): `gaia` (1368pts, canonical 75mi Palo Alto·Skyline·coast —
+  reaches lat 37.77 near SF, source of the ferry-terminal false-positives),
+  `gaia2`, `onthegomap`, `basecamp-route` (23pts).
+- **Sparse routes** (`looks_sparse` / OSM-reconstruction case): `zumo1` (4pts/62mi),
+  `zumo2` (6/82), `zumo3` (12/564, + a nameless first `<rte>`) — ~1 pt per 15–45mi.
+- **Track + route in one file:** `basecamp`, `inroute`, `scenic`, `scenic2`.
+
+Sources (each app encodes GPX differently): Garmin BaseCamp (`basecamp*`), GaiaGPS
+(`gaia*`), inRoute (`inroute`), onthegomap, Scenic (`scenic*`), Garmin zūmo XT
+(`zumo*`), no-creator/processed (`ich-*`, `twixtmas`).
+
+Special cases:
+- **Multi-day = multiple tracks:** `ich-north` (D1/D2/D3, 1174mi), `ich-north-4`
+  (+D3-coast alt, 1879mi), `twixtmas` (day1/2/3).
+- **`-fixed` pairs** (`ich-north[-4]` vs `…-fixed`): fix = corrected waypoint
+  `<sym>` tags (restaurant mis-tagged `Gas Station` → `Restaurant`) + trimmed
+  track names. Relevant to fuel-detection-from-symbols.
+- **Same route, many encodings** (logical-route equivalence): `scenic` = Track +
+  Vias-as-Routepoints + Garmin-Extension; `scenic2` = Track + plain-`<rte>` +
+  Garmin Trip Extension + Garmin RoutePoint Extension.
+- **Waypoint conventions:** numbered rider sequences (`01 Evergreen`,
+  `101 Los Altos`); gas in name (`76 Bodega Bay`, `03 Tracy and Gas`) and/or
+  `<sym>Gas Station</sym>`.
+- `bad-xml.gpx` — intentionally malformed (truncated `<rte>`, mismatched tag at
+  line 599); error-handling fixture.
 
 ## Open work / TODO
 
