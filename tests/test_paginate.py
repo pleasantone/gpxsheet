@@ -1,5 +1,7 @@
 """Tests for route-aware pagination and route slicing."""
 
+import pytest
+
 from gpxsheet.models import DecisionPoint, FuelStop, GeoPoint, ReassuranceMarker, Route, Segment
 from gpxsheet.paginate import paginate, slice_route
 
@@ -55,6 +57,15 @@ def test_no_decisions_single_page():
 def test_single_page_when_few_decisions():
     route = _route(n_decisions=2, length=40.0)
     assert paginate(route, max_decisions=5) == [(0.0, 40.0)]
+
+
+def test_slice_route_no_rebase_keeps_absolute_miles():
+    route = _route(n_decisions=8, length=200.0)
+    page = slice_route(route, 40.0, 90.0, rebase=False)
+    # absolute miles preserved (portrait lanes need this for correct labels)
+    assert all(40.0 < d.mile <= 90.0 + 1e-9 for d in page.decision_points)
+    assert page.length_miles == pytest.approx(90.0)  # absolute end, not the 50 mi span
+    assert page.segments[0].start_mile == 40.0
 
 
 def test_slice_route_rebases_and_filters():

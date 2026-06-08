@@ -50,6 +50,15 @@ def generate(
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
+    portrait: bool = typer.Option(
+        False, "--portrait", help="Portrait roadbook layout (stacked strip lanes per page)."
+    ),
+    lanes: int = typer.Option(
+        4, "--lanes", min=1, help="Portrait only: strip lanes per page."
+    ),
+    lane_decisions: int = typer.Option(
+        4, "--lane-decisions", min=1, help="Portrait only: max decisions per lane."
+    ),
 ) -> None:
     """Generate a tank-bag navigation PDF (default mode)."""
     from . import generate_pdf
@@ -61,6 +70,9 @@ def generate(
         fuel_range=fuel_range,
         use_osm=osm,
         turn_style=turns,
+        orientation="portrait" if portrait else "landscape",
+        lanes_per_page=lanes,
+        decisions_per_lane=lane_decisions,
     )
     typer.echo(f"Wrote {out}")
 

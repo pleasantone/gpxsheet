@@ -42,35 +42,38 @@ def paginate(
     return pages
 
 
-def slice_route(route: Route, start: float, end: float) -> Route:
-    """Materialize the sub-route for ``[start, end]``, rebased so it begins at 0.
+def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) -> Route:
+    """Materialize the sub-route for ``[start, end]``.
 
     Decisions are taken as those in ``(start, end]`` (the breaking decision
     belongs to the page that ends on it); segments are clipped; fuel/reassurance
-    within the span are kept. Only the page length is needed from ``points``.
+    within the span are kept. With ``rebase=True`` (the single-strip landscape
+    page) miles are shifted so the slice begins at 0; with ``rebase=False``
+    (portrait lanes) absolute miles are preserved so each lane's labels read
+    correctly. Only the span length is needed from ``points``.
     """
-    span = max(end - start, 0.0)
     eps = 1e-9
+    off = start if rebase else 0.0
 
     segments = []
     for s in route.segments:
         a = max(s.start_mile, start)
         b = min(s.end_mile, end)
         if b - a > 1e-6:
-            segments.append(replace(s, start_mile=a - start, end_mile=b - start))
+            segments.append(replace(s, start_mile=a - off, end_mile=b - off))
 
     decisions = [
-        replace(d, mile=d.mile - start)
+        replace(d, mile=d.mile - off)
         for d in route.decision_points
         if start + eps < d.mile <= end + eps
     ]
     fuel = [
-        replace(f, mile=f.mile - start)
+        replace(f, mile=f.mile - off)
         for f in route.fuel_stops
         if start - eps <= f.mile <= end + eps
     ]
     reassurance = [
-        replace(m, mile=m.mile - start)
+        replace(m, mile=m.mile - off)
         for m in route.reassurance_markers
         if start - eps <= m.mile <= end + eps
     ]
@@ -79,7 +82,7 @@ def slice_route(route: Route, start: float, end: float) -> Route:
     return Route(
         name=route.name,
         points=edge_points,
-        distances_m=[0.0, span * 1609.344],
+        distances_m=[0.0, (end - off) * 1609.344],
         segments=segments,
         decision_points=decisions,
         fuel_stops=fuel,

@@ -41,6 +41,39 @@ def test_render_pdf_multipage(tmp_path):
     assert data.count(b"/Type /Page") >= 2
 
 
+def test_portrait_pdf_multilane(tmp_path):
+    from gpxsheet.models import DecisionPoint, GeoPoint, Route, Segment
+    from gpxsheet.pdf import render_pdf
+
+    # 20 decisions -> 5 lanes (4/lane) -> 2 portrait pages (4 lanes/page).
+    decisions = [
+        DecisionPoint(m, f"Turn {m}", 60, 0, 0, turn_angle=45) for m in range(10, 210, 10)
+    ]
+    route = Route(
+        name="Portrait",
+        points=[GeoPoint(0, 0), GeoPoint(1, 1)],
+        distances_m=[0.0, 210 * 1609.344],
+        decision_points=decisions,
+        segments=[Segment("Road", 0, 210)],
+    )
+    out = tmp_path / "portrait.pdf"
+    render_pdf(route, out, orientation="portrait")
+    data = out.read_bytes()
+    assert data[:4] == PDF_MAGIC
+    assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 2
+
+
+def test_invalid_orientation_raises(tmp_path):
+    import pytest
+
+    from gpxsheet.models import GeoPoint, Route
+    from gpxsheet.pdf import render_pdf
+
+    route = Route(name="x", points=[GeoPoint(0, 0), GeoPoint(0, 1)], distances_m=[0.0, 1609.344])
+    with pytest.raises(ValueError, match="orientation"):
+        render_pdf(route, tmp_path / "x.pdf", orientation="diagonal")
+
+
 def test_generate_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli.pdf"
     result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])

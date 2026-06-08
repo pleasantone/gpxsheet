@@ -21,13 +21,31 @@ _GREEN = "#1b7837"
 _GREY = "#666666"
 
 
+# Portrait mode: each page stacks several route "lanes" (strips), each covering
+# a few decisions, clearly separated -- a roadbook / TripTik layout.
+LANES_PER_PAGE = 4
+DECISIONS_PER_LANE = 4
+
+
 def render_pdf(
     route: Route,
     output_path: str | Path,
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
+    orientation: str = "landscape",
+    lanes_per_page: int = LANES_PER_PAGE,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
 ) -> Path:
-    """Render an already-analyzed ``route`` to a multi-page PDF."""
+    """Render an already-analyzed ``route`` to a multi-page PDF.
+
+    ``orientation`` is ``"landscape"`` (one strip per page, big map) or
+    ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page, each holding
+    up to ``decisions_per_lane`` decisions, roadbook-style).
+    """
+    if orientation not in ("landscape", "portrait"):
+        raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
+    lanes_per_page = max(1, lanes_per_page)
+    decisions_per_lane = max(1, decisions_per_lane)
     import matplotlib
 
     matplotlib.use("Agg")
@@ -35,15 +53,28 @@ def render_pdf(
     from matplotlib.backends.backend_pdf import PdfPages
 
     output_path = Path(output_path)
-    pages = paginate(route)
     total = route.length_miles
 
     with PdfPages(output_path) as pdf:
-        for i, (start, end) in enumerate(pages, start=1):
-            fig = plt.figure(figsize=(11, 8.5))  # landscape US Letter
-            _compose_page(fig, route, start, end, i, len(pages), total, turn_style)
-            pdf.savefig(fig, facecolor="white")
-            plt.close(fig)
+        if orientation == "portrait":
+            lanes = paginate(route, max_decisions=decisions_per_lane)
+            page_groups = [
+                lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
+            ]
+            for i, group in enumerate(page_groups, start=1):
+                fig = plt.figure(figsize=(8.5, 11))  # portrait US Letter
+                _compose_portrait_page(
+                    fig, route, group, i, len(page_groups), total, turn_style, lanes_per_page
+                )
+                pdf.savefig(fig, facecolor="white")
+                plt.close(fig)
+        else:
+            pages = paginate(route)
+            for i, (start, end) in enumerate(pages, start=1):
+                fig = plt.figure(figsize=(11, 8.5))  # landscape US Letter
+                _compose_page(fig, route, start, end, i, len(pages), total, turn_style)
+                pdf.savefig(fig, facecolor="white")
+                plt.close(fig)
     return output_path
 
 
@@ -97,10 +128,12 @@ def _compose_page(fig, route, start, end, page_no, page_count, total, turn_style
         )
 
 
-def _draw_header(fig, name: str, page_no: int, page_count: int, start: float, total: float) -> None:
+def _draw_header(
+    fig, name: str, page_no: int, page_count: int, start: float, total: float, name_max: int = 48
+) -> None:
     # Truncate long route names (GPX often auto-names "<start> to <end>") so the
     # title never runs into the mileage / page counter.
-    display = name if len(name) <= 48 else name[:47].rstrip() + "…"
+    display = name if len(name) <= name_max else name[: name_max - 1].rstrip() + "…"
     fig.text(0.03, 0.955, display, ha="left", va="center", fontsize=13, fontweight="bold")
     fig.text(
         0.84, 0.955, f"{start:.0f} / {total:.0f} mi",
@@ -110,6 +143,61 @@ def _draw_header(fig, name: str, page_no: int, page_count: int, start: float, to
         0.97, 0.955, f"Page {page_no} of {page_count}",
         ha="right", va="center", fontsize=11, color=_GREY,
     )
+
+
+def _compose_portrait_page(
+    fig, route, lanes, page_no, page_count, total, turn_style, lanes_per_page
+) -> None:
+    """Stack several route lanes (strips) down a portrait page, clearly separated."""
+    _draw_header(fig, route.name, page_no, page_count, lanes[0][0], total, name_max=38)
+
+    eps = 1e-6
+    top, bottom, gap = 0.93, 0.03, 0.016
+    # Fixed lane height (sized for a full page) so lanes look consistent across
+    # pages; partial pages are top-aligned (empty space falls at the bottom).
+    lane_h = (top - bottom) / lanes_per_page
+    for j, (start, end) in enumerate(lanes):
+        y1 = top - j * lane_h
+        rect = (0.04, y1 - lane_h + gap / 2, 0.92, lane_h - gap)
+        _draw_lane(
+            fig, route, start, end, rect,
+            show_start=(start <= eps),
+            show_end=(end >= total - eps),
+            turn_style=turn_style,
+        )
+
+
+def _draw_lane(fig, route, start, end, rect, *, show_start, show_end, turn_style) -> None:
+    """Draw one route lane (a framed strip covering [start, end]) into ``rect``."""
+    from matplotlib.patches import Rectangle
+
+    x, y, w, h = rect
+    page = slice_route(route, start, end, rebase=False)  # keep absolute miles
+    layout = build_strip_layout(
+        page, turn_style=turn_style, show_start=show_start, show_end=show_end
+    )
+
+    fig.patches.append(
+        Rectangle(
+            (x, y), w, h, transform=fig.transFigure,
+            facecolor="#fafafa", edgecolor="#dddddd", linewidth=1.0, zorder=-10,
+        )
+    )
+    # Absolute mile range for this lane (green), top-left of the frame.
+    fig.text(
+        x + 0.008, y + h - 0.006, f"{start:.0f}–{end:.0f} mi",
+        ha="left", va="top", fontsize=8, color=_GREEN, fontweight="bold",
+    )
+    # Strip fills the frame, leaving room for the mile label (top) and a clear
+    # band for the ribbon (bottom) so the lowest decision labels don't touch it.
+    label_h, ribbon_h = 0.016, 0.040
+    map_ax = fig.add_axes([x + 0.01, y + ribbon_h, w - 0.02, h - label_h - ribbon_h])
+    draw_strip(fig, map_ax, layout, draw_ribbon=False)
+    ribbon = "  ›  ".join(layout.ribbon)
+    if ribbon:
+        fig.text(
+            x + w / 2, y + 0.008, ribbon, ha="center", va="bottom", fontsize=7, color="#444444"
+        )
 
 
 def _draw_progress(fig, start: float, end: float, total: float) -> None:
@@ -138,6 +226,9 @@ def generate_pdf(
     fuel_range: float | None = None,
     use_osm: bool = False,
     turn_style: str = TURN_STYLE_STYLIZED,
+    orientation: str = "landscape",
+    lanes_per_page: int = LANES_PER_PAGE,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
 ) -> str:
     """Load, analyze, and render a route to a tank-bag PDF."""
     from .analysis import analyze_route
@@ -146,5 +237,12 @@ def generate_pdf(
     route = analyze_route(
         load_route(gpx_file), profile=profile, fuel_range=fuel_range, use_osm=use_osm
     )
-    render_pdf(route, output_file, turn_style=turn_style)
+    render_pdf(
+        route,
+        output_file,
+        turn_style=turn_style,
+        orientation=orientation,
+        lanes_per_page=lanes_per_page,
+        decisions_per_lane=decisions_per_lane,
+    )
     return str(output_file)

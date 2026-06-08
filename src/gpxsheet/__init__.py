@@ -32,6 +32,9 @@ def generate_pdf(
     fuel_range: float | None = None,
     use_osm: bool = False,
     turn_style: str = "stylized",
+    orientation: str = "landscape",
+    lanes_per_page: int = 4,
+    decisions_per_lane: int = 4,
 ) -> str:
     """Generate a tank-bag navigation PDF from a GPX file.
 
@@ -42,6 +45,10 @@ def generate_pdf(
         fuel_range: Rider fuel range in miles, used for fuel-gap analysis.
         use_osm: Enrich with OpenStreetMap road names/fuel (needs the osm extra).
         turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
+        orientation: ``"landscape"`` (one big strip per page) or ``"portrait"``
+            (several stacked strip lanes per page, roadbook-style).
+        lanes_per_page: Portrait only -- number of strip lanes per page.
+        decisions_per_lane: Portrait only -- max decisions per lane.
 
     Returns:
         The path to the written PDF.
@@ -55,6 +62,9 @@ def generate_pdf(
         fuel_range=fuel_range,
         use_osm=use_osm,
         turn_style=turn_style,
+        orientation=orientation,
+        lanes_per_page=lanes_per_page,
+        decisions_per_lane=decisions_per_lane,
     )
 
 

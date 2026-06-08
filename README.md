@@ -35,16 +35,20 @@ v0.1.0 — **Milestone 1 (route analysis engine) implemented.**
 - ✅ **Milestone 2: schematic map-strip renderer** — a stylized transit-map-style
   strip (`route_strip.png`) that jogs at each decision, compresses long roads,
   and carries the decision/fuel/reassurance markers, dashed leaders, and ribbon
-- ✅ **Milestone 3: PDF generation** — a landscape US-Letter tank-bag document
-  with route-aware pagination, per-page map strip, cue zone (NEXT/AFTER/FUEL/
-  TOTAL), and a progress indicator
+- ✅ **Milestone 3: PDF generation** — a US-Letter tank-bag document with
+  route-aware pagination, map strip(s), road ribbon, progress indicator, and the
+  page mileage in the header. Two layouts: **landscape** (one big strip per page)
+  and **portrait** (several stacked strip "lanes" per page, roadbook/TripTik
+  style)
 
 Try it:
 
 ```bash
 gpxsheet analyze  examples/sample_route.gpx --fuel-range 6
 gpxsheet strip    examples/sample_route.gpx -o route_strip.png   # Milestone 2
-gpxsheet generate your-route.gpx --osm -o route.pdf              # Milestone 3 (real road names)
+gpxsheet generate your-route.gpx --osm -o route.pdf              # Milestone 3, landscape
+gpxsheet generate your-route.gpx --osm --portrait -o route.pdf   # portrait roadbook
+#   portrait knobs: --lanes N (lanes per page) --lane-decisions M (decisions per lane)
 ```
 
 ### OSM enrichment

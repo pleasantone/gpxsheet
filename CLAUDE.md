@@ -39,9 +39,15 @@ osmnx 2.1 + geopandas — installs fine on 3.14).
 - `layout.py` — Schematic Layout Engine (Milestone 2, pure): `build_strip_layout`
   turns the route graph into a stylized jogging ribbon + placed markers.
 - `strip.py` — matplotlib renderer: `render_route_strip` / `generate_strip`
-  → `route_strip.png`. matplotlib imported lazily; uses Agg backend.
+  → `route_strip.png`; `draw_strip` shared with the PDF. Agg, imported lazily.
+- `paginate.py` — route-aware pagination (`paginate`, decision-cap) + `slice_route`
+  (`rebase=True` landscape page / `rebase=False` portrait lane = absolute miles).
+- `pdf.py` — Milestone 3: `render_pdf`/`generate_pdf`. Landscape (one strip/page,
+  framed Map Zone, progress bar) and portrait (`orientation="portrait"`: stacked
+  `_draw_lane` strips, `lanes_per_page`/`decisions_per_lane`). Header has green
+  page mileage; no cue zone.
 - `report.py` — `analyze` text output. `cli.py` — typer CLI
-  (generate/analyze/strip/validate).
+  (generate/analyze/strip/validate; `--portrait --lanes --lane-decisions`).
 
 `analyze_route` flow: geometry detect → merge → build segments → **if --osm**
 enrich (replaces decisions+segments with OSM-derived) → apply profile threshold

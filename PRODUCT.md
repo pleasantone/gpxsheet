@@ -982,12 +982,18 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   reassurance-label prominence, stylized-angle/compression tuning, and heading
   drift on long same-direction routes.
 * **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
-  landscape US-Letter document, one page per route-aware page
-  (`gpxsheet.paginate`, decision-cap only — breaks at decisions, never mid-road):
-  header (truncated long names), framed Map Zone (the strip), large cue zone
-  (NEXT / AFTER / FUEL / TOTAL), and a progress indicator. Interior pages drop
-  redundant START/END; the final page shows "Arrive". `generate_pdf` is wired
-  into the API and `gpxsheet generate <gpx> -o route.pdf [--osm] [--turns ...]`.
+  US-Letter document with route-aware pagination (`gpxsheet.paginate`,
+  decision-cap only — breaks at decisions, never mid-road). Header shows the
+  (truncated) route name, page mileage in green, and page counter. Two layouts:
+  - **landscape** (default): one strip per page in a framed Map Zone that hugs
+    the strip, with the road ribbon and a progress (YOU) bar.
+  - **portrait** (`--portrait`): several stacked strip "lanes" per page
+    (roadbook/TripTik), each a framed strip over its absolute mile range, with
+    its own road ribbon. Tunable via `--lanes N` / `--lane-decisions M`; partial
+    pages are top-aligned.
+
+  `generate_pdf` is wired into the API and
+  `gpxsheet generate <gpx> -o route.pdf [--osm] [--turns ...] [--portrait ...]`.
   Sparse `<rte>` files skip OSM (warned); monster tracks are OSM-enriched in
   chunks. Open polish (CLAUDE.md): fuel-at-mile-0 overlaps the START label.
 * **Milestone 4 — Packaged CLI: 🟡 partial.** `pyproject.toml` defines the
