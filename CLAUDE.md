@@ -126,10 +126,17 @@ Mt-Hamilton OSM clip — NOT yet stress-tested on dense real routes.
   per Overpass query). Works but slow: twixtmas (583 mi, 6 chunks) took ~7 min.
   Per-chunk results stitch cleanly (verified identical to single-chunk on gaia).
 
+### Product defaults / UX TODO
+- **Make portrait mode and OSM enrichment the DEFAULTS.** Today `generate`
+  defaults to landscape + geometry-only (`--portrait` / `--osm` are opt-in). The
+  intended product default is portrait roadbook + OSM road names. Flip the
+  defaults (likely add `--landscape` / `--no-osm` opt-outs), keeping geometry-only
+  as the automatic fallback when OSM is unavailable or the route `looks_sparse`.
+
 ### Then
-- **Milestone 3** — PDF generation (`generate_pdf` is a stub): compose the strip
-  + cue blocks + road ribbon + progress indicator per page, route-aware pagination
-  (which also relieves strip label crowding by showing fewer features per page).
+- **Milestone 4** — PyPI packaging (entry point + extras already defined).
+- **Milestone 5** — web service (`POST /generate`).
+- `validate` CLI is still a stub.
 - Wire a vault project note via `/project-init` (Obsidian MCP was hanging).
 
 ## Conventions
