@@ -36,12 +36,21 @@ dependencies = [
 
 [project.optional-dependencies]
 osm = ["osmnx>=2.0", "shapely>=2.0"]
+# Milestone 5 web service: FastAPI API + Dramatiq/Redis job queue + MinIO storage.
+service = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "dramatiq[redis]>=1.16",
+    "python-multipart>=0.0.9",
+    "minio>=7.2",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
     "mypy>=1.10",
     "build>=1.2",
     "twine>=5.0",
+    "httpx>=0.27",
 ]
 
 [project.scripts]
