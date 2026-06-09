@@ -16,7 +16,7 @@ See [PRODUCT.md](PRODUCT.md) for the full design specification.
 
 ## Status
 
-v0.1.0 — **Phase 1 (milestones 1–4) complete:** analysis engine, schematic strip,
+v0.1.0 — **Phase 1 complete:** analysis engine, schematic strip,
 tank-bag PDF, and a publish-ready package.
 
 - **Route analysis** — GPX (track/route/waypoints) → decision points, fuel,
@@ -82,7 +82,7 @@ from gpxsheet import generate_pdf
 generate_pdf("route.gpx", "route.pdf", profile="sport-touring", fuel_range=180)
 ```
 
-## Web service (Milestone 5)
+## Web service
 
 A FastAPI service exposes the engine over REST. Renders are slow (matplotlib +
 live OSM), so generation runs as a background job (Dramatiq + Redis) with results

@@ -1,4 +1,4 @@
-"""Schematic Layout Engine (Milestone 2).
+"""Schematic Layout Engine.
 
 Turns the analyzed :class:`~gpxsheet.models.Route` graph into a *schematic* strip
 -- not a plot of the GPX. Following PRODUCT.md's "Hybrid Schematic Map System":

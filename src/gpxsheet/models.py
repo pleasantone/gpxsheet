@@ -7,7 +7,7 @@ These map directly onto the Route Graph Model in PRODUCT.md::
      ├─ DecisionPoints
      ├─ ReassuranceMarkers
      ├─ FuelStops
-     └─ Pages          (added in the layout/rendering milestones)
+     └─ Pages          (added by the layout/rendering layer)
 """
 
 from __future__ import annotations

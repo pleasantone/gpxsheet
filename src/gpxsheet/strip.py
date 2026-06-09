@@ -1,4 +1,4 @@
-"""Schematic map-strip renderer (Milestone 2).
+"""Schematic map-strip renderer.
 
 Renders a :class:`~gpxsheet.layout.StripLayout` to an image (``route_strip.png``)
 with matplotlib. Kept separate from the layout engine so the engine stays pure

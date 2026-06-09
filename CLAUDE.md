@@ -9,10 +9,10 @@ section when resuming.
 - **Owner:** Paul Traina.
 - **Python:** 3.14, project-local `.venv` (NOT `~/.venv`, an unrelated scraping
   env). `source .venv/bin/activate`.
-- **Status:** Phase 1 milestones **1–5 complete** (analysis engine, schematic
-  strip, tank-bag PDF in landscape + portrait, publish-ready package, web service
-  verified live). Portrait roadbook + OSM are the CLI defaults; OSM degrades to
-  geometry-only gracefully. Planned work is in [TODO.md](TODO.md).
+- **Status:** Phase 1 **complete** (analysis engine, schematic strip, tank-bag
+  PDF in landscape + portrait, publish-ready package, web service verified live).
+  Portrait roadbook + OSM are the CLI defaults; OSM degrades to geometry-only
+  gracefully. Planned work is in [TODO.md](TODO.md).
 
 ## Commands
 
@@ -124,7 +124,7 @@ Special cases:
 
 All planned and queued work is tracked in **[TODO.md](TODO.md)**.
 
-The service (Milestone 5) is shipped and verified live; run it with
+The web service is shipped and verified live; run it with
 `uvicorn gpxsheet.service.asgi:app` (dev) or `docker compose up`, worker
 `dramatiq gpxsheet.service.jobs`.
 

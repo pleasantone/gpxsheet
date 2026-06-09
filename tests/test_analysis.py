@@ -1,4 +1,4 @@
-"""Tests for the Milestone 1 route analysis engine."""
+"""Tests for the route analysis engine."""
 
 import gpxsheet
 from gpxsheet.analysis import detect_decision_points

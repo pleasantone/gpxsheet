@@ -1,4 +1,4 @@
-"""GPXSheet web service (Milestone 5).
+"""GPXSheet web service.
 
 A FastAPI app that exposes the engine over REST: upload a GPX, get a tank-bag PDF.
 Renders are slow (matplotlib + live OSM), so generation runs as a background job

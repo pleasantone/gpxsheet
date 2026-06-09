@@ -1,4 +1,4 @@
-"""PDF generation (Milestone 3).
+"""PDF generation.
 
 Composes the tank-bag document: one landscape page (US Letter or A4) per route-aware
 page (see :mod:`gpxsheet.paginate`), each with a header, the schematic map strip

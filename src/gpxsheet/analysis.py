@@ -1,4 +1,4 @@
-"""The route analysis engine — Milestone 1.
+"""The route analysis engine.
 
 Geometry-only baseline for the pipeline stages in PRODUCT.md:
 
@@ -369,7 +369,7 @@ def analyze_route(
     use_osm: bool = False,
     include_hazards: bool = False,
 ) -> Route:
-    """Run the full Milestone 1 analysis, populating ``route`` in place.
+    """Run the full analysis, populating ``route`` in place.
 
     ``include_hazards`` adds OSM hazard data (ferry crossings; unpaved mileage is
     always captured when OSM runs) for :func:`gpxsheet.validate.validate_route`.

@@ -124,7 +124,7 @@ def generate_strip(
     use_osm: bool = False,
     turn_style: str = "stylized",
 ) -> str:
-    """Render a route to a schematic map-strip image (Milestone 2)."""
+    """Render a route to a schematic map-strip image."""
     from .strip import generate_strip as _generate_strip
 
     return _generate_strip(

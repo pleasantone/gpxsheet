@@ -1,4 +1,4 @@
-"""Route-aware pagination (Milestone 3).
+"""Route-aware pagination.
 
 Splits an analyzed route into pages for the PDF. Per PRODUCT.md, pages are *not*
 split by mileage -- breaks fall only on decision points, so a page never cuts a

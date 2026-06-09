@@ -132,7 +132,7 @@ def strip(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
 ) -> None:
-    """Render the schematic map strip (Milestone 2) to a PNG."""
+    """Render the schematic map strip to a PNG."""
     from .strip import generate_strip
 
     out = generate_strip(
