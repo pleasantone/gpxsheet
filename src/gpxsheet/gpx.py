@@ -8,12 +8,25 @@ enrichment.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import gpxpy
 
 from .geo import cumulative_distances
 from .models import GeoPoint, Route, Waypoint
+
+# Reject any DTD/entity declarations before handing the XML to gpxpy. Real GPX
+# never carries a DOCTYPE; rejecting one neutralises XXE and entity-expansion
+# ("billion laughs") attacks regardless of which XML backend gpxpy selects
+# (the stdlib parser blocks both, but gpxpy prefers lxml when installed, whose
+# default parser resolves entities). See docs/security-audit.md.
+_DOCTYPE_RE = re.compile(r"<!(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
+
+
+def _reject_unsafe_xml(text: str, source: str) -> None:
+    if _DOCTYPE_RE.search(text):
+        raise ValueError(f"{source}: GPX with a DTD/entity declaration is not allowed")
 
 
 def _point_tuples(points: list[GeoPoint]) -> list[tuple[float, float]]:
@@ -32,8 +45,9 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
         ValueError: if the file contains no usable track or route geometry.
     """
     path = Path(path)
-    with path.open(encoding="utf-8") as fh:
-        gpx = gpxpy.parse(fh)
+    text = path.read_text(encoding="utf-8")
+    _reject_unsafe_xml(text, str(path))
+    gpx = gpxpy.parse(text)
 
     points: list[GeoPoint] = []
     gpx_name: str | None = None

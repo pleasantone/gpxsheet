@@ -26,8 +26,35 @@ def max_upload_bytes() -> int:
     return int(os.getenv("GPXSHEET_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024)))
 
 
+def max_points() -> int:
+    """Hard cap on track/route points; rejects monster routes before parsing."""
+    return int(os.getenv("GPXSHEET_MAX_POINTS", "500000"))
+
+
 def rate_limit_per_minute() -> int:
     return int(os.getenv("GPXSHEET_RATE_LIMIT_PER_MIN", "60"))
+
+
+def api_keys() -> frozenset[str]:
+    """Accepted API keys (comma-separated). Empty set = auth disabled (dev)."""
+    raw = os.getenv("GPXSHEET_API_KEYS", "")
+    return frozenset(k.strip() for k in raw.split(",") if k.strip())
+
+
+def allow_osm() -> bool:
+    """Whether clients may request live OSM enrichment (outbound Overpass calls)."""
+    return os.getenv("GPXSHEET_ALLOW_OSM", "1").lower() not in ("0", "false", "no")
+
+
+def cors_origins() -> list[str]:
+    """Allowed CORS origins (comma-separated). Empty = same-origin only."""
+    raw = os.getenv("GPXSHEET_CORS_ORIGINS", "")
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+def enable_hsts() -> bool:
+    """Send HSTS (only when served over TLS / behind a TLS-terminating proxy)."""
+    return os.getenv("GPXSHEET_ENABLE_HSTS", "").lower() in ("1", "true", "yes")
 
 
 def minio_config() -> dict:

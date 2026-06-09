@@ -3,22 +3,15 @@
 Planned work, queued. As-built status lives in [PRODUCT.md](PRODUCT.md);
 architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
-## Phase 1 — remaining
-
-- **PyPI `twine upload`** — maintainer step (needs PyPI credentials). The package
-  already builds clean and `twine check` passes.
-
 ## Phase 2 — features (requested)
 
-- **Security audit (architecture + code, esp. the service) — required before
-  public internet exposure.** Cover: auth/API keys + per-key quotas; XML upload
-  safety (XXE/billion-laughs — check whether gpxpy uses lxml; harden the parser);
-  SSRF & egress from OSM/Overpass fetches; upload validation beyond size (content
-  sniffing, point/length caps that reject monster routes early); DoS/resource
-  limits (worker time/memory, queue depth); MinIO creds + bucket policy +
-  presigned expiry; CORS + security headers (HSTS/CSP/etc.); secrets via
-  env/secret-store not defaults; `pip-audit` / dependency CVEs; run the worker
-  non-root (already) and least-privilege. Produce a findings doc + fixes.
+- **Security audit (architecture + code, esp. the service) — DONE.** Findings +
+  fixes in [docs/security-audit.md](docs/security-audit.md): XML XXE/entity guard
+  in the parser, optional API-key auth + per-key quotas, content sniff + point
+  cap, OSM-egress toggle, error-leak sanitization, prod default-creds boot guard,
+  security headers + CORS, and a `pip-audit` CI job. Remaining residuals tracked
+  under "Service hardening" below (distributed quotas; move preview/analyze off
+  the request path; container memory limits).
 - **Front end for the service** — a small, secure web UI (upload GPX → choose
   profile/orientation/paper/OSM → live preview image → download PDF). Must be
   hardened for **public internet exposure** (ties into the security audit: auth,
@@ -54,6 +47,8 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Service hardening (future)
 
-- Auth / API keys + quotas.
+- Distributed (Redis-backed) rate limiting + quotas (current limiter is
+  per-process, so quotas are per-replica). Optional API-key auth already exists.
+- Move `/v1/preview` and `/v1/analyze` off the request path onto the job queue.
+- Per-container memory limits + bounded queue depth (see security-audit §8).
 - Metrics / observability.
-- Distributed (Redis-backed) rate limiting (current limiter is per-process).

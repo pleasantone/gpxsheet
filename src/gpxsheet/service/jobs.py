@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import uuid
 from dataclasses import asdict, dataclass
 from typing import Protocol
@@ -24,6 +25,8 @@ from . import settings
 from .models import GenerateParams
 from .render import render_pdf_bytes
 from .storage import Storage
+
+log = logging.getLogger(__name__)
 
 # --- broker (StubBroker unless a Redis URL is configured) -------------------
 _redis_url = settings.redis_url()
@@ -134,8 +137,13 @@ def process_job(
         key = f"{job_id}.pdf"
         storage.save(key, data)
         store.update(job_id, status="done", result_key=key)
-    except Exception as exc:  # surface as a failed job, not a crashed worker
-        store.update(job_id, status="error", error=f"{type(exc).__name__}: {exc}")
+    except ValueError as exc:
+        # Input problems (bad/empty GPX, rejected DTD) are safe to echo back.
+        store.update(job_id, status="error", error=str(exc))
+    except Exception:  # surface as a failed job, not a crashed worker
+        # Don't leak internals (paths, Overpass URLs, stack frames) to clients.
+        log.exception("render job %s failed", job_id)
+        store.update(job_id, status="error", error="internal render error")
 
 
 class TaskRunner(Protocol):

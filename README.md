@@ -112,6 +112,15 @@ uvicorn gpxsheet.service.asgi:app        # worker not needed in dev mode
 Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
 `gpxsheet/service/settings.py`).
 
+**Before exposing the service to the public internet, read
+[docs/security-audit.md](docs/security-audit.md).** Key hardening knobs:
+`GPXSHEET_API_KEYS` (comma-separated; enables `X-API-Key`/`Bearer` auth + per-key
+rate limits), `GPXSHEET_RATE_LIMIT_PER_MIN`, `GPXSHEET_MAX_UPLOAD_BYTES`,
+`GPXSHEET_MAX_POINTS`, `GPXSHEET_ALLOW_OSM` (set `0` to block outbound Overpass
+calls), `GPXSHEET_CORS_ORIGINS`, `GPXSHEET_ENABLE_HSTS`, and the MinIO
+credentials (the prod path refuses to boot on the `minioadmin` defaults). The
+service must run behind a TLS-terminating reverse proxy.
+
 ## License
 
 GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) — see
