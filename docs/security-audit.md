@@ -60,6 +60,11 @@ Result downloads (`/v1/jobs/{id}/result`) require auth when keys are configured,
 so rendered PDFs aren't world-readable by job ID. Job IDs remain unguessable
 (`uuid4`), acting as a capability when auth is disabled.
 
+**Object-level authorization (BOLA):** when keys are configured, a job records the
+identity that created it and `GET /v1/jobs/{id}` and `.../result` return `404`
+(not `403`, so IDs aren't confirmable) to any other key. The result cache is also
+keyed by identity, so identical inputs from different keys never share a job.
+
 > **Deployment:** for a public deployment, set `GPXSHEET_API_KEYS`. Distributed
 > (Redis-backed) quotas are still future work — the limiter is per-process, so
 > behind multiple API replicas the effective limit is `replicas × limit`.
@@ -125,11 +130,12 @@ future browser front end — never `*` with credentials.
 - Render jobs run off the request path (Dramatiq) with a 20-minute `time_limit`
   and `max_retries=0`.
 - The point cap (§3) rejects oversized routes early.
-- **Residual:** `/v1/analyze` and `/v1/preview` run **synchronously** on the
-  request worker, and the dev/eager path runs renders inline — a slow route can
-  occupy a request worker. The byte + point caps bound this; for heavy public
-  use, move preview/analyze onto the queue too, and set per-container memory
-  limits (e.g. compose `mem_limit`) plus a bounded queue.
+- Every operation (render, analyze, validate) is now a queued job, so no request
+  worker is held for the slow work on the prod path.
+- **Residual:** the dev/eager path still runs jobs inline — a slow route can
+  occupy a request worker there. The byte + point caps bound this; for heavy
+  public use, set per-container memory limits (e.g. compose `mem_limit`) plus a
+  bounded queue.
 
 > **Deployment:** cap worker memory at the container level; run multiple workers
 > behind a bounded queue; put a reverse-proxy request-body limit in front as a

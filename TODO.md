@@ -49,6 +49,5 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 - Distributed (Redis-backed) rate limiting + quotas (current limiter is
   per-process, so quotas are per-replica). Optional API-key auth already exists.
-- Move `/v1/preview` and `/v1/analyze` off the request path onto the job queue.
 - Per-container memory limits + bounded queue depth (see security-audit §8).
 - Metrics / observability.

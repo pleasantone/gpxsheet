@@ -7,9 +7,9 @@ import time
 from collections import defaultdict
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, UploadFile
+from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import settings
@@ -21,9 +21,20 @@ from .jobs import (
     TaskRunner,
     prod_components,
 )
-from .models import GenerateParams, JobStatus
-from .render import analyze_to_dict, render_preview_bytes
+from .models import JobState, JobStatus, RenderForm, RenderParams, ReportForm, ReportParams
 from .storage import LocalStorage, Storage
+
+# Error responses we declare on endpoints so they show up in the OpenAPI schema.
+_UPLOAD_ERRORS = {
+    400: {"description": "Empty or non-GPX upload"},
+    413: {"description": "Upload or route too large"},
+    429: {"description": "Rate limit exceeded"},
+}
+_JOB_RESPONSES = {
+    200: {"model": JobStatus, "description": "Job already complete (returned as-is)"},
+    202: {"model": JobStatus, "description": "Job accepted and queued"},
+    **_UPLOAD_ERRORS,
+}
 
 # A real GPX document must contain a <gpx ...> root element. Cheap content sniff
 # so we reject non-GPX uploads before doing any parsing/rendering work.
@@ -46,7 +57,18 @@ class _RateLimiter:
         now = time.monotonic()
         recent = [t for t in self._hits[identity] if now - t < 60.0]
         if len(recent) >= self.limit:
-            raise HTTPException(status_code=429, detail="rate limit exceeded")
+            # Fixed 60s window: the oldest hit clears in (60 - its age) seconds.
+            retry_after = max(1, int(60.0 - (now - recent[0])))
+            raise HTTPException(
+                status_code=429,
+                detail="rate limit exceeded",
+                headers={
+                    "Retry-After": str(retry_after),
+                    "RateLimit-Limit": str(self.limit),
+                    "RateLimit-Remaining": "0",
+                    "RateLimit-Reset": str(retry_after),
+                },
+            )
         recent.append(now)
         self._hits[identity] = recent
 
@@ -80,8 +102,18 @@ def _bearer_token(authorization: str | None) -> str | None:
     return None
 
 
-def _cache_key(data: bytes, params: GenerateParams) -> str:
-    return hashlib.sha256(data + params.model_dump_json().encode()).hexdigest()
+def _cache_key(data: bytes, op: str, params: ReportParams, identity: str) -> str:
+    # Identity is part of the key so cross-tenant requests never share a job
+    # (each owner gets their own), which keeps per-job ownership consistent.
+    return hashlib.sha256(
+        data + b"\0" + op.encode() + b"\0" + identity.encode() + b"\0"
+        + params.model_dump_json().encode()
+    ).hexdigest()
+
+
+def _to_params(form: ReportParams, model: type) -> ReportParams:
+    """Extract the plain (queue-serializable) params from a multipart form body."""
+    return model(**{k: getattr(form, k) for k in model.model_fields})
 
 
 def default_components() -> tuple[JobStore, Storage, TaskRunner]:
@@ -172,58 +204,149 @@ def create_app(
         result_url = None
         if rec.status == "done" and rec.result_key:
             result_url = storage.url(rec.result_key) or f"/v1/jobs/{rec.id}/result"
-        return JobStatus(id=rec.id, status=rec.status, error=rec.error, result_url=result_url)
+        return JobStatus(
+            id=rec.id,
+            status=rec.status,
+            error=rec.error,
+            result_url=result_url,
+            content_type=rec.content_type,
+        )
+
+    def submit_job(
+        op: str, gpx: UploadFile, params: ReportParams, identity: str, response: Response
+    ) -> JobStatus:
+        """Shared create-a-job path for every POST endpoint.
+
+        Deduplicates by (GPX + op + params + identity); sets a ``Location`` header
+        to the job, and a status code of 200 for an already-finished job (e.g. a
+        cache hit or a synchronous dev render) or 202 for newly queued work.
+        """
+        data = read_gpx(gpx)
+        key = _cache_key(data, op, params, identity)
+        cached = store.get_cached(key)
+        if cached is not None:  # identical GPX + op + params already produced
+            rec = cached
+        else:
+            job_id = store.create(cache_key=key, owner=identity)
+            runner.submit(job_id, op, data, params)
+            rec = store.get(job_id)
+        status = to_status(rec)
+        response.headers["Location"] = f"/v1/jobs/{status.id}"
+        if status.status in (JobState.done, JobState.error):
+            response.status_code = 200
+        else:
+            response.status_code = 202
+            response.headers["Retry-After"] = "2"  # hint: poll the job in ~2s
+        return status
+
+    def require_visible(job_id: str, identity: str):
+        """Fetch a job, 404 if missing or (when auth is on) not owned by caller."""
+        rec = store.get(job_id)
+        # Hide others' jobs behind 404 (not 403) so IDs aren't confirmable.
+        if rec is None or (keys and rec.owner is not None and rec.owner != identity):
+            raise HTTPException(status_code=404, detail="unknown job")
+        return rec
 
     @app.get("/healthz")
     def healthz() -> dict:
+        """Liveness: the process is up."""
         return {"status": "ok"}
 
+    @app.get("/readyz", responses={503: {"description": "A backend is unreachable"}})
+    def readyz() -> dict:
+        """Readiness: the job store and result storage are reachable."""
+        if not (store.ready() and storage.ready()):
+            raise HTTPException(status_code=503, detail="not ready")
+        return {"status": "ready"}
+
     @app.post(
-        "/v1/jobs", status_code=202, response_model=JobStatus, dependencies=[Depends(rate_limited)]
+        "/v1/render", status_code=202, response_model=JobStatus,
+        responses=_JOB_RESPONSES, dependencies=[Depends(rate_limited)],
     )
-    def create_job(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> JobStatus:
-        data = read_gpx(gpx)
-        key = _cache_key(data, params)
-        cached = store.get_cached(key)
-        if cached is not None:  # identical GPX + params already rendered
-            return to_status(cached)
-        job_id = store.create(cache_key=key)
-        runner.submit(job_id, data, params)
-        return to_status(store.get(job_id))
+    def render(
+        body: Annotated[RenderForm, Form()],
+        response: Response,
+        identity: str = Depends(client_identity),
+    ) -> JobStatus:
+        """Render a map (layout x format) as a job."""
+        return submit_job("render", body.gpx, _to_params(body, RenderParams), identity, response)
 
-    @app.get("/v1/jobs/{job_id}", response_model=JobStatus, dependencies=[Depends(client_identity)])
-    def job_status(job_id: str) -> JobStatus:
-        rec = store.get(job_id)
-        if rec is None:
-            raise HTTPException(status_code=404, detail="unknown job")
-        return to_status(rec)
+    @app.post(
+        "/v1/analyze", status_code=202, response_model=JobStatus,
+        responses=_JOB_RESPONSES, dependencies=[Depends(rate_limited)],
+    )
+    def analyze(
+        body: Annotated[ReportForm, Form()],
+        response: Response,
+        identity: str = Depends(client_identity),
+    ) -> JobStatus:
+        """Analyze a route into a JSON report as a job."""
+        return submit_job("analyze", body.gpx, _to_params(body, ReportParams), identity, response)
 
-    @app.get("/v1/jobs/{job_id}/result", dependencies=[Depends(client_identity)])
-    def job_result(job_id: str):
-        rec = store.get(job_id)
-        if rec is None:
-            raise HTTPException(status_code=404, detail="unknown job")
+    @app.post(
+        "/v1/validate", status_code=202, response_model=JobStatus,
+        responses=_JOB_RESPONSES, dependencies=[Depends(rate_limited)],
+    )
+    def validate(
+        body: Annotated[ReportForm, Form()],
+        response: Response,
+        identity: str = Depends(client_identity),
+    ) -> JobStatus:
+        """Validate a route (fuel/unpaved/ferry) into a JSON report as a job."""
+        return submit_job("validate", body.gpx, _to_params(body, ReportParams), identity, response)
+
+    @app.get(
+        "/v1/jobs/{job_id}", response_model=JobStatus,
+        responses={404: {"description": "Unknown job"}},
+    )
+    def job_status(job_id: str, identity: str = Depends(client_identity)) -> JobStatus:
+        return to_status(require_visible(job_id, identity))
+
+    @app.get(
+        "/v1/jobs/{job_id}/result",
+        responses={
+            200: {"description": "The rendered artifact (PDF/PNG) or JSON report"},
+            303: {"description": "Redirect to a presigned download URL"},
+            304: {"description": "Not modified (matching If-None-Match)"},
+            404: {"description": "Unknown job"},
+            409: {"description": "Job failed"},
+            425: {"description": "Job not finished yet; poll the status URL"},
+        },
+    )
+    def job_result(
+        job_id: str,
+        request: Request,
+        identity: str = Depends(client_identity),
+    ):
+        rec = require_visible(job_id, identity)
+        if rec.status == "error":
+            raise HTTPException(status_code=409, detail=rec.error or "job failed")
         if rec.status != "done" or not rec.result_key:
-            raise HTTPException(status_code=409, detail=f"job is {rec.status}")
+            # Not ready: tell the client to keep polling the status resource.
+            raise HTTPException(
+                status_code=425,
+                detail=f"job is {rec.status}",
+                headers={"Retry-After": "2", "Location": f"/v1/jobs/{rec.id}"},
+            )
+
         external = storage.url(rec.result_key)
         if external:
             return RedirectResponse(external, status_code=303)
+
+        # Results are immutable (content-addressed), so they cache forever; the
+        # job id is a stable ETag for conditional requests.
+        etag = f'"{rec.id}"'
+        if request.headers.get("if-none-match") == etag:
+            return Response(status_code=304, headers={"ETag": etag})
+        content_type = rec.content_type or "application/octet-stream"
+        headers = {"ETag": etag, "Cache-Control": "public, max-age=31536000, immutable"}
+        # Stream maps as a download; serve JSON reports inline.
+        if content_type != "application/json":
+            filename = rec.download_name or rec.result_key
+            headers["Content-Disposition"] = f'attachment; filename="{filename}"'
         return Response(
-            content=storage.load(rec.result_key),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{job_id}.pdf"'},
+            content=storage.load(rec.result_key), media_type=content_type, headers=headers
         )
-
-    @app.post("/v1/analyze", dependencies=[Depends(rate_limited)])
-    def analyze(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> dict:
-        return analyze_to_dict(read_gpx(gpx), params)
-
-    @app.post("/v1/preview", dependencies=[Depends(rate_limited)])
-    def preview(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> Response:
-        # Synchronous: a whole-route thumbnail (no job/pagination) at the same
-        # resolution as a render.
-        png = render_preview_bytes(read_gpx(gpx), params)
-        return Response(content=png, media_type="image/png")
 
     return app
 

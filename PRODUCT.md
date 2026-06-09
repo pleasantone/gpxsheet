@@ -858,18 +858,26 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   and produces a PDF, degrading gracefully without the `osm` extra. Actual
   `twine upload` to PyPI is the maintainer's step (needs PyPI credentials).
 * **Milestone 5 — Web service: ✅ complete (verified live).** `gpxsheet.service`
-  is a FastAPI app (the `service` extra) exposing the engine over REST:
-  `POST /v1/jobs` (upload GPX + params → 202 job), `GET /v1/jobs/{id}`,
-  `.../result` (streams or 303 → presigned URL), `POST /v1/analyze`,
-  `POST /v1/preview` (synchronous non-paginated whole-route preview PNG —
-  stacked strip lanes), `/healthz`,
-  `/docs`. Slow renders run as background jobs (Dramatiq + Redis) with results in
-  MinIO; `process_job` is shared by an `EagerRunner` (dev/sync, in-memory + local
-  dir) and a `DramatiqRunner` (worker). Self-hosted via `docker-compose.yml`
+  is a FastAPI app (the `service` extra) exposing the engine over REST. Every
+  operation is an async job created via a typed POST: `/v1/render` (a map),
+  `/v1/analyze` and `/v1/validate` (JSON reports). All three return a job polled at
+  `GET /v1/jobs/{id}` (status + result `content_type`) and fetched at `.../result`
+  (streams the artifact or 303 → presigned URL); plus `/healthz` and `/docs`.
+  `/v1/render` takes `layout` ∈ {`portrait`, `landscape`, `preview`, `strip`} ×
+  `format` ∈ {`pdf`, `png`} (paginated layouts as PNG stack their pages into one
+  tall image; see `pdf.render_layout`/`render_pages_png`). An internal `op` string
+  (set per endpoint, not client-facing) routes the worker.
+  `process_job` is shared by an `EagerRunner` (dev/sync, in-memory + local dir) and
+  a `DramatiqRunner` (worker). Self-hosted via `docker-compose.yml`
   (api/worker/redis/minio; `python:3.13-slim`, geo wheels, no system GDAL).
-  Hardening: per-client rate limiting, upload-size cap, result caching (by GPX +
-  params hash), and presigned download URLs signed against a host-reachable
-  public endpoint (region pinned to avoid a GetBucketLocation round-trip).
+  Hardening: per-client rate limiting (with `Retry-After`/`RateLimit-*` headers),
+  upload-size cap, result caching (by GPX + op + params + identity hash),
+  per-identity job ownership (others get 404), and presigned download URLs signed
+  against a host-reachable public endpoint (region pinned to avoid a
+  GetBucketLocation round-trip). HTTP conventions: `202` + `Location` on submit
+  (`200` for an already-finished/cached job), `425` while a result isn't ready,
+  `409` on failure, immutable `ETag`/`Cache-Control` on results, and a `/readyz`
+  probe (Redis/MinIO reachable) alongside `/healthz`.
   **Verified live** via `docker compose up`: async submit → worker render →
   status `done` → external PDF download through the presigned URL, plus cache
   hits. Tests: dev path end-to-end via `TestClient` (incl. cache/cap/limit); the

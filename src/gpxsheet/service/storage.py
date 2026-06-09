@@ -22,6 +22,10 @@ class Storage(Protocol):
         """A directly fetchable URL, or None if the API should stream the bytes."""
         ...
 
+    def ready(self) -> bool:
+        """Whether the backend is reachable (for the readiness probe)."""
+        ...
+
 
 class LocalStorage:
     """Stores results as files under ``root``; no external URLs (API streams)."""
@@ -44,6 +48,9 @@ class LocalStorage:
 
     def url(self, key: str) -> str | None:
         return None
+
+    def ready(self) -> bool:
+        return self.root.is_dir()
 
 
 class MinioStorage:
@@ -125,3 +132,10 @@ class MinioStorage:
         return self._url_client.presigned_get_object(
             self._bucket, key, expires=timedelta(seconds=self._expiry)
         )
+
+    def ready(self) -> bool:
+        try:
+            self._ensure_bucket()
+            return True
+        except Exception:  # noqa: BLE001 - any connectivity failure -> not ready
+            return False

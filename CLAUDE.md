@@ -126,7 +126,16 @@ All planned and queued work is tracked in **[TODO.md](TODO.md)**.
 
 The web service is shipped and verified live; run it with
 `uvicorn gpxsheet.service.asgi:app` (dev) or `docker compose up`, worker
-`dramatiq gpxsheet.service.jobs`.
+`dramatiq gpxsheet.service.jobs`. Typed POST per operation (GPX + params as
+multipart **form fields** via `*Form` models): `/v1/render` (`RenderParams`:
+`layout` portrait|landscape|preview|strip × `format` pdf|png), `/v1/analyze`,
+`/v1/validate` (`ReportParams` → JSON); all create a job (`202`+`Location`, or
+`200` if already done) polled at `GET /v1/jobs/{id}` and fetched at `.../result`
+(`425` until ready, `409` on failure, immutable `ETag`). An internal `op` string
+(not client-facing) routes the worker. Jobs are owned by their creating identity
+(others 404 when keys configured). `/healthz` (live) + `/readyz` (deps reachable).
+The layout×format matrix is dispatched by `pdf.render_layout` (paginated PNGs
+stack pages via `render_pages_png`).
 
 ## Conventions
 
