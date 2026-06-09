@@ -54,6 +54,23 @@ jobs:
           python -m build
           twine check dist/*
 
+  docs:
+    # Build the docs site (strict) so broken links / autodoc / OpenAPI gen fail
+    # on PRs, the same way ReadTheDocs will build it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build docs
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[docs,service]"
+          mkdocs build --strict
+
   audit:
     # Fail the build on a known CVE in a runtime dependency.
     runs-on: ubuntu-latest

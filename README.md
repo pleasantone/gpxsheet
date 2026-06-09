@@ -12,6 +12,8 @@ one second and immediately understand what road they're on, what the next
 navigation decision is, how far away it is, what comes after, and where they are
 within the overall route.
 
+**Documentation:** [gpxsheet.readthedocs.io](https://gpxsheet.readthedocs.io) —
+library API, web API guide + interactive reference, and deployment notes.
 See [PRODUCT.md](PRODUCT.md) for the full design specification.
 
 ## Status
@@ -31,8 +33,8 @@ tank-bag PDF, and a publish-ready package.
   lanes, the default) or **landscape** (one strip/page); page mileage in the
   header, progress bar.
 - **Packaged** for `pip install gpxsheet`; PEP 561 typed.
-
-`validate` (CLI) is still a stub; a web service is future work.
+- **Web service** — a FastAPI app exposing the engine over REST (async jobs);
+  see the [Web service](#web-service) section and [docs/web-api.md](docs/web-api.md).
 
 ## Installation
 

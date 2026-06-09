@@ -38,3 +38,7 @@ htmlcov/
 cache/
 
 graphify-out/
+
+# MkDocs build output + generated OpenAPI schema
+site/
+docs/openapi.json

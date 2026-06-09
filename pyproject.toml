@@ -53,6 +53,14 @@ dev = [
     "twine>=5.0",
     "httpx2>=2.3",  # Starlette TestClient backend; httpx (0.x) is deprecated for it
 ]
+# Documentation site (MkDocs Material + mkdocstrings). Built on ReadTheDocs with
+# the `service` extra so the OpenAPI generation hook can import the FastAPI app.
+docs = [
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.26",
+    "mkdocs-swagger-ui-tag>=0.6",
+]
 
 [project.scripts]
 gpxsheet = "gpxsheet.cli:app"

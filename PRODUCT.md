@@ -813,7 +813,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 > This section records what is actually built and the engineering decisions made
 > while implementing the spec above. The sections above are the design intent;
 > this section is the as-built reality. Last updated: Phase 1 (milestones 1–5)
-> complete. Planned/queued work is tracked in [TODO.md](TODO.md).
+> complete. Planned/queued work is tracked in
+> [TODO.md](https://github.com/pleasantone/gpxsheet/blob/main/TODO.md).
 
 ## Milestone progress
 

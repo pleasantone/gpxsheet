@@ -2,7 +2,8 @@
 
 Scope: the GPXSheet library, CLI, and especially the FastAPI web service
 (`src/gpxsheet/service/`), reviewed against the Phase 2 audit checklist in
-[TODO.md](../TODO.md) ahead of public-internet exposure.
+[TODO.md](https://github.com/pleasantone/gpxsheet/blob/main/TODO.md) ahead of
+public-internet exposure.
 
 Date: 2026-06-08. Audited at version 0.1.0.
 

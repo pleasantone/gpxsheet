@@ -1,0 +1,61 @@
+site_name: GPXSheet
+site_description: GPX routes → glanceable, map-centric motorcycle tank-bag navigation
+repo_url: https://github.com/pleasantone/gpxsheet
+repo_name: pleasantone/gpxsheet
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: green
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: green
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+plugins:
+  - search
+  - swagger-ui-tag
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            heading_level: 2
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      base_path: ["."]
+      check_paths: true
+
+hooks:
+  - docs/hooks.py
+
+nav:
+  - Home: index.md
+  - Library API: library-api.md
+  - Web API:
+      - Guide: web-api.md
+      - API reference: web-api-reference.md
+  - Deployment & security: security-audit.md
+  - Design notes: design.md
