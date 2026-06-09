@@ -14,22 +14,22 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
+from . import colors
 from .layout import TURN_STYLE_STYLIZED, StripLayout, build_strip_layout
 from .models import Route
 
 # Marker styling by kind: (color, matplotlib marker, z-order).
 _MARKER_STYLE = {
-    "start": ("#1b7837", "o", 5),
-    "end": ("#762a83", "s", 5),
-    "decision": ("#d6312b", "o", 6),
-    "roundabout": ("#d6312b", "o", 6),  # drawn as a ring glyph (see draw_strip)
-    "fuel": ("#2166ac", "D", 6),
-    "reassurance": ("#7f7f7f", "|", 4),
+    "start": (colors.START, "o", 5),
+    "end": (colors.END, "s", 5),
+    "decision": (colors.DECISION, "o", 6),
+    "roundabout": (colors.DECISION, "o", 6),  # drawn as a ring glyph (see draw_strip)
+    "fuel": (colors.FUEL, "D", 6),
+    "reassurance": (colors.REASSURANCE, "|", 4),
 }
 
 # Ghosted "road not taken" stubs at a junction.
 _STUB_LEN = 1.6  # schematic units (~ MIN_SEGMENT_LEN); short, subordinate to the route
-_STUB_COLOR = "#bbbbbb"
 
 # Label-placement tuning (display pixels at figure dpi).
 _OFFSET = 30.0  # initial label offset from its marker, along the outward normal
@@ -86,14 +86,14 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
     xs = [p[0] for p in layout.path]
     ys = [p[1] for p in layout.path]
     _draw_branch_stubs(ax, layout)  # ghosted, behind the route line
-    ax.plot(xs, ys, color="#333333", linewidth=4, solid_capstyle="round", zorder=2)
+    ax.plot(xs, ys, color=colors.ROUTE_LINE, linewidth=4, solid_capstyle="round", zorder=2)
 
     for m in layout.markers:
         if m.kind == "roundabout":  # open ring + centre dot
-            ax.plot(m.x, m.y, marker="o", mfc="none", mec="#d6312b", ms=14, mew=2.0, zorder=6)
-            ax.plot(m.x, m.y, marker="o", color="#d6312b", markersize=4, zorder=7)
+            ax.plot(m.x, m.y, marker="o", mfc="none", mec=colors.DECISION, ms=14, mew=2.0, zorder=6)
+            ax.plot(m.x, m.y, marker="o", color=colors.DECISION, markersize=4, zorder=7)
             continue
-        color, marker, z = _MARKER_STYLE.get(m.kind, ("#000000", "o", 5))
+        color, marker, z = _MARKER_STYLE.get(m.kind, (colors.MARKER_FALLBACK, "o", 5))
         size = 11 if m.kind in ("start", "end") else (9 if m.kind == "decision" else 7)
         ax.plot(m.x, m.y, marker=marker, color=color, markersize=size, zorder=z)
 
@@ -112,7 +112,7 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
     if draw_ribbon and layout.ribbon:
         ax.text(
             0.5, -0.02, "  ›  ".join(layout.ribbon), transform=ax.transAxes,
-            ha="center", va="top", fontsize=8, color="#444444",
+            ha="center", va="top", fontsize=8, color=colors.TEXT_LABEL,
         )
 
 
@@ -141,9 +141,10 @@ def _draw_branch_stubs(ax, layout: StripLayout) -> None:
             # +relative_angle is a right turn (clockwise) == negative in math coords
             ang = base - math.radians(b.relative_angle)
             ex, ey = m.x + _STUB_LEN * math.cos(ang), m.y + _STUB_LEN * math.sin(ang)
-            ax.plot([m.x, ex], [m.y, ey], color=_STUB_COLOR, lw=1.5,
+            ax.plot([m.x, ex], [m.y, ey], color=colors.BRANCH_STUB, lw=1.5,
                     ls=(0, (2, 2)), zorder=1, solid_capstyle="round")
-            ax.plot([ex], [ey], marker="o", mfc="white", mec=_STUB_COLOR, ms=3, mew=1.0, zorder=1)
+            ax.plot([ex], [ey], marker="o", mfc="white", mec=colors.BRANCH_STUB,
+                    ms=3, mew=1.0, zorder=1)
 
 
 def _marker_label(m) -> str:
@@ -191,7 +192,7 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
 
     texts = []
     for m in markers:
-        color, _, _ = _MARKER_STYLE.get(m.kind, ("#000000", "o", 5))
+        color, _, _ = _MARKER_STYLE.get(m.kind, (colors.MARKER_FALLBACK, "o", 5))
         weight = "bold" if m.kind in ("decision", "roundabout") else "normal"
         t = ax.text(
             m.x, m.y, _marker_label(m), ha="center", va="center", fontsize=7,
@@ -298,5 +299,5 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
             (mdx, mdy), (edx, edy) = inv((mx, my)), inv((ex, ey))
             ax.plot(
                 [mdx, edx], [mdy, edy],
-                linestyle=(0, (2, 2)), color="#999999", linewidth=0.6, zorder=3,
+                linestyle=(0, (2, 2)), color=colors.LEADER_LINE, linewidth=0.6, zorder=3,
             )
