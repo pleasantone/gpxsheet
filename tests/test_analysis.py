@@ -204,14 +204,21 @@ def test_dense_route_not_sparse(l_route_file):
     assert not looks_sparse(load_route(l_route_file))
 
 
-def test_analyze_skips_osm_for_sparse_route():
+def test_analyze_skips_osm_for_sparse_route(monkeypatch):
     import pytest
 
+    import gpxsheet.enrich as enrich
     from gpxsheet.analysis import analyze_route
     from gpxsheet.models import GeoPoint, Route
 
+    # Pretend the osm extra is installed so we hit the sparse branch regardless of
+    # the test environment (the "not installed" check comes first). The sparse
+    # short-circuit warns and returns before importing osmnx, so this is safe in a
+    # core-only install too.
+    monkeypatch.setattr(enrich, "osm_available", lambda: True)
+
     # Straight sparse route; use_osm=True must warn and NOT hit the network
-    # (looks_sparse short-circuits before importing enrich).
+    # (looks_sparse short-circuits before calling enrich).
     sparse = Route(
         name="s",
         points=[GeoPoint(0, 0.0), GeoPoint(0, 0.5), GeoPoint(0, 1.0)],
