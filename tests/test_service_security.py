@@ -54,7 +54,7 @@ def test_doctype_upload_fails_job(tmp_path):
         '<gpx><rte><rtept lat="1" lon="2"/><rtept lat="3" lon="4"/></rte></gpx>',
         encoding="utf-8",
     )
-    body = _post(client, "/v1/jobs?use_osm=false", gpx).json()
+    body = _post(client, "/v1/jobs", gpx).json()
     assert body["status"] == "error"
     assert "DTD/entity" in body["error"]
 
@@ -65,7 +65,7 @@ def test_doctype_upload_fails_job(tmp_path):
 def test_non_gpx_upload_rejected(tmp_path):
     client = _client(tmp_path)
     r = client.post(
-        "/v1/jobs?use_osm=false",
+        "/v1/jobs",
         files={"gpx": ("note.txt", b"just some text, not xml", "text/plain")},
     )
     assert r.status_code == 400
@@ -73,17 +73,7 @@ def test_non_gpx_upload_rejected(tmp_path):
 
 def test_point_cap_rejects_monster_route(tmp_path, l_route_file):
     client = _client(tmp_path, max_points=5)  # l_route_file has many more
-    assert _post(client, "/v1/jobs?use_osm=false", l_route_file).status_code == 413
-
-
-# --- OSM egress gate --------------------------------------------------------
-
-
-def test_osm_disabled_rejects_osm_request(tmp_path, l_route_file):
-    client = _client(tmp_path, allow_osm=False)
-    assert _post(client, "/v1/jobs?use_osm=true", l_route_file).status_code == 400
-    # ...but offline rendering still works.
-    assert _post(client, "/v1/jobs?use_osm=false", l_route_file).status_code == 202
+    assert _post(client, "/v1/jobs", l_route_file).status_code == 413
 
 
 # --- authentication & per-key rate limiting ---------------------------------
@@ -91,9 +81,9 @@ def test_osm_disabled_rejects_osm_request(tmp_path, l_route_file):
 
 def test_api_key_required_when_configured(tmp_path, l_route_file):
     client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
-    assert _post(client, "/v1/jobs?use_osm=false", l_route_file).status_code == 401
+    assert _post(client, "/v1/jobs", l_route_file).status_code == 401
     ok = _post(
-        client, "/v1/jobs?use_osm=false", l_route_file, headers={"X-API-Key": "s3cret"}
+        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "s3cret"}
     )
     assert ok.status_code == 202
 
@@ -101,7 +91,7 @@ def test_api_key_required_when_configured(tmp_path, l_route_file):
 def test_bearer_token_accepted(tmp_path, l_route_file):
     client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
     ok = _post(
-        client, "/v1/jobs?use_osm=false", l_route_file, headers={"Authorization": "Bearer s3cret"}
+        client, "/v1/jobs", l_route_file, headers={"Authorization": "Bearer s3cret"}
     )
     assert ok.status_code == 202
 
@@ -109,7 +99,7 @@ def test_bearer_token_accepted(tmp_path, l_route_file):
 def test_result_requires_api_key(tmp_path, l_route_file):
     client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
     hdr = {"X-API-Key": "s3cret"}
-    job_id = _post(client, "/v1/jobs?use_osm=false", l_route_file, headers=hdr).json()["id"]
+    job_id = _post(client, "/v1/jobs", l_route_file, headers=hdr).json()["id"]
     assert client.get(f"/v1/jobs/{job_id}/result").status_code == 401
     assert client.get(f"/v1/jobs/{job_id}/result", headers=hdr).status_code == 200
 
@@ -119,14 +109,14 @@ def test_rate_limit_is_per_key(tmp_path, l_route_file):
         tmp_path, api_keys=frozenset({"a", "b"}), rate_limit_per_minute=1
     )
     assert _post(
-        client, "/v1/jobs?use_osm=false", l_route_file, headers={"X-API-Key": "a"}
+        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "a"}
     ).status_code == 202
     assert _post(
-        client, "/v1/jobs?use_osm=false", l_route_file, headers={"X-API-Key": "a"}
+        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "a"}
     ).status_code == 429
     # A different key has its own budget.
     assert _post(
-        client, "/v1/jobs?use_osm=false", l_route_file, headers={"X-API-Key": "b"}
+        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "b"}
     ).status_code == 202
 
 

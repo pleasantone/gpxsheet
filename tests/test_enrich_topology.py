@@ -6,12 +6,6 @@ bearings, junction=roundabout) without hitting the live OSM API.
 
 from __future__ import annotations
 
-import pytest
-
-from gpxsheet.enrich import osm_available
-
-pytestmark = pytest.mark.skipif(not osm_available(), reason="requires the osm extra")
-
 
 def _straight_north_route(miles: float = 1.4):
     """A route running due north through (0, 0) at its midpoint."""

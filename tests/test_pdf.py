@@ -153,14 +153,14 @@ def test_render_preview_is_single_growing_image(tmp_path):
 
 def test_preview_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli_preview.png"
-    result = runner.invoke(app, ["preview", str(l_route_file), "-o", str(out), "--no-osm"])
+    result = runner.invoke(app, ["preview", str(l_route_file), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert out.read_bytes()[:8] == PNG_MAGIC
 
 
 def test_generate_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli.pdf"
-    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out), "--no-osm"])
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert out.exists()
     assert out.read_bytes()[:4] == PDF_MAGIC

@@ -77,12 +77,12 @@ so rendered PDFs aren't world-readable by job ID. Job IDs remain unguessable
 
 OSM enrichment (`enrich.py` via osmnx) issues outbound HTTP to a fixed Overpass
 endpoint; the client cannot inject the URL, so there is no classic SSRF
-surface. The residual risk is *amplification*: `use_osm=true` is
-client-controllable and triggers slow outbound work.
+surface. The residual risk is *amplification*: enrichment runs on every request
+and a large/dense route triggers slow outbound work.
 
 **Mitigations:** rate limiting + the async job queue + a 20-minute Dramatiq
-`time_limit` bound it, and `GPXSHEET_ALLOW_OSM=0` now lets an operator disable
-client-requested OSM entirely (returns `400`). 
+`time_limit` + the upload size/point caps bound it. Operators that must prevent
+outbound OSM should restrict egress at the network layer.
 
 > **Deployment:** restrict the container's egress (network policy / firewall) to
 > the Overpass and OSM tile/Nominatim hosts you actually use.
@@ -155,7 +155,7 @@ needs only Redis + MinIO; no extra capabilities are granted.
 - [ ] Serve behind TLS; set `GPXSHEET_ENABLE_HSTS=1` and
       `GPXSHEET_MINIO_SECURE=1`.
 - [ ] Set `GPXSHEET_CORS_ORIGINS` only if a browser front end needs it.
-- [ ] Decide on `GPXSHEET_ALLOW_OSM` and restrict container egress.
+- [ ] Restrict container egress to the Overpass/OSM hosts you use.
 - [ ] Set a reverse-proxy body-size limit and per-container memory limits.
 - [ ] Tune `GPXSHEET_RATE_LIMIT_PER_MIN`, `GPXSHEET_MAX_UPLOAD_BYTES`,
       `GPXSHEET_MAX_POINTS` for your traffic.

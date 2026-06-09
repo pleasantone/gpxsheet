@@ -30,15 +30,14 @@ tank-bag PDF, and a publish-ready package.
 - **Tank-bag PDF** — route-aware pagination; **portrait** roadbook (stacked strip
   lanes, the default) or **landscape** (one strip/page); page mileage in the
   header, progress bar.
-- **Packaged** for `pip install gpxsheet` (+ `[osm]` extra); PEP 561 typed.
+- **Packaged** for `pip install gpxsheet`; PEP 561 typed.
 
 `validate` (CLI) is still a stub; a web service is future work.
 
 ## Installation
 
 ```bash
-pip install gpxsheet            # core (GPX -> strip / PDF)
-pip install "gpxsheet[osm]"     # + OpenStreetMap enrichment (heavy geo stack)
+pip install gpxsheet
 ```
 
 ### Development
@@ -46,22 +45,22 @@ pip install "gpxsheet[osm]"     # + OpenStreetMap enrichment (heavy geo stack)
 ```bash
 git clone <repo-url> gpxsheet && cd gpxsheet
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev,osm]"             # drop ,osm to skip the OSM stack
-python -m build && twine check dist/*   # build + check the distribution
+pip install -e ".[dev]"                  # add ,service for the web service stack
+python -m build && twine check dist/*    # build + check the distribution
 # publish (maintainer only): twine upload dist/*
 ```
 
 ## Usage
 
-OpenStreetMap enrichment and the portrait roadbook layout are **on by default**;
-both can be turned off, and OSM degrades gracefully (to geometry-only, with a
-warning) when the `osm` extra is missing, the route is too sparse to follow
-roads, or the live Overpass query fails.
+Decisions and segments come from OpenStreetMap road topology (durable road-name
+changes, named roads, fuel). It degrades to the geometry baseline *automatically*
+(with a warning) when the route is too sparse to follow roads or the live
+Overpass query fails. The portrait roadbook layout is the default; pass
+`--landscape` for one strip/page.
 
 ```bash
-gpxsheet generate route.gpx -o route.pdf            # portrait roadbook + OSM (defaults)
+gpxsheet generate route.gpx -o route.pdf            # portrait roadbook (default)
 gpxsheet generate route.gpx --landscape -o route.pdf
-gpxsheet generate route.gpx --no-osm -o route.pdf   # geometry-only (no network)
 #   portrait knobs: --lanes N (lanes/page) --lane-decisions M (decisions/lane)
 
 gpxsheet analyze route.gpx                           # text analysis
@@ -69,16 +68,17 @@ gpxsheet strip   route.gpx -o route_strip.png        # single schematic strip PN
 ```
 
 OSM queries the live Overpass API (seconds for rural routes, up to minutes for
-dense urban; cached by `osmnx`). The end-to-end query is covered by an
-integration test gated behind `GPXSHEET_LIVE_OSM=1` so CI/offline stay network-free.
+dense urban; cached by `osmnx`). The test suite is deterministic and offline: it
+replays committed Overpass responses from `tests/fixtures/osm_cache` (re-record
+with `GPXSHEET_RECORD_OSM=1`; see `tests/fixtures/README.md`).
 
 ### Library
 
 ```python
 from gpxsheet import generate_pdf
 
-# Library defaults are landscape + geometry-only (predictable/offline); pass
-# use_osm=True and/or orientation="portrait" to match the CLI product defaults.
+# The library defaults to landscape; pass orientation="portrait" for the CLI
+# product default.
 generate_pdf("route.gpx", "route.pdf", profile="sport-touring", fuel_range=180)
 ```
 
@@ -116,8 +116,7 @@ Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
 [docs/security-audit.md](docs/security-audit.md).** Key hardening knobs:
 `GPXSHEET_API_KEYS` (comma-separated; enables `X-API-Key`/`Bearer` auth + per-key
 rate limits), `GPXSHEET_RATE_LIMIT_PER_MIN`, `GPXSHEET_MAX_UPLOAD_BYTES`,
-`GPXSHEET_MAX_POINTS`, `GPXSHEET_ALLOW_OSM` (set `0` to block outbound Overpass
-calls), `GPXSHEET_CORS_ORIGINS`, `GPXSHEET_ENABLE_HSTS`, and the MinIO
+`GPXSHEET_MAX_POINTS`, `GPXSHEET_CORS_ORIGINS`, `GPXSHEET_ENABLE_HSTS`, and the MinIO
 credentials (the prod path refuses to boot on the `minioadmin` defaults). The
 service must run behind a TLS-terminating reverse proxy.
 

@@ -204,20 +204,13 @@ def test_dense_route_not_sparse(l_route_file):
     assert not looks_sparse(load_route(l_route_file))
 
 
-def test_analyze_skips_osm_for_sparse_route(monkeypatch):
+def test_analyze_skips_osm_for_sparse_route():
     import pytest
 
-    import gpxsheet.enrich as enrich
     from gpxsheet.analysis import analyze_route
     from gpxsheet.models import GeoPoint, Route
 
-    # Pretend the osm extra is installed so we hit the sparse branch regardless of
-    # the test environment (the "not installed" check comes first). The sparse
-    # short-circuit warns and returns before importing osmnx, so this is safe in a
-    # core-only install too.
-    monkeypatch.setattr(enrich, "osm_available", lambda: True)
-
-    # Straight sparse route; use_osm=True must warn and NOT hit the network
+    # Straight sparse route; analysis must warn and NOT hit the network
     # (looks_sparse short-circuits before calling enrich).
     sparse = Route(
         name="s",
@@ -225,22 +218,9 @@ def test_analyze_skips_osm_for_sparse_route(monkeypatch):
         distances_m=[0.0, 30 * 1609.344, 60 * 1609.344],
     )
     with pytest.warns(UserWarning, match="sparse"):
-        analyze_route(sparse, profile="sport-touring", use_osm=True)
+        analyze_route(sparse, profile="sport-touring")
     # falls back to geometry-only: a straight line has no decisions
     assert sparse.decision_points == []
-
-
-def test_analyze_falls_back_when_osm_unavailable(l_route_file, monkeypatch):
-    import pytest
-
-    import gpxsheet
-    import gpxsheet.enrich as enrich
-
-    monkeypatch.setattr(enrich, "osm_available", lambda: False)
-    with pytest.warns(UserWarning, match="not installed"):
-        route = gpxsheet.analyze(str(l_route_file), use_osm=True)
-    # geometry-only fallback -> generic "Leg N" segments, no road names
-    assert all(s.name.startswith("Leg ") for s in route.segments)
 
 
 def test_analyze_falls_back_when_osm_query_fails(l_route_file, monkeypatch):
@@ -249,14 +229,12 @@ def test_analyze_falls_back_when_osm_query_fails(l_route_file, monkeypatch):
     import gpxsheet
     import gpxsheet.enrich as enrich
 
-    monkeypatch.setattr(enrich, "osm_available", lambda: True)
-
     def boom(*args, **kwargs):
         raise RuntimeError("overpass unreachable")
 
     monkeypatch.setattr(enrich, "enrich_route", boom)
     with pytest.warns(UserWarning, match="OSM enrichment failed"):
-        route = gpxsheet.analyze(str(l_route_file), use_osm=True)
+        route = gpxsheet.analyze(str(l_route_file))
     assert all(s.name.startswith("Leg ") for s in route.segments)
 
 

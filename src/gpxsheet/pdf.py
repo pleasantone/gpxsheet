@@ -253,7 +253,6 @@ def generate_pdf(
     *,
     profile: str = "sport-touring",
     fuel_range: float | None = None,
-    use_osm: bool = False,
     turn_style: str = TURN_STYLE_STYLIZED,
     orientation: str = "landscape",
     paper: str = DEFAULT_PAPER,
@@ -264,9 +263,7 @@ def generate_pdf(
     from .analysis import analyze_route
     from .gpx import load_route
 
-    route = analyze_route(
-        load_route(gpx_file), profile=profile, fuel_range=fuel_range, use_osm=use_osm
-    )
+    route = analyze_route(load_route(gpx_file), profile=profile, fuel_range=fuel_range)
     render_pdf(
         route,
         output_file,
@@ -282,8 +279,11 @@ def generate_pdf(
 # Preview: the whole route as one un-paginated column of strip lanes (a single
 # image, not a multi-page PDF) so the user can eyeball the entire route at once.
 PREVIEW_WIDTH_IN = 8.5
-PREVIEW_LANE_HEIGHT_IN = 1.7  # per stacked lane; good on-screen size at 150 dpi
+PREVIEW_LANE_HEIGHT_IN = 1.7  # per stacked lane; good on-screen size at PREVIEW_DPI
 PREVIEW_HEADER_IN = 0.5
+# Raster resolution for the preview PNG -- the same value the strip renderer uses,
+# so the preview matches the rest of the product's output (not a separate knob).
+PREVIEW_DPI = 150
 
 
 def render_preview(
@@ -292,7 +292,6 @@ def render_preview(
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     decisions_per_lane: int = DECISIONS_PER_LANE,
-    dpi: int = 150,
 ) -> Path:
     """Render the whole route as a single image of stacked strip lanes.
 
@@ -339,7 +338,7 @@ def render_preview(
             turn_style=turn_style,
         )
 
-    fig.savefig(output_path, dpi=dpi, facecolor="white")
+    fig.savefig(output_path, dpi=PREVIEW_DPI, facecolor="white")
     plt.close(fig)
     return output_path
 
@@ -350,20 +349,15 @@ def generate_preview(
     *,
     profile: str = "sport-touring",
     fuel_range: float | None = None,
-    use_osm: bool = False,
     turn_style: str = TURN_STYLE_STYLIZED,
     decisions_per_lane: int = DECISIONS_PER_LANE,
-    dpi: int = 150,
 ) -> str:
     """Load, analyze, and render a route to a non-paginated multi-strip preview image."""
     from .analysis import analyze_route
     from .gpx import load_route
 
-    route = analyze_route(
-        load_route(gpx_file), profile=profile, fuel_range=fuel_range, use_osm=use_osm
-    )
+    route = analyze_route(load_route(gpx_file), profile=profile, fuel_range=fuel_range)
     render_preview(
-        route, output_file,
-        turn_style=turn_style, decisions_per_lane=decisions_per_lane, dpi=dpi,
+        route, output_file, turn_style=turn_style, decisions_per_lane=decisions_per_lane
     )
     return str(output_file)

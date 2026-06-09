@@ -1,12 +1,8 @@
-"""Optional OpenStreetMap enrichment.
+"""OpenStreetMap enrichment.
 
-This is the "OSM Enrichment" pipeline stage from PRODUCT.md. It is optional and
-requires the heavy geo stack installed via the ``osm`` extra::
-
-    pip install "gpxsheet[osm]"
-
-When available it derives navigation structure from OSM topology rather than raw
-geometry, which is what PRODUCT.md's significance scoring is actually about:
+This is the "OSM Enrichment" pipeline stage from PRODUCT.md. It derives navigation
+structure from OSM topology rather than raw geometry, which is what PRODUCT.md's
+significance scoring is actually about:
 
 * decision points come from *durable* road-name changes (PRODUCT.md Rule Set 1):
   the route is sampled for road names, names that don't persist for
@@ -18,8 +14,7 @@ geometry, which is what PRODUCT.md's significance scoring is actually about:
 
 This avoids the core failure of geometry-only detection, which cannot tell a
 curving road from a junction and so floods twisty sport-touring roads with false
-decisions. The geometry-only analysis still works without the extra (it just
-over-detects on twisty roads). Road/fuel queries hit the live Overpass API.
+decisions. Road/fuel queries hit the live Overpass API (via osmnx).
 """
 
 from __future__ import annotations
@@ -49,25 +44,6 @@ _HIGHWAY_RE = re.compile(
     r"\b[A-Z]{1,2}-\d+\b",
     re.IGNORECASE,
 )
-
-
-def osm_available() -> bool:
-    """True if the optional OSM dependency (osmnx) is importable."""
-    try:
-        import osmnx  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-def _require_osm():
-    try:
-        import osmnx as ox
-    except ImportError as exc:  # pragma: no cover - exercised only without extra
-        raise ImportError(
-            'OSM enrichment requires the optional "osm" extra: pip install "gpxsheet[osm]"'
-        ) from exc
-    return ox
 
 
 def _edge_value(edges_gdf, edge_key, attr: str) -> str | None:
@@ -138,7 +114,7 @@ def enrich_route(
     reuses the road-name nearest-edge lookups, so it's free). ``include_hazards``
     additionally runs a ferry query (an extra Overpass call) for :mod:`validate`.
     """
-    ox = _require_osm()
+    import osmnx as ox
     import shapely.geometry as sg
 
     total_m = route.length_m

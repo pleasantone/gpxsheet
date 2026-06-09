@@ -41,11 +41,6 @@ def api_keys() -> frozenset[str]:
     return frozenset(k.strip() for k in raw.split(",") if k.strip())
 
 
-def allow_osm() -> bool:
-    """Whether clients may request live OSM enrichment (outbound Overpass calls)."""
-    return os.getenv("GPXSHEET_ALLOW_OSM", "1").lower() not in ("0", "false", "no")
-
-
 def cors_origins() -> list[str]:
     """Allowed CORS origins (comma-separated). Empty = same-origin only."""
     raw = os.getenv("GPXSHEET_CORS_ORIGINS", "")

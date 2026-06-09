@@ -10,7 +10,6 @@ class GenerateParams(BaseModel):
 
     profile: str = "sport-touring"
     fuel_range: float | None = None
-    use_osm: bool = True
     turn_style: str = Field("stylized", pattern="^(stylized|faithful)$")
     orientation: str = Field("portrait", pattern="^(portrait|landscape)$")
     paper: str = Field("letter", pattern="^(letter|a4)$")

@@ -15,8 +15,9 @@ def test_version_flag():
 
 
 def test_analyze_command_runs(l_route_file):
-    # --no-osm keeps the test offline (OSM is the CLI default).
-    result = runner.invoke(app, ["analyze", str(l_route_file), "--fuel-range", "2", "--no-osm"])
+    # The offshore L-route returns no OSM data, so enrichment falls back to
+    # geometry-only -- offline and deterministic via the committed cache.
+    result = runner.invoke(app, ["analyze", str(l_route_file), "--fuel-range", "2"])
     assert result.exit_code == 0
     assert "Route Length:" in result.stdout
     assert "Decision Points:" in result.stdout
@@ -27,7 +28,7 @@ def test_analyze_command_runs(l_route_file):
 
 def test_analyze_minimalist_profile(l_route_file):
     result = runner.invoke(
-        app, ["analyze", str(l_route_file), "--profile", "minimalist", "--no-osm"]
+        app, ["analyze", str(l_route_file), "--profile", "minimalist"]
     )
     assert result.exit_code == 0
     assert "Fuel:" not in result.stdout
@@ -46,22 +47,22 @@ def test_analyze_missing_file_errors():
 
 def test_generate_command_writes_pdf(l_route_file, tmp_path):
     out = tmp_path / "g.pdf"
-    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out), "--no-osm"])
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert out.exists() and out.read_bytes()[:4] == b"%PDF"
 
 
 def test_validate_command_ok(l_route_file):
-    # No fuel-range and --no-osm -> no warnings -> exit 0.
-    result = runner.invoke(app, ["validate", str(l_route_file), "--no-osm"])
+    # No fuel-range; the offshore route yields no OSM data -> no warnings -> exit 0.
+    result = runner.invoke(app, ["validate", str(l_route_file)])
     assert result.exit_code == 0, result.output
     assert "Validate:" in result.stdout
-    assert "Unpaved check skipped" in result.stdout  # OSM off
+    assert "Unpaved check skipped" in result.stdout  # no OSM data for an offshore route
 
 
 def test_validate_command_warns_on_fuel_gap(l_route_file):
     # Tiny fuel range -> the route exceeds it -> warning -> exit 1.
-    result = runner.invoke(app, ["validate", str(l_route_file), "--no-osm", "--fuel-range", "1"])
+    result = runner.invoke(app, ["validate", str(l_route_file), "--fuel-range", "1"])
     assert result.exit_code == 1
     assert "⚠" in result.stdout
     assert "fuel gap" in result.stdout.lower() or "range" in result.stdout.lower()
