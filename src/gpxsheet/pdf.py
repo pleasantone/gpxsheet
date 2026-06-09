@@ -1,9 +1,9 @@
 """PDF generation.
 
-Composes the tank-bag document: one landscape page (US Letter or A4) per route-aware
-page (see :mod:`gpxsheet.paginate`), each with a header, the schematic map strip
-(Map Zone), a large-text cue zone (NEXT / AFTER / FUEL / TOTAL), and a progress
-indicator. Built with matplotlib (vector PDF via ``PdfPages``), reusing
+Composes the tank-bag document: a landscape or portrait pages
+(see :mod:`gpxsheet.paginate`), with a header and a schematic map strip
+(Map Zone).
+Built with matplotlib (vector PDF via ``PdfPages``), reusing
 :func:`gpxsheet.strip.draw_strip` for the map.
 """
 
@@ -165,7 +165,7 @@ def _compose_page(
     fig, route, start, end, page_no, page_count, total, turn_style,
     page_w_in, page_h_in,
 ) -> None:
-    """Lay out a single page (header, map strip, cue zone, progress) into ``fig``.
+    """Lay out a single page (header, map strip) into ``fig``.
 
     ``page_w_in``/``page_h_in`` are the physical page width/height in inches for
     the rendered (landscape) orientation, used to keep the strip's aspect ratio.
