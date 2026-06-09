@@ -62,15 +62,16 @@ def generate(
     ),
 ) -> None:
     """Generate a tank-bag navigation PDF (portrait roadbook)."""
-    from . import generate_pdf
+    from . import render
 
-    out = generate_pdf(
+    out = render(
         str(gpx_file),
         str(output),
         profile=profile,
         fuel_range=fuel_range,
+        layout="landscape" if landscape else "portrait",
+        format="pdf",
         turn_style=turns,
-        orientation="landscape" if landscape else "portrait",
         paper=paper,
         lanes_per_page=lanes,
         decisions_per_lane=lane_decisions,
@@ -119,13 +120,15 @@ def strip(
     ),
 ) -> None:
     """Render the schematic map strip to a PNG."""
-    from .strip import generate_strip
+    from . import render
 
-    out = generate_strip(
+    out = render(
         str(gpx_file),
         str(output),
         profile=profile,
         fuel_range=fuel_range,
+        layout="strip",
+        format="png",
         turn_style=turns,
     )
     typer.echo(f"Wrote {out}")
@@ -151,15 +154,17 @@ def preview(
     """Render the whole route as one non-paginated image (stacked strip lanes).
 
     An on-screen overview: the entire route as a column of strip blocks, no page
-    breaks. Format follows the ``-o`` extension (``.png``/``.jpg``).
+    breaks.
     """
-    from .pdf import generate_preview
+    from . import render
 
-    out = generate_preview(
+    out = render(
         str(gpx_file),
         str(output),
         profile=profile,
         fuel_range=fuel_range,
+        layout="preview",
+        format="png",
         turn_style=turns,
         decisions_per_lane=lane_decisions,
     )
@@ -177,13 +182,12 @@ def validate(
 
     Exits non-zero if any warnings are found.
     """
-    from . import analyze as _analyze
-    from .validate import WARNING, format_findings, validate_route
+    from . import validate as _validate
+    from .validate import WARNING, format_findings
 
-    route = _analyze(str(gpx_file), fuel_range=fuel_range, include_hazards=True)
-    findings = validate_route(route, fuel_range=fuel_range)
-    typer.echo(format_findings(route, findings))
-    if any(f.level == WARNING for f in findings):
+    report = _validate(str(gpx_file), fuel_range=fuel_range)
+    typer.echo(format_findings(report.route, report.findings))
+    if any(f.level == WARNING for f in report.findings):
         raise typer.Exit(code=1)
 
 

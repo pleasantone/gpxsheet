@@ -27,6 +27,22 @@ class Finding:
     message: str
 
 
+@dataclass(frozen=True, slots=True)
+class ValidationReport:
+    """An analyzed route plus its validation findings (returned by ``validate``)."""
+
+    route: Route
+    findings: list[Finding]
+
+    @property
+    def name(self) -> str:
+        return self.route.name
+
+    @property
+    def length_miles(self) -> float:
+        return self.route.length_miles
+
+
 def validate_route(route: Route, *, fuel_range: float | None = None) -> list[Finding]:
     """Return validation findings for an analyzed route."""
     findings: list[Finding] = []

@@ -174,14 +174,19 @@ gpxsheet route.gpx \
 ## Library API
 
 ```python
-from gpxsheet import generate_pdf
+import gpxsheet
 
-generate_pdf(
-    gpx_file="route.gpx",
-    output_file="route.pdf",
+# Three entry points mirror the web API (render / analyze / validate).
+gpxsheet.render(
+    "route.gpx",
+    "route.pdf",
+    layout="portrait",  # portrait | landscape | preview | strip
+    format="pdf",       # pdf | png
     profile="sport-touring",
-    fuel_range=180
+    fuel_range=180,
 )
+route = gpxsheet.analyze("route.gpx", fuel_range=180)
+report = gpxsheet.validate("route.gpx", fuel_range=180)
 ```
 
 ---
@@ -843,8 +848,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   - **landscape** (`--landscape`): one strip per page in a framed Map Zone that
     hugs the strip, with the road ribbon and a progress (YOU) bar.
 
-  `generate_pdf` is wired into the API and `gpxsheet generate <gpx> -o route.pdf`.
-  Open polish (e.g. fuel-at-mile-0 overlapping START) is tracked in TODO.md.
+  `render` (the library/web entry point) and `gpxsheet generate <gpx> -o route.pdf`
+  drive this. Open polish (e.g. fuel-at-mile-0 overlapping START) is in TODO.md.
 * **Decisions/segments come from OSM; orientation defaults to portrait.** The
   OSM-derived navigation structure is the product. Enrichment falls back to the
   geometry baseline *automatically* (with a warning) when the route `looks_sparse`

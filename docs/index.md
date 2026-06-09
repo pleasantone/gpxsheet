@@ -39,7 +39,7 @@ pip install "gpxsheet[service]"   # + the web service
 
 ## Quick links
 
-- [Library API](library-api.md) — `generate_pdf`, `analyze`, and the route model.
+- [Library API](library-api.md) — `render`, `analyze`, `validate`, and the route model.
 - [Web API guide](web-api.md) — the submit → poll → fetch job model, with
   browser `fetch` examples.
 - [Web API reference](web-api-reference.md) — interactive OpenAPI for every

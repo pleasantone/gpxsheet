@@ -46,18 +46,20 @@ geopandas; install fine on 3.14). Add `,service` for the web-service stack.
   enrich is tested with hand-built networkx graphs (no Overpass).
 - `layout.py` — pure Schematic Layout Engine: `build_strip_layout` → stylized
   jogging ribbon + placed markers (stylized vs faithful turns; `show_start/end`).
-- `strip.py` — matplotlib renderer: `render_route_strip`/`generate_strip` →
-  `route_strip.png`; `draw_strip` shared with the PDF (Agg, lazy import). Draws
-  ghosted `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph.
+- `strip.py` — matplotlib renderer: `render_route_strip` → strip image;
+  `draw_strip` shared with the PDF (Agg, lazy import). Draws ghosted
+  `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph.
 - `paginate.py` — `paginate` (decision-cap, breaks only at decisions) +
   `slice_route` (`rebase=True` landscape / `rebase=False` portrait lane =
   absolute miles).
-- `pdf.py` — `render_pdf`/`generate_pdf`. Landscape (one strip/page, framed hug,
-  progress bar) + portrait (`orientation="portrait"`: stacked `_draw_lane`
-  strips, `lanes_per_page`/`decisions_per_lane`). Header = name + green mileage +
-  page counter; no cue zone.
+- `pdf.py` — renderers `render_pdf`/`render_pages_png`/`render_preview` + the
+  `render_layout(layout, fmt)` dispatcher (layout × pdf/png). Landscape (one
+  strip/page, framed hug, progress bar) + portrait (stacked `_draw_lane` strips,
+  `lanes_per_page`/`decisions_per_lane`). Header = name + green mileage + page
+  counter; no cue zone.
 - `report.py` — `analyze` text. `cli.py` — typer CLI (generate/analyze/strip/
-  preview/validate; `--landscape --lanes --lane-decisions`; no OSM/dpi flags).
+  preview/validate; `--landscape --lanes --lane-decisions`; no OSM/dpi flags),
+  all wired through the library `render`/`analyze`/`validate` entry points.
 
 `analyze_route` flow: geometry detect → merge → segments → **OSM enrich**
 (replaces decisions+segments; falls back to geometry-only w/ warning if
@@ -75,7 +77,8 @@ geopandas; install fine on 3.14). Add `,service` for the web-service stack.
   strip `MIN_SEGMENT_LEN=2.6`, `DIST_SCALE=1.0`, stylized angles 10/30/55°.
 - **Decisions/segments come from OSM**, falling back to the geometry baseline
   automatically (with a warning) on `looks_sparse` routes or Overpass failure.
-  Orientation: library fns default landscape, CLI defaults portrait.
+  Layout default is **portrait** for both the library `render` and the CLI;
+  `portrait`/`landscape`/`preview`/`strip` are peer layouts.
 - OSM = live Overpass; slow in dense urban (~140s/5mi SF) vs ~3s rural. **Tests
   are deterministic + offline:** `conftest` points osmnx at a committed response
   cache (`tests/fixtures/osm_cache`) and replays cache-only (a miss raises, never
