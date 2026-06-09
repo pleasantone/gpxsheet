@@ -11,15 +11,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from . import colors
 from .layout import TURN_STYLE_STYLIZED, build_strip_layout
 from .models import Route
 from .paginate import paginate, slice_route
 from .strip import draw_strip
-
-_RED = "#d6312b"
-_GREEN = "#1b7837"
-_GREY = "#666666"
-
 
 # Portrait mode: each page stacks several route "lanes" (strips), each covering
 # a few decisions, clearly separated -- a roadbook / TripTik layout.
@@ -51,6 +47,7 @@ def iter_page_figures(
     Shared by :func:`render_pdf` (PDF pages) and :func:`render_pages_png` (one
     stacked image). ``orientation`` is ``"landscape"`` (one strip per page, big
     map) or ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page).
+    Both break pages at every ``decisions_per_lane`` decisions.
     """
     if orientation not in ("landscape", "portrait"):
         raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
@@ -78,7 +75,7 @@ def iter_page_figures(
             )
             yield fig
     else:
-        pages = paginate(route)
+        pages = paginate(route, max_decisions=decisions_per_lane)
         for i, (start, end) in enumerate(pages, start=1):
             fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
             _compose_page(
@@ -101,9 +98,10 @@ def render_pdf(
     """Render an already-analyzed ``route`` to a multi-page PDF.
 
     ``orientation`` is ``"landscape"`` (one strip per page, big map) or
-    ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page, each holding
-    up to ``decisions_per_lane`` decisions, roadbook-style). ``paper`` is one of
-    :data:`PAGE_SIZES` (``"letter"`` or ``"a4"``).
+    ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page,
+    roadbook-style). Both break a page every ``decisions_per_lane`` decisions;
+    ``lanes_per_page`` is portrait-only. ``paper`` is one of :data:`PAGE_SIZES`
+    (``"letter"`` or ``"a4"``).
     """
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
@@ -205,7 +203,7 @@ def _compose_page(
     fig.patches.append(
         Rectangle(
             (panel_x, panel_bottom), panel_w, panel_h, transform=fig.transFigure,
-            facecolor="#fafafa", edgecolor="#dddddd", linewidth=1.0, zorder=-10,
+            facecolor=colors.PANEL_FILL, edgecolor=colors.PANEL_EDGE, linewidth=1.0, zorder=-10,
         )
     )
     map_ax = fig.add_axes([panel_x + 0.01, map_y, map_w, map_h])
@@ -214,7 +212,7 @@ def _compose_page(
     if ribbon:
         fig.text(
             0.5, panel_bottom + 0.012, ribbon, ha="center", va="bottom",
-            fontsize=8, color="#444444",
+            fontsize=8, color=colors.TEXT_LABEL,
         )
 
 
@@ -227,11 +225,11 @@ def _draw_header(
     fig.text(0.03, 0.955, display, ha="left", va="center", fontsize=13, fontweight="bold")
     fig.text(
         0.84, 0.955, f"{start:.0f} / {total:.0f} mi",
-        ha="right", va="center", fontsize=11, color=_GREEN, fontweight="bold",
+        ha="right", va="center", fontsize=11, color=colors.START, fontweight="bold",
     )
     fig.text(
         0.97, 0.955, f"Page {page_no} of {page_count}",
-        ha="right", va="center", fontsize=11, color=_GREY,
+        ha="right", va="center", fontsize=11, color=colors.TEXT_MUTED,
     )
 
 
@@ -270,13 +268,13 @@ def _draw_lane(fig, route, start, end, rect, *, show_start, show_end, turn_style
     fig.patches.append(
         Rectangle(
             (x, y), w, h, transform=fig.transFigure,
-            facecolor="#fafafa", edgecolor="#dddddd", linewidth=1.0, zorder=-10,
+            facecolor=colors.PANEL_FILL, edgecolor=colors.PANEL_EDGE, linewidth=1.0, zorder=-10,
         )
     )
     # Absolute mile range for this lane (green), top-left of the frame.
     fig.text(
         x + 0.008, y + h - 0.006, f"{start:.0f}–{end:.0f} mi",
-        ha="left", va="top", fontsize=8, color=_GREEN, fontweight="bold",
+        ha="left", va="top", fontsize=8, color=colors.START, fontweight="bold",
     )
     # Strip fills the frame, leaving room for the mile label (top) and a clear
     # band for the ribbon (bottom) so the lowest decision labels don't touch it.
@@ -289,7 +287,8 @@ def _draw_lane(fig, route, start, end, rect, *, show_start, show_end, turn_style
     ribbon = "  ›  ".join(layout.ribbon)
     if ribbon:
         fig.text(
-            x + w / 2, y + 0.008, ribbon, ha="center", va="bottom", fontsize=7, color="#444444"
+            x + w / 2, y + 0.008, ribbon,
+            ha="center", va="bottom", fontsize=7, color=colors.TEXT_LABEL,
         )
 
 
@@ -300,14 +299,15 @@ def _draw_progress(fig, start: float, end: float, total: float) -> None:
     ax.set_ylim(-1, 1)
     frac0 = start / total if total else 0.0
     frac1 = end / total if total else 1.0
-    ax.plot([0, 1], [0, 0], color="#cccccc", lw=3, solid_capstyle="round")
-    ax.plot([frac0, frac1], [0, 0], color=_RED, lw=6, solid_capstyle="round")  # this page
-    ax.plot([frac0], [0], marker="o", color=_RED, markersize=8)
-    ax.text(0, 0.9, "START", ha="left", va="bottom", fontsize=7, color=_GREY)
-    ax.text(1, 0.9, "END", ha="right", va="bottom", fontsize=7, color=_GREY)
+    ax.plot([0, 1], [0, 0], color=colors.PROGRESS_TRACK, lw=3, solid_capstyle="round")
+    # the current page's span, highlighted on the full-route track
+    ax.plot([frac0, frac1], [0, 0], color=colors.DECISION, lw=6, solid_capstyle="round")
+    ax.plot([frac0], [0], marker="o", color=colors.DECISION, markersize=8)
+    ax.text(0, 0.9, "START", ha="left", va="bottom", fontsize=7, color=colors.TEXT_MUTED)
+    ax.text(1, 0.9, "END", ha="right", va="bottom", fontsize=7, color=colors.TEXT_MUTED)
     ax.annotate(
         f"YOU  {start:.0f} mi", (frac0, 0), (frac0, -0.9),
-        ha="center", va="top", fontsize=7, color=_RED, fontweight="bold",
+        ha="center", va="top", fontsize=7, color=colors.DECISION, fontweight="bold",
     )
 
 
@@ -359,7 +359,7 @@ def render_preview(
     fig.text(0.04, header_y, display, ha="left", va="center", fontsize=13, fontweight="bold")
     fig.text(
         0.96, header_y, f"{total:.0f} mi",
-        ha="right", va="center", fontsize=11, color=_GREEN, fontweight="bold",
+        ha="right", va="center", fontsize=11, color=colors.START, fontweight="bold",
     )
 
     eps = 1e-6

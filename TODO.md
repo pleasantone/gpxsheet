@@ -3,23 +3,13 @@
 Planned work, queued. As-built status lives in [PRODUCT.md](PRODUCT.md);
 architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
-## Phase 2 — features (requested)
+## Features (requested)
 
-- **Security audit (architecture + code, esp. the service) — DONE.** Findings +
-  fixes in [docs/security-audit.md](docs/security-audit.md): XML XXE/entity guard
-  in the parser, optional API-key auth + per-key quotas, content sniff + point
-  cap, OSM-egress toggle, error-leak sanitization, prod default-creds boot guard,
-  security headers + CORS, and a `pip-audit` CI job. Remaining residuals tracked
-  under "Service hardening" below (distributed quotas; move preview/analyze off
-  the request path; container memory limits).
 - **Front end for the service** — a small, secure web UI (upload GPX → choose
   profile/orientation/paper/OSM → live preview image → download PDF). Must be
   hardened for **public internet exposure** (ties into the security audit: auth,
   CSRF, CSP, rate limits, no creds in the browser, served behind TLS/reverse
   proxy). Decide SPA vs server-rendered; keep deps minimal.
-- **Revisit decision-points-per-strip design** — pros/cons of removing the fixed
-  decision cap per strip and instead fitting as many decision points on a single
-  strip as needed to fill the area (while leaving appropriate whitespace).
 
 ## Rendering / analysis polish
 
@@ -44,6 +34,14 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   stubs + roundabout "Nth exit" glyph). Validate exit-counting and branch
   selection against real tracks with live OSM; revisit `BRANCH_MATCH_TOL_DEG` and
   the ring-traversal heuristics on multi-chunk routes.
+- Make sure waypoints are displayed and labeled on the strip, if they are real waypoints or non-via non-shaping points.
+
+- Use emoji or proper symbols to indicate fuel, ferry boarding/disembarking, and food stops. Include milage.
+
+- When displaying unpaved segments, make the ribbon brown and dashed between the start and end of the unpaved segment. Label the beginning and end of unpaved segments similar to waypoints.
+
+- When displaying ferry segments, make the ribbon blue and dashed between the start and end of the ferry segment. Label the beginning and end of ferry segments similar to waypoints.
+
 
 ## Service hardening (future)
 

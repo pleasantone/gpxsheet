@@ -846,7 +846,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
     each a framed strip over its absolute mile range with its own road ribbon.
     Tunable via `--lanes N` / `--lane-decisions M`; partial pages top-aligned.
   - **landscape** (`--landscape`): one strip per page in a framed Map Zone that
-    hugs the strip, with the road ribbon and a progress (YOU) bar.
+    hugs the strip, with the road ribbon and a progress (YOU) bar; page breaks
+    honor `--lane-decisions` too.
 
   `render` (the library/web entry point) and `gpxsheet generate <gpx> -o route.pdf`
   drive this. Open polish (e.g. fuel-at-mile-0 overlapping START) is in TODO.md.

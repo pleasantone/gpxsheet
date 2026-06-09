@@ -42,6 +42,32 @@ def test_render_pdf_multipage(tmp_path):
     assert data.count(b"/Type /Page") >= 2
 
 
+def test_landscape_respects_decisions_per_lane():
+    import matplotlib.pyplot as plt
+
+    from gpxsheet.models import DecisionPoint, GeoPoint, Route, Segment
+    from gpxsheet.pdf import iter_page_figures
+
+    decisions = [DecisionPoint(m, f"Turn {m}", 60, 0, 0, turn_angle=45) for m in (40, 80, 120, 160)]
+    route = Route(
+        name="LS",
+        points=[GeoPoint(0, 0), GeoPoint(1, 1)],
+        distances_m=[0.0, 200 * 1609.344],
+        decision_points=decisions,
+        segments=[Segment("Road", 0, 200)],
+    )
+
+    def page_count(n):
+        figs = list(iter_page_figures(route, orientation="landscape", decisions_per_lane=n))
+        for f in figs:
+            plt.close(f)
+        return len(figs)
+
+    # 4 decisions: one per page -> 4 pages; 5 per page -> a single page.
+    assert page_count(1) == 4
+    assert page_count(5) == 1
+
+
 def test_portrait_pdf_multilane(tmp_path):
     from gpxsheet.models import DecisionPoint, GeoPoint, Route, Segment
     from gpxsheet.pdf import render_pdf

@@ -78,7 +78,7 @@ Form fields (all optional except `gpx`):
 | `turn_style` | string | `stylized` | `stylized` (schematic bends) or `faithful` (true angles) |
 | `paper` | string | `letter` | `letter` or `a4` (paginated PDF layouts only) |
 | `lanes_per_page` | int ≥ 1 | `4` | strip lanes per page (`portrait` only) |
-| `decisions_per_lane` | int ≥ 1 | `4` | max decisions per strip (`portrait`/`preview`) |
+| `decisions_per_lane` | int ≥ 1 | `4` | max decisions per page/lane (`portrait` / `landscape` / `preview`) |
 
 **Layouts:**
 
