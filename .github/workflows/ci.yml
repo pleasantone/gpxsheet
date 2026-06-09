@@ -37,3 +37,20 @@ jobs:
 
       - name: Test
         run: pytest
+
+  package:
+    # Build the distribution and validate its metadata so packaging breakage is
+    # caught on PRs, before a v* tag triggers the publish workflow.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build + check distribution
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build
+          twine check dist/*
