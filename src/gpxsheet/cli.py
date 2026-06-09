@@ -58,7 +58,8 @@ def generate(
         4, "--lanes", min=1, help="Portrait only: strip lanes per page."
     ),
     lane_decisions: int = typer.Option(
-        4, "--lane-decisions", min=1, help="Portrait only: max decisions per lane."
+        4, "--lane-decisions", min=1,
+        help="Max decisions per page (portrait lane / landscape page).",
     ),
 ) -> None:
     """Generate a tank-bag navigation PDF (portrait roadbook)."""

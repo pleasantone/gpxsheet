@@ -47,6 +47,7 @@ def iter_page_figures(
     Shared by :func:`render_pdf` (PDF pages) and :func:`render_pages_png` (one
     stacked image). ``orientation`` is ``"landscape"`` (one strip per page, big
     map) or ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page).
+    Both break pages at every ``decisions_per_lane`` decisions.
     """
     if orientation not in ("landscape", "portrait"):
         raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
@@ -74,7 +75,7 @@ def iter_page_figures(
             )
             yield fig
     else:
-        pages = paginate(route)
+        pages = paginate(route, max_decisions=decisions_per_lane)
         for i, (start, end) in enumerate(pages, start=1):
             fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
             _compose_page(
@@ -97,9 +98,10 @@ def render_pdf(
     """Render an already-analyzed ``route`` to a multi-page PDF.
 
     ``orientation`` is ``"landscape"`` (one strip per page, big map) or
-    ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page, each holding
-    up to ``decisions_per_lane`` decisions, roadbook-style). ``paper`` is one of
-    :data:`PAGE_SIZES` (``"letter"`` or ``"a4"``).
+    ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page,
+    roadbook-style). Both break a page every ``decisions_per_lane`` decisions;
+    ``lanes_per_page`` is portrait-only. ``paper`` is one of :data:`PAGE_SIZES`
+    (``"letter"`` or ``"a4"``).
     """
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages

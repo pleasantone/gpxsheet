@@ -60,7 +60,8 @@ def render(
         turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
         paper: Page size for paginated PDF layouts, ``"letter"`` or ``"a4"``.
         lanes_per_page: ``portrait`` only -- strip lanes per page.
-        decisions_per_lane: ``portrait`` / ``preview`` -- max decisions per lane.
+        decisions_per_lane: max decisions per page/lane for the paginated layouts
+            (``portrait`` / ``landscape`` / ``preview``).
 
     Returns:
         The path to the written file.
