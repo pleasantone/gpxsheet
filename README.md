@@ -114,4 +114,7 @@ Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
 
 ## License
 
-MIT
+GNU Affero General Public License v3.0 or later (AGPL-3.0-or-later) — see
+[LICENSE](LICENSE). Copyright © 2026 Paul Traina. Because the AGPL covers use
+over a network, anyone who runs a modified version of the web service must offer
+its users the corresponding source.
