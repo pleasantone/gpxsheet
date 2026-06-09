@@ -11,11 +11,12 @@ runner = CliRunner()
 PDF_MAGIC = b"%PDF"
 
 
-def test_generate_pdf_writes_valid_pdf(l_route_file, tmp_path):
+def test_render_writes_valid_pdf(l_route_file, tmp_path):
     import gpxsheet
 
     out = tmp_path / "route.pdf"
-    result = gpxsheet.generate_pdf(str(l_route_file), str(out), profile="sport-touring")
+    # Default layout is portrait, default format is pdf.
+    result = gpxsheet.render(str(l_route_file), str(out), profile="sport-touring")
     assert Path(result) == out
     assert out.exists() and out.stat().st_size > 0
     assert out.read_bytes()[:4] == PDF_MAGIC

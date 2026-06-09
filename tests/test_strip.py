@@ -11,11 +11,13 @@ runner = CliRunner()
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
-def test_generate_strip_writes_valid_png(l_route_file, tmp_path):
-    from gpxsheet.strip import generate_strip
+def test_render_strip_writes_valid_png(l_route_file, tmp_path):
+    import gpxsheet
 
     out = tmp_path / "strip.png"
-    result = generate_strip(str(l_route_file), str(out), profile="sport-touring")
+    result = gpxsheet.render(
+        str(l_route_file), str(out), layout="strip", format="png", profile="sport-touring"
+    )
     assert Path(result) == out
     assert out.exists() and out.stat().st_size > 0
     assert out.read_bytes()[:8] == PNG_MAGIC  # valid PNG header

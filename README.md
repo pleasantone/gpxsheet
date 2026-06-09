@@ -76,12 +76,15 @@ with `GPXSHEET_RECORD_OSM=1`; see `tests/fixtures/README.md`).
 
 ### Library
 
-```python
-from gpxsheet import generate_pdf
+The library mirrors the web API — `render`, `analyze`, `validate` — but runs
+synchronously:
 
-# The library defaults to landscape; pass orientation="portrait" for the CLI
-# product default.
-generate_pdf("route.gpx", "route.pdf", profile="sport-touring", fuel_range=180)
+```python
+import gpxsheet
+
+gpxsheet.render("route.gpx", "route.pdf", layout="portrait")   # also landscape/preview/strip, format=pdf|png
+route = gpxsheet.analyze("route.gpx", fuel_range=180)
+report = gpxsheet.validate("route.gpx", fuel_range=180)         # report.findings
 ```
 
 ## Web service

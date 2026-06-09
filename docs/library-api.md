@@ -1,26 +1,48 @@
 # Library API
 
-The public Python API. Import everything from the top-level `gpxsheet` package:
+The public Python API mirrors the [web API](web-api.md): three entry points —
+`render`, `analyze`, `validate` — that take the same names and arguments (but run
+synchronously). Import everything from the top-level `gpxsheet` package:
 
 ```python
-from gpxsheet import analyze, generate_pdf
+import gpxsheet
 
-route = analyze("route.gpx", fuel_range=180)
-generate_pdf("route.gpx", "route.pdf", orientation="portrait")
+# render a map (portrait PDF is the default; layouts and formats below)
+gpxsheet.render("route.gpx", "route.pdf")
+gpxsheet.render("route.gpx", "overview.png", layout="preview", format="png")
+
+# structured analysis
+route = gpxsheet.analyze("route.gpx", fuel_range=180)
+
+# validation report (route + findings)
+report = gpxsheet.validate("route.gpx", fuel_range=180)
+for f in report.findings:
+    print(f.level, f.code, f.message)
 ```
 
 OSM enrichment runs as part of analysis, falling back to the geometry baseline
 when a route is too sparse to sample or the Overpass query fails.
 
-## Generating output
+## Render
 
-::: gpxsheet.generate_pdf
+`layout` (`portrait` · `landscape` · `preview` · `strip`) and `format` (`pdf` ·
+`png`) are independent; portrait PDF is the default.
 
-::: gpxsheet.generate_strip
+::: gpxsheet.render
 
-## Analysis
+## Analyze
 
 ::: gpxsheet.analyze
+
+## Validate
+
+::: gpxsheet.validate
+
+::: gpxsheet.ValidationReport
+
+::: gpxsheet.Finding
+
+## Lower-level helpers
 
 ::: gpxsheet.load_route
 

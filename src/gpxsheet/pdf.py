@@ -311,35 +311,6 @@ def _draw_progress(fig, start: float, end: float, total: float) -> None:
     )
 
 
-def generate_pdf(
-    gpx_file: str,
-    output_file: str = "route.pdf",
-    *,
-    profile: str = "sport-touring",
-    fuel_range: float | None = None,
-    turn_style: str = TURN_STYLE_STYLIZED,
-    orientation: str = "landscape",
-    paper: str = DEFAULT_PAPER,
-    lanes_per_page: int = LANES_PER_PAGE,
-    decisions_per_lane: int = DECISIONS_PER_LANE,
-) -> str:
-    """Load, analyze, and render a route to a tank-bag PDF."""
-    from .analysis import analyze_route
-    from .gpx import load_route
-
-    route = analyze_route(load_route(gpx_file), profile=profile, fuel_range=fuel_range)
-    render_pdf(
-        route,
-        output_file,
-        turn_style=turn_style,
-        orientation=orientation,
-        paper=paper,
-        lanes_per_page=lanes_per_page,
-        decisions_per_lane=decisions_per_lane,
-    )
-    return str(output_file)
-
-
 # Preview: the whole route as one un-paginated column of strip lanes (a single
 # image, not a multi-page PDF) so the user can eyeball the entire route at once.
 PREVIEW_WIDTH_IN = 8.5
@@ -405,26 +376,6 @@ def render_preview(
     fig.savefig(output_path, dpi=PREVIEW_DPI, facecolor="white")
     plt.close(fig)
     return output_path
-
-
-def generate_preview(
-    gpx_file: str,
-    output_file: str = "route_preview.png",
-    *,
-    profile: str = "sport-touring",
-    fuel_range: float | None = None,
-    turn_style: str = TURN_STYLE_STYLIZED,
-    decisions_per_lane: int = DECISIONS_PER_LANE,
-) -> str:
-    """Load, analyze, and render a route to a non-paginated multi-strip preview image."""
-    from .analysis import analyze_route
-    from .gpx import load_route
-
-    route = analyze_route(load_route(gpx_file), profile=profile, fuel_range=fuel_range)
-    render_preview(
-        route, output_file, turn_style=turn_style, decisions_per_lane=decisions_per_lane
-    )
-    return str(output_file)
 
 
 # Layouts the service exposes, and the output formats each supports. ``portrait``

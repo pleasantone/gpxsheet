@@ -300,20 +300,3 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
                 [mdx, edx], [mdy, edy],
                 linestyle=(0, (2, 2)), color="#999999", linewidth=0.6, zorder=3,
             )
-
-
-def generate_strip(
-    gpx_file: str,
-    output_file: str = "route_strip.png",
-    *,
-    profile: str = "sport-touring",
-    fuel_range: float | None = None,
-    turn_style: str = TURN_STYLE_STYLIZED,
-) -> str:
-    """Load, analyze, and render a route to a schematic strip image."""
-    from .analysis import analyze_route
-    from .gpx import load_route
-
-    route = analyze_route(load_route(gpx_file), profile=profile, fuel_range=fuel_range)
-    render_route_strip(route, output_file, turn_style=turn_style)
-    return str(output_file)
