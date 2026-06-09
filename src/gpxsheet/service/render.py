@@ -1,77 +1,100 @@
-"""The engine wrapper used by render jobs: GPX bytes + params -> PDF bytes."""
+"""The engine wrapper used by jobs: GPX bytes + params -> (artifact bytes, type).
+
+Every operation funnels through :func:`run_job` (dispatched by an internal ``op``
+string set by the endpoint), returning the bytes plus the HTTP content type and
+file extension to store/serve them with.
+"""
 
 from __future__ import annotations
 
+import json
+import re
 import tempfile
 from pathlib import Path
 
-from .models import GenerateParams
+from .models import RenderParams, ReportParams
+
+_CONTENT_TYPES = {"pdf": "application/pdf", "png": "image/png", "json": "application/json"}
+
+# A 4-tuple: (artifact bytes, HTTP content type, storage extension, download name).
+JobResult = tuple[bytes, str, str, str]
 
 
-def render_preview_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
-    """Render a non-paginated whole-route preview PNG and return its bytes.
+def run_job(op: str, gpx_bytes: bytes, params: ReportParams) -> JobResult:
+    """Run an operation and return ``(data, content_type, extension, download_name)``.
 
-    The whole route as one tall image of stacked strip lanes (see
-    :func:`gpxsheet.pdf.render_preview`) -- a display-resolution overview for a
-    UI, rendered at the same resolution as a normal render. ``orientation``/
-    ``paper`` are ignored (the preview is a single column).
+    ``op`` is ``"render"`` (PDF/PNG map; ``params`` is a :class:`RenderParams`),
+    ``"analyze"`` or ``"validate"`` (JSON report; ``params`` is a
+    :class:`ReportParams`).
     """
-    from gpxsheet.pdf import generate_preview
+    if op == "analyze":
+        payload, name = _analyze_dict(gpx_bytes, params)
+        return _json_result(payload, name)
+    if op == "validate":
+        payload, name = _validate_dict(gpx_bytes, params)
+        return _json_result(payload, name)
+    if op == "render":
+        assert isinstance(params, RenderParams)
+        return _render_result(gpx_bytes, params)
+    raise ValueError(f"unknown job op {op!r}")
 
+
+def _safe_filename(name: str | None, ext: str) -> str:
+    """An ASCII, header-safe download filename derived from the route name."""
+    base = re.sub(r"[^A-Za-z0-9._ -]", "", (name or "route")).strip() or "route"
+    return f"{base[:80]}.{ext}"
+
+
+def _json_result(payload: dict, name: str | None) -> JobResult:
+    return (
+        json.dumps(payload).encode(),
+        _CONTENT_TYPES["json"],
+        "json",
+        _safe_filename(name, "json"),
+    )
+
+
+def _render_result(gpx_bytes: bytes, params: RenderParams) -> JobResult:
+    from gpxsheet import analyze
+    from gpxsheet.pdf import render_layout
+
+    ext = params.format  # "pdf" | "png"
     with tempfile.TemporaryDirectory() as tmp:
         gpx_path = Path(tmp) / "route.gpx"
-        out_path = Path(tmp) / "preview.png"
+        out_path = Path(tmp) / f"out.{ext}"
         gpx_path.write_bytes(gpx_bytes)
-        generate_preview(
-            str(gpx_path),
-            str(out_path),
-            profile=params.profile,
-            fuel_range=params.fuel_range,
+        route = analyze(str(gpx_path), profile=params.profile, fuel_range=params.fuel_range)
+        render_layout(
+            route,
+            out_path,
+            layout=params.layout,
+            fmt=params.format,
             turn_style=params.turn_style,
-            decisions_per_lane=params.decisions_per_lane,
-        )
-        return out_path.read_bytes()
-
-
-def render_pdf_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
-    """Render a route PDF in a temp dir and return its bytes.
-
-    Thin wrapper around :func:`gpxsheet.generate_pdf` so the worker stays a pure
-    function of (GPX, params) with no filesystem assumptions for the caller.
-    """
-    from gpxsheet import generate_pdf
-
-    with tempfile.TemporaryDirectory() as tmp:
-        gpx_path = Path(tmp) / "route.gpx"
-        out_path = Path(tmp) / "route.pdf"
-        gpx_path.write_bytes(gpx_bytes)
-        generate_pdf(
-            str(gpx_path),
-            str(out_path),
-            profile=params.profile,
-            fuel_range=params.fuel_range,
-            turn_style=params.turn_style,
-            orientation=params.orientation,
             paper=params.paper,
             lanes_per_page=params.lanes_per_page,
             decisions_per_lane=params.decisions_per_lane,
         )
-        return out_path.read_bytes()
+        return out_path.read_bytes(), _CONTENT_TYPES[ext], ext, _safe_filename(route.name, ext)
 
 
-def analyze_to_dict(gpx_bytes: bytes, params: GenerateParams) -> dict:
-    """Run the analysis and return a JSON-serializable summary (for /v1/analyze)."""
+def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):
     from gpxsheet import analyze
 
     with tempfile.TemporaryDirectory() as tmp:
         gpx_path = Path(tmp) / "route.gpx"
         gpx_path.write_bytes(gpx_bytes)
-        route = analyze(
+        return analyze(
             str(gpx_path),
             profile=params.profile,
             fuel_range=params.fuel_range,
+            include_hazards=include_hazards,
         )
-    return {
+
+
+def _analyze_dict(gpx_bytes: bytes, params: ReportParams) -> tuple[dict, str | None]:
+    """The structured analysis summary (for ``/v1/analyze``)."""
+    route = _analyzed_route(gpx_bytes, params)
+    payload = {
         "name": route.name,
         "length_miles": round(route.length_miles, 1),
         "decision_points": [
@@ -87,3 +110,20 @@ def analyze_to_dict(gpx_bytes: bytes, params: GenerateParams) -> dict:
             route.fuel_report.longest_gap_miles if route.fuel_report else None
         ),
     }
+    return payload, route.name
+
+
+def _validate_dict(gpx_bytes: bytes, params: ReportParams) -> tuple[dict, str | None]:
+    """Validation findings (for ``/v1/validate``); warnings don't fail the job."""
+    from gpxsheet.validate import validate_route
+
+    route = _analyzed_route(gpx_bytes, params, include_hazards=True)
+    findings = validate_route(route, fuel_range=params.fuel_range)
+    payload = {
+        "name": route.name,
+        "length_miles": round(route.length_miles, 1),
+        "findings": [
+            {"level": f.level, "code": f.code, "message": f.message} for f in findings
+        ],
+    }
+    return payload, route.name

@@ -22,9 +22,13 @@ from typing import Protocol
 import dramatiq
 
 from . import settings
-from .models import GenerateParams
-from .render import render_pdf_bytes
+from .models import RenderParams, ReportParams
+from .render import run_job
 from .storage import Storage
+
+# Each endpoint sets an internal op so the worker can rebuild the right params
+# model from the serialized dict (op is not part of the client-facing API).
+_PARAMS_BY_OP = {"render": RenderParams, "analyze": ReportParams, "validate": ReportParams}
 
 log = logging.getLogger(__name__)
 
@@ -51,13 +55,17 @@ class JobRecord:
     status: str = "queued"  # queued | running | done | error
     error: str | None = None
     result_key: str | None = None
+    content_type: str | None = None  # of the stored artifact (pdf/png/json)
+    download_name: str | None = None  # human-friendly filename for downloads
+    owner: str | None = None  # identity that created the job (object-level authz)
 
 
 class JobStore(Protocol):
-    def create(self, cache_key: str | None = None) -> str: ...
+    def create(self, cache_key: str | None = None, owner: str | None = None) -> str: ...
     def get(self, job_id: str) -> JobRecord | None: ...
     def update(self, job_id: str, **fields) -> None: ...
     def get_cached(self, cache_key: str) -> JobRecord | None: ...
+    def ready(self) -> bool: ...
 
 
 class InMemoryJobStore:
@@ -65,9 +73,9 @@ class InMemoryJobStore:
         self._jobs: dict[str, JobRecord] = {}
         self._by_key: dict[str, str] = {}
 
-    def create(self, cache_key: str | None = None) -> str:
+    def create(self, cache_key: str | None = None, owner: str | None = None) -> str:
         job_id = uuid.uuid4().hex
-        self._jobs[job_id] = JobRecord(id=job_id)
+        self._jobs[job_id] = JobRecord(id=job_id, owner=owner)
         if cache_key:
             self._by_key[cache_key] = job_id
         return job_id
@@ -85,6 +93,9 @@ class InMemoryJobStore:
         rec = self._jobs.get(self._by_key.get(cache_key, ""))
         return rec if rec and rec.status == "done" else None
 
+    def ready(self) -> bool:
+        return True
+
 
 class RedisJobStore:
     """Job records as JSON in Redis, keyed ``gpxsheet:job:<id>`` with a TTL."""
@@ -101,9 +112,9 @@ class RedisJobStore:
     def _put(self, rec: JobRecord) -> None:
         self._r.set(self._key(rec.id), json.dumps(asdict(rec)), ex=self._ttl)
 
-    def create(self, cache_key: str | None = None) -> str:
+    def create(self, cache_key: str | None = None, owner: str | None = None) -> str:
         job_id = uuid.uuid4().hex
-        self._put(JobRecord(id=job_id))
+        self._put(JobRecord(id=job_id, owner=owner))
         if cache_key:
             self._r.set(f"gpxsheet:cache:{cache_key}", job_id, ex=self._ttl)
         return job_id
@@ -126,17 +137,29 @@ class RedisJobStore:
         rec = self.get(job_id.decode() if isinstance(job_id, bytes) else job_id)
         return rec if rec and rec.status == "done" else None
 
+    def ready(self) -> bool:
+        try:
+            return bool(self._r.ping())
+        except Exception:  # noqa: BLE001 - any connectivity failure -> not ready
+            return False
+
 
 def process_job(
-    store: JobStore, storage: Storage, job_id: str, gpx_bytes: bytes, params: GenerateParams
+    store: JobStore, storage: Storage, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams
 ) -> None:
-    """Render the PDF, store it, and record the outcome on the job."""
+    """Run the job, store its artifact, and record the outcome on the job."""
     store.update(job_id, status="running")
     try:
-        data = render_pdf_bytes(gpx_bytes, params)
-        key = f"{job_id}.pdf"
-        storage.save(key, data)
-        store.update(job_id, status="done", result_key=key)
+        data, content_type, ext, download_name = run_job(op, gpx_bytes, params)
+        key = f"{job_id}.{ext}"
+        storage.save(key, data, content_type=content_type)
+        store.update(
+            job_id,
+            status="done",
+            result_key=key,
+            content_type=content_type,
+            download_name=download_name,
+        )
     except ValueError as exc:
         # Input problems (bad/empty GPX, rejected DTD) are safe to echo back.
         store.update(job_id, status="error", error=str(exc))
@@ -147,7 +170,7 @@ def process_job(
 
 
 class TaskRunner(Protocol):
-    def submit(self, job_id: str, gpx_bytes: bytes, params: GenerateParams) -> None: ...
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams) -> None: ...
 
 
 class EagerRunner:
@@ -157,15 +180,15 @@ class EagerRunner:
         self._store = store
         self._storage = storage
 
-    def submit(self, job_id: str, gpx_bytes: bytes, params: GenerateParams) -> None:
-        process_job(self._store, self._storage, job_id, gpx_bytes, params)
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams) -> None:
+        process_job(self._store, self._storage, job_id, op, gpx_bytes, params)
 
 
 class DramatiqRunner:
     """Enqueues the render onto Dramatiq/Redis for a worker to pick up."""
 
-    def submit(self, job_id: str, gpx_bytes: bytes, params: GenerateParams) -> None:
-        render_actor.send(job_id, base64.b64encode(gpx_bytes).decode(), params.model_dump())
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams) -> None:
+        render_actor.send(job_id, op, base64.b64encode(gpx_bytes).decode(), params.model_dump())
 
 
 def prod_components() -> tuple[RedisJobStore, Storage]:
@@ -176,6 +199,7 @@ def prod_components() -> tuple[RedisJobStore, Storage]:
 
 
 @dramatiq.actor(max_retries=0, time_limit=RENDER_TIME_LIMIT_MS)
-def render_actor(job_id: str, gpx_b64: str, params_dict: dict) -> None:
+def render_actor(job_id: str, op: str, gpx_b64: str, params_dict: dict) -> None:
     store, storage = prod_components()
-    process_job(store, storage, job_id, base64.b64decode(gpx_b64), GenerateParams(**params_dict))
+    params = _PARAMS_BY_OP[op](**params_dict)
+    process_job(store, storage, job_id, op, base64.b64decode(gpx_b64), params)

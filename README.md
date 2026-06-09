@@ -84,9 +84,12 @@ generate_pdf("route.gpx", "route.pdf", profile="sport-touring", fuel_range=180)
 
 ## Web service
 
-A FastAPI service exposes the engine over REST. Renders are slow (matplotlib +
-live OSM), so generation runs as a background job (Dramatiq + Redis) with results
-in object storage (MinIO); `/v1/analyze` returns the structured analysis as JSON.
+A FastAPI service exposes the engine over REST. Every operation is a background
+job (Dramatiq + Redis) with results in object storage (MinIO): you POST to a
+typed endpoint (GPX + params as multipart form fields), then poll and fetch via
+the shared job URLs. `/v1/render` takes a `layout`
+(`portrait`/`landscape`/`preview`/`strip`) and `format` (`pdf`/`png`);
+`/v1/analyze` and `/v1/validate` return JSON reports.
 
 Self-hosted stack (API + worker + Redis + MinIO):
 
@@ -95,14 +98,25 @@ docker compose up --build
 #   API   -> http://localhost:8000/docs
 #   MinIO -> http://localhost:9001  (minioadmin / minioadmin)
 
-curl -F gpx=@route.gpx "http://localhost:8000/v1/jobs?orientation=portrait" # -> {id, status}
-curl http://localhost:8000/v1/jobs/<id>          # poll until status=done
+# render a portrait PDF (the defaults); the 202 response's Location header is the job
+curl -F gpx=@route.gpx http://localhost:8000/v1/render                       # -> {id, status}
+curl http://localhost:8000/v1/jobs/<id>                 # poll until status=done
 curl -L http://localhost:8000/v1/jobs/<id>/result -o route.pdf
+
+# other examples (same poll -> fetch flow):
+curl -F gpx=@route.gpx -F layout=preview -F format=png http://localhost:8000/v1/render
+curl -F gpx=@route.gpx -F layout=landscape -F paper=a4 http://localhost:8000/v1/render
+curl -F gpx=@route.gpx http://localhost:8000/v1/analyze                      # JSON report
 ```
 
-Endpoints: `POST /v1/jobs` (upload GPX + params → 202), `GET /v1/jobs/{id}`,
-`GET /v1/jobs/{id}/result` (streams, or 303 → presigned URL), `POST /v1/analyze`,
-`GET /healthz`. Single-process dev mode (in-memory, synchronous, no Redis/MinIO):
+Endpoints: `POST /v1/render`, `POST /v1/analyze`, `POST /v1/validate` (each
+uploads a GPX + params → `202` job with a `Location` header, or `200` if an
+identical request is already done); `GET /v1/jobs/{id}` (status, incl.
+`content_type` when done), `GET /v1/jobs/{id}/result` (streams the artifact with
+an immutable `ETag`, or 303 → presigned URL; `425` until ready, `409` if failed);
+`GET /healthz` (liveness) and `GET /readyz` (Redis/MinIO reachable). When API
+keys are configured, jobs are visible only to the key that created them.
+Single-process dev mode (in-memory, synchronous, no Redis/MinIO):
 
 ```bash
 pip install -e ".[service]"

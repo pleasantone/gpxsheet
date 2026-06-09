@@ -37,6 +37,57 @@ PAGE_SIZES = {
 DEFAULT_PAPER = "letter"
 
 
+def iter_page_figures(
+    route: Route,
+    *,
+    turn_style: str = TURN_STYLE_STYLIZED,
+    orientation: str = "landscape",
+    paper: str = DEFAULT_PAPER,
+    lanes_per_page: int = LANES_PER_PAGE,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
+):
+    """Yield one matplotlib ``Figure`` per route-aware page (caller closes them).
+
+    Shared by :func:`render_pdf` (PDF pages) and :func:`render_pages_png` (one
+    stacked image). ``orientation`` is ``"landscape"`` (one strip per page, big
+    map) or ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page).
+    """
+    if orientation not in ("landscape", "portrait"):
+        raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
+    paper = paper.lower()
+    if paper not in PAGE_SIZES:
+        raise ValueError(f"paper must be one of {sorted(PAGE_SIZES)}, got {paper!r}")
+    page_w_in, page_h_in = PAGE_SIZES[paper]  # portrait (width, height) inches
+    lanes_per_page = max(1, lanes_per_page)
+    decisions_per_lane = max(1, decisions_per_lane)
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    total = route.length_miles
+    if orientation == "portrait":
+        lanes = paginate(route, max_decisions=decisions_per_lane)
+        page_groups = [
+            lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
+        ]
+        for i, group in enumerate(page_groups, start=1):
+            fig = plt.figure(figsize=(page_w_in, page_h_in))  # portrait
+            _compose_portrait_page(
+                fig, route, group, i, len(page_groups), total, turn_style, lanes_per_page
+            )
+            yield fig
+    else:
+        pages = paginate(route)
+        for i, (start, end) in enumerate(pages, start=1):
+            fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
+            _compose_page(
+                fig, route, start, end, i, len(pages), total, turn_style,
+                page_h_in, page_w_in,
+            )
+            yield fig
+
+
 def render_pdf(
     route: Route,
     output_path: str | Path,
@@ -54,46 +105,59 @@ def render_pdf(
     up to ``decisions_per_lane`` decisions, roadbook-style). ``paper`` is one of
     :data:`PAGE_SIZES` (``"letter"`` or ``"a4"``).
     """
-    if orientation not in ("landscape", "portrait"):
-        raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
-    paper = paper.lower()
-    if paper not in PAGE_SIZES:
-        raise ValueError(f"paper must be one of {sorted(PAGE_SIZES)}, got {paper!r}")
-    page_w_in, page_h_in = PAGE_SIZES[paper]  # portrait (width, height) inches
-    lanes_per_page = max(1, lanes_per_page)
-    decisions_per_lane = max(1, decisions_per_lane)
-    import matplotlib
-
-    matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
 
     output_path = Path(output_path)
-    total = route.length_miles
-
     with PdfPages(output_path) as pdf:
-        if orientation == "portrait":
-            lanes = paginate(route, max_decisions=decisions_per_lane)
-            page_groups = [
-                lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
-            ]
-            for i, group in enumerate(page_groups, start=1):
-                fig = plt.figure(figsize=(page_w_in, page_h_in))  # portrait
-                _compose_portrait_page(
-                    fig, route, group, i, len(page_groups), total, turn_style, lanes_per_page
-                )
-                pdf.savefig(fig, facecolor="white")
-                plt.close(fig)
-        else:
-            pages = paginate(route)
-            for i, (start, end) in enumerate(pages, start=1):
-                fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
-                _compose_page(
-                    fig, route, start, end, i, len(pages), total, turn_style,
-                    page_h_in, page_w_in,
-                )
-                pdf.savefig(fig, facecolor="white")
-                plt.close(fig)
+        for fig in iter_page_figures(
+            route, turn_style=turn_style, orientation=orientation, paper=paper,
+            lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
+        ):
+            pdf.savefig(fig, facecolor="white")
+            plt.close(fig)
+    return output_path
+
+
+def render_pages_png(
+    route: Route,
+    output_path: str | Path,
+    *,
+    turn_style: str = TURN_STYLE_STYLIZED,
+    orientation: str = "landscape",
+    paper: str = DEFAULT_PAPER,
+    lanes_per_page: int = LANES_PER_PAGE,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
+    dpi: int | None = None,
+) -> Path:
+    """Render a paginated layout to a single tall PNG: every page stacked top to
+    bottom (a contact sheet), so the whole route is one image."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    dpi = PREVIEW_DPI if dpi is None else dpi
+    output_path = Path(output_path)
+    rows: list = []
+    for fig in iter_page_figures(
+        route, turn_style=turn_style, orientation=orientation, paper=paper,
+        lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
+    ):
+        fig.set_dpi(dpi)
+        fig.set_facecolor("white")
+        fig.canvas.draw()
+        w, h = fig.canvas.get_width_height()
+        rows.append(np.asarray(fig.canvas.buffer_rgba()).reshape(h, w, 4).copy())
+        plt.close(fig)
+
+    if not rows:  # empty route -> a small blank canvas, still a valid PNG
+        rows = [np.full((1, 1, 4), 255, dtype=np.uint8)]
+    width = max(r.shape[1] for r in rows)
+    padded = [
+        r if r.shape[1] == width
+        else np.pad(r, ((0, 0), (0, width - r.shape[1]), (0, 0)), constant_values=255)
+        for r in rows
+    ]
+    plt.imsave(output_path, np.vstack(padded))
     return output_path
 
 
@@ -361,3 +425,48 @@ def generate_preview(
         route, output_file, turn_style=turn_style, decisions_per_lane=decisions_per_lane
     )
     return str(output_file)
+
+
+# Layouts the service exposes, and the output formats each supports. ``portrait``
+# and ``landscape`` are paginated (multi-page PDF / one stacked PNG); ``preview``
+# is the whole route as one image; ``strip`` is a single schematic strip.
+LAYOUTS = ("portrait", "landscape", "preview", "strip")
+FORMATS = ("pdf", "png")
+
+
+def render_layout(
+    route: Route,
+    output_path: str | Path,
+    *,
+    layout: str = "portrait",
+    fmt: str = "pdf",
+    turn_style: str = TURN_STYLE_STYLIZED,
+    paper: str = DEFAULT_PAPER,
+    lanes_per_page: int = LANES_PER_PAGE,
+    decisions_per_lane: int = DECISIONS_PER_LANE,
+) -> Path:
+    """Render an already-analyzed ``route`` to ``output_path`` in any layout/format.
+
+    ``layout`` is one of :data:`LAYOUTS`, ``fmt`` one of :data:`FORMATS`.
+    ``output_path``'s extension must match ``fmt`` (the ``preview``/``strip``
+    renderers infer their format from it).
+    """
+    if layout not in LAYOUTS:
+        raise ValueError(f"layout must be one of {LAYOUTS}, got {layout!r}")
+    if fmt not in FORMATS:
+        raise ValueError(f"fmt must be one of {FORMATS}, got {fmt!r}")
+    output_path = Path(output_path)
+
+    if layout in ("portrait", "landscape"):
+        render = render_pdf if fmt == "pdf" else render_pages_png
+        return render(
+            route, output_path, turn_style=turn_style, orientation=layout, paper=paper,
+            lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
+        )
+    if layout == "preview":
+        return render_preview(
+            route, output_path, turn_style=turn_style, decisions_per_lane=decisions_per_lane
+        )
+    from .strip import render_route_strip
+
+    return render_route_strip(route, output_path, turn_style=turn_style)

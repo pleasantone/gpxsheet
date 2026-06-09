@@ -1,12 +1,12 @@
 """GPXSheet web service.
 
-A FastAPI app that exposes the engine over REST: upload a GPX, get a tank-bag PDF.
-Renders are slow (matplotlib + live OSM), so generation runs as a background job
-(Dramatiq + Redis) with the result stored in object storage (MinIO); a synchronous
-``/v1/analyze`` returns the structured route analysis as JSON.
+A FastAPI app that exposes the engine over REST. Every operation is a background
+job (Dramatiq + Redis) with the result stored in object storage (MinIO): POST to a
+typed endpoint (``/v1/render`` -- picks a ``layout`` and ``format``; ``/v1/analyze``
+and ``/v1/validate`` -- JSON reports), poll ``GET /v1/jobs/{id}``, then fetch
+``.../result``.
 
-Requires the ``service`` extra: ``pip install "gpxsheet[service]"`` (add ``osm``
-for road-name enrichment).
+Requires the ``service`` extra: ``pip install "gpxsheet[service]"``.
 """
 
 from __future__ import annotations

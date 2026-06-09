@@ -50,10 +50,11 @@ def test_prod_path_end_to_end(l_route_file):
 
     with open(l_route_file, "rb") as fh:
         r = client.post(
-            "/v1/jobs?orientation=landscape",
+            "/v1/render",
             files={"gpx": ("route.gpx", fh, "application/gpx+xml")},
+            data={"layout": "landscape"},
         )
-    assert r.status_code == 202
+    assert r.status_code in (200, 202)  # 200 eager (done) / 202 if queued
     body = r.json()
     assert body["status"] == "done"
     assert body["result_url"] and body["result_url"].startswith("http")  # presigned MinIO URL

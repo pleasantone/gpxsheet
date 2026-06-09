@@ -54,9 +54,12 @@ def test_doctype_upload_fails_job(tmp_path):
         '<gpx><rte><rtept lat="1" lon="2"/><rtept lat="3" lon="4"/></rte></gpx>',
         encoding="utf-8",
     )
-    body = _post(client, "/v1/jobs", gpx).json()
+    resp = _post(client, "/v1/render", gpx)
+    body = resp.json()
     assert body["status"] == "error"
     assert "DTD/entity" in body["error"]
+    # Fetching a failed job's result is a 409 (not a "still processing" signal).
+    assert client.get(f"/v1/jobs/{body['id']}/result").status_code == 409
 
 
 # --- upload validation ------------------------------------------------------
@@ -65,7 +68,7 @@ def test_doctype_upload_fails_job(tmp_path):
 def test_non_gpx_upload_rejected(tmp_path):
     client = _client(tmp_path)
     r = client.post(
-        "/v1/jobs",
+        "/v1/render",
         files={"gpx": ("note.txt", b"just some text, not xml", "text/plain")},
     )
     assert r.status_code == 400
@@ -73,7 +76,7 @@ def test_non_gpx_upload_rejected(tmp_path):
 
 def test_point_cap_rejects_monster_route(tmp_path, l_route_file):
     client = _client(tmp_path, max_points=5)  # l_route_file has many more
-    assert _post(client, "/v1/jobs", l_route_file).status_code == 413
+    assert _post(client, "/v1/render", l_route_file).status_code == 413
 
 
 # --- authentication & per-key rate limiting ---------------------------------
@@ -81,25 +84,35 @@ def test_point_cap_rejects_monster_route(tmp_path, l_route_file):
 
 def test_api_key_required_when_configured(tmp_path, l_route_file):
     client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
-    assert _post(client, "/v1/jobs", l_route_file).status_code == 401
+    assert _post(client, "/v1/render", l_route_file).status_code == 401
     ok = _post(
-        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "s3cret"}
+        client, "/v1/render", l_route_file, headers={"X-API-Key": "s3cret"}
     )
-    assert ok.status_code == 202
+    assert ok.status_code in (200, 202)  # 200 eager (done) / 202 queued
 
 
 def test_bearer_token_accepted(tmp_path, l_route_file):
     client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
     ok = _post(
-        client, "/v1/jobs", l_route_file, headers={"Authorization": "Bearer s3cret"}
+        client, "/v1/render", l_route_file, headers={"Authorization": "Bearer s3cret"}
     )
-    assert ok.status_code == 202
+    assert ok.status_code in (200, 202)
+
+
+def test_job_not_visible_to_other_key(tmp_path, l_route_file):
+    """Object-level authz: a job is only visible to the key that created it."""
+    client = _client(tmp_path, api_keys=frozenset({"a", "b"}))
+    job_id = _post(client, "/v1/render", l_route_file, headers={"X-API-Key": "a"}).json()["id"]
+    assert client.get(f"/v1/jobs/{job_id}", headers={"X-API-Key": "a"}).status_code == 200
+    # A different key gets 404 (not 403), so job IDs aren't confirmable.
+    assert client.get(f"/v1/jobs/{job_id}", headers={"X-API-Key": "b"}).status_code == 404
+    assert client.get(f"/v1/jobs/{job_id}/result", headers={"X-API-Key": "b"}).status_code == 404
 
 
 def test_result_requires_api_key(tmp_path, l_route_file):
     client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
     hdr = {"X-API-Key": "s3cret"}
-    job_id = _post(client, "/v1/jobs", l_route_file, headers=hdr).json()["id"]
+    job_id = _post(client, "/v1/render", l_route_file, headers=hdr).json()["id"]
     assert client.get(f"/v1/jobs/{job_id}/result").status_code == 401
     assert client.get(f"/v1/jobs/{job_id}/result", headers=hdr).status_code == 200
 
@@ -109,15 +122,15 @@ def test_rate_limit_is_per_key(tmp_path, l_route_file):
         tmp_path, api_keys=frozenset({"a", "b"}), rate_limit_per_minute=1
     )
     assert _post(
-        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "a"}
-    ).status_code == 202
+        client, "/v1/render", l_route_file, headers={"X-API-Key": "a"}
+    ).status_code in (200, 202)
     assert _post(
-        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "a"}
+        client, "/v1/render", l_route_file, headers={"X-API-Key": "a"}
     ).status_code == 429
     # A different key has its own budget.
     assert _post(
-        client, "/v1/jobs", l_route_file, headers={"X-API-Key": "b"}
-    ).status_code == 202
+        client, "/v1/render", l_route_file, headers={"X-API-Key": "b"}
+    ).status_code in (200, 202)
 
 
 # --- security headers -------------------------------------------------------
