@@ -126,6 +126,10 @@ uvicorn gpxsheet.service.asgi:app        # worker not needed in dev mode
 Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
 `gpxsheet/service/settings.py`).
 
+**Building a UI on the API?** See the front-end integration guide:
+[docs/web-api.md](docs/web-api.md) (submit → poll → fetch flow, every endpoint,
+auth, and browser `fetch` examples). Live OpenAPI docs are served at `/docs`.
+
 **Before exposing the service to the public internet, read
 [docs/security-audit.md](docs/security-audit.md).** Key hardening knobs:
 `GPXSHEET_API_KEYS` (comma-separated; enables `X-API-Key`/`Bearer` auth + per-key
