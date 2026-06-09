@@ -6,9 +6,7 @@ navigation PDFs** (sport-touring). Full design spec + as-built notes:
 section when resuming.
 
 - **Repo:** private GitHub `pleasantone/gpxsheet`, branch `main`.
-- **Owner:** Paul Traina.
-- **Python:** 3.14, project-local `.venv` (NOT `~/.venv`, an unrelated scraping
-  env). `source .venv/bin/activate`.
+- **Python:** 3.14, project-local `.venv`. `source .venv/bin/activate`.
 - **Status:** Phase 1 **complete** (analysis engine, schematic strip, tank-bag
   PDF in landscape + portrait, publish-ready package, web service verified live).
   Portrait roadbook + OSM are the CLI defaults; OSM degrades to geometry-only
@@ -79,16 +77,12 @@ missing / `looks_sparse` / Overpass fails) → profile threshold → fuel + reas
   product defaults (portrait + OSM).
 - OSM = live Overpass; slow in dense urban (~140s/5mi SF) vs ~3s rural; the live
   integration test is gated behind `GPXSHEET_LIVE_OSM=1` so CI stays offline.
-- **Iterate the renderers visually** — produce PNGs (rasterize PDFs with
-  `/opt/homebrew/bin/pdftoppm`; the Read tool's PATH lacks it) and review with
-  Paul. See [[gpxsheet-strip-iteration]] in memory.
 
 ## Test data
 
 `~/gpxtable/samples/*.gpx` — 19 real California/PNW moto routes, picked to stress
 every parser/analysis quirk. `examples/sample_route.gpx` is synthetic & offshore
-(no OSM coverage — use `--no-osm`). For iteration prefer synthetic Routes; live
-Overpass hangs intermittently in this sandbox.
+(no OSM coverage — use `--no-osm`). For iteration prefer synthetic Routes.
 
 By data type (what the pipeline keys on):
 - **Dense tracks** (`<trk>`, ~30–40 pts/mi): `ich-dual-gas` ("sep02 174mi" =
@@ -130,6 +124,4 @@ The web service is shipped and verified live; run it with
 
 ## Conventions
 
-- Commit/push only when asked; commit messages end with the Co-Authored-By
-  trailer. Keep ruff clean + tests green before committing.
 - Typer needs `B008` ignored (in pyproject). Use `zip(..., strict=...)`.
