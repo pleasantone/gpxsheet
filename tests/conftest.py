@@ -1,10 +1,82 @@
-"""Shared test fixtures: synthetic GPX builders."""
+"""Shared test fixtures: synthetic GPX builders and the OSM cache harness.
+
+The suite is deterministic and offline. We point osmnx at a committed response
+cache (``tests/fixtures/osm_cache``) and, unless recording, replace osmnx's
+Overpass request with a cache-only stand-in that raises on a miss -- so a
+forgotten/stale fixture fails loudly instead of silently hitting the network.
+Re-record with::
+
+    GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py
+
+(see ``tests/fixtures/README.md``).
+"""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+OSM_CACHE_DIR = FIXTURES_DIR / "osm_cache"
+RECORDING_OSM = os.environ.get("GPXSHEET_RECORD_OSM") == "1"
+
+
+def _offline_overpass_request(data):
+    """Cache-only replacement for ``osmnx._overpass._overpass_request``.
+
+    Computes the same cache key osmnx would and returns the committed response;
+    a miss raises rather than touching the network, keeping CI deterministic.
+    """
+    import requests
+    from osmnx import _http, settings
+
+    url = settings.overpass_url.rstrip("/") + "/interpreter"
+    prepared_url = str(requests.Request("GET", url, params=data).prepare().url)
+    cached = _http._retrieve_from_cache(prepared_url)
+    if isinstance(cached, dict):
+        return cached
+    raise RuntimeError(
+        "OSM Overpass cache miss in offline test mode. Re-record fixtures with "
+        f"GPXSHEET_RECORD_OSM=1. query={str(data.get('data', ''))[:200]!r}"
+    )
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _osm_cache():
+    """Wire osmnx to the committed response cache for the whole session.
+
+    No-op when osmnx isn't installed (core-only runs skip OSM entirely). When
+    recording, network is allowed and responses land in the committed cache dir;
+    otherwise Overpass is served strictly from the cache.
+    """
+    try:
+        import osmnx as ox
+        from osmnx import _overpass
+    except ImportError:
+        yield
+        return
+
+    OSM_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    ox.settings.use_cache = True
+    ox.settings.cache_folder = str(OSM_CACHE_DIR)
+
+    original = _overpass._overpass_request
+    if RECORDING_OSM:
+        ox.settings.overpass_rate_limit = False  # skip inter-request pauses
+    else:
+        _overpass._overpass_request = _offline_overpass_request
+    try:
+        yield
+    finally:
+        _overpass._overpass_request = original
+
+
+@pytest.fixture
+def enrich_route_file() -> Path:
+    """A real onshore route (15 mi clip) with committed OSM cache, for enrichment."""
+    return FIXTURES_DIR / "enrich_route.gpx"
 
 
 def _trkpt(lat: float, lon: float) -> str:

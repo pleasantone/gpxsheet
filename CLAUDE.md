@@ -9,21 +9,22 @@ section when resuming.
 - **Python:** 3.14, project-local `.venv`. `source .venv/bin/activate`.
 - **Status:** Phase 1 **complete** (analysis engine, schematic strip, tank-bag
   PDF in landscape + portrait, publish-ready package, web service verified live).
-  Portrait roadbook + OSM are the CLI defaults; OSM degrades to geometry-only
-  gracefully. Planned work is in [TODO.md](TODO.md).
+  Portrait roadbook is the default orientation. Decisions/segments come from OSM,
+  degrading to the geometry baseline automatically on sparse routes or Overpass
+  failure. Planned work is in [TODO.md](TODO.md).
 
 ## Commands
 
 ```bash
 .venv/bin/ruff check .      # lint (CI runs it; keep clean)
-.venv/bin/pytest -q         # all should pass
-GPXSHEET_LIVE_OSM=1 .venv/bin/pytest tests/test_enrich.py::test_enrich_route_live_against_osm
-.venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait + OSM (defaults)
-.venv/bin/gpxsheet generate <gpx> --landscape --no-osm    # opt-outs
+.venv/bin/pytest -q         # all should pass; deterministic + offline (cached OSM)
+GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cache
+.venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
+.venv/bin/gpxsheet generate <gpx> --landscape            # one strip/page
 ```
 
-Install: `pip install -e ".[dev]"` (core) + `pip install -e ".[osm]"` (OSM stack:
-osmnx 2.1 + shapely + geopandas; installs fine on 3.14).
+Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
+geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
 ## Architecture (src/gpxsheet/)
 
@@ -34,7 +35,7 @@ osmnx 2.1 + shapely + geopandas; installs fine on 3.14).
   `merge_close_decisions`, reassurance, fuel, `build_segments`; helpers
   `coord_at_meters` (interpolates), `turn_angle_at_mile`, `looks_sparse`. Tuning
   constants at top of file.
-- `enrich.py` — optional OSM (osmnx): durable road-name-change decisions
+- `enrich.py` — OSM (osmnx): durable road-name-change decisions
   (`_durable_runs`/`_decisions_from_runs`), named segments, fuel; `_chunk_ranges`
   chunks big routes. `_apply_junction_topology` (best-effort, try/except) reads
   the osmnx graph (node degree, edge bearings, `junction=roundabout`) to add
@@ -56,11 +57,11 @@ osmnx 2.1 + shapely + geopandas; installs fine on 3.14).
   strips, `lanes_per_page`/`decisions_per_lane`). Header = name + green mileage +
   page counter; no cue zone.
 - `report.py` — `analyze` text. `cli.py` — typer CLI (generate/analyze/strip/
-  validate; `--portrait/--landscape --osm/--no-osm --lanes --lane-decisions`).
+  preview/validate; `--landscape --lanes --lane-decisions`; no OSM/dpi flags).
 
-`analyze_route` flow: geometry detect → merge → segments → **if use_osm** enrich
-(replaces decisions+segments; falls back to geometry-only w/ warning if osmnx
-missing / `looks_sparse` / Overpass fails) → profile threshold → fuel + reassurance.
+`analyze_route` flow: geometry detect → merge → segments → **OSM enrich**
+(replaces decisions+segments; falls back to geometry-only w/ warning if
+`looks_sparse` / Overpass fails) → profile threshold → fuel + reassurance.
 
 ## Key decisions (don't re-litigate without reason)
 
@@ -72,17 +73,22 @@ missing / `looks_sparse` / Overpass fails) → profile threshold → fuel + reas
   `MIN_ROAD_RUN_MILES=0.3`, `MERGE_MIN_SEPARATION_MILES=0.2`,
   `TURN_ANGLE_THRESHOLD_DEG=35`, `MAX_TURN_ARC_M=90`, `CONTINUE_MAX_ANGLE_DEG=25`;
   strip `MIN_SEGMENT_LEN=2.6`, `DIST_SCALE=1.0`, stylized angles 10/30/55°.
-- **Library vs CLI defaults:** library fns (`analyze`, `generate_pdf`) default
-  `use_osm=False` / landscape (predictable, offline). Only the CLI flips to the
-  product defaults (portrait + OSM).
-- OSM = live Overpass; slow in dense urban (~140s/5mi SF) vs ~3s rural; the live
-  integration test is gated behind `GPXSHEET_LIVE_OSM=1` so CI stays offline.
+- **Decisions/segments come from OSM**, falling back to the geometry baseline
+  automatically (with a warning) on `looks_sparse` routes or Overpass failure.
+  Orientation: library fns default landscape, CLI defaults portrait.
+- OSM = live Overpass; slow in dense urban (~140s/5mi SF) vs ~3s rural. **Tests
+  are deterministic + offline:** `conftest` points osmnx at a committed response
+  cache (`tests/fixtures/osm_cache`) and replays cache-only (a miss raises, never
+  hits the network). Re-record with `GPXSHEET_RECORD_OSM=1`. The onshore enrich
+  fixture is `tests/fixtures/enrich_route.gpx`; the offshore synthetic `l_route`
+  exercises the fallback path (empty Overpass → geometry-only).
 
 ## Test data
 
 `~/gpxtable/samples/*.gpx` — 19 real California/PNW moto routes, picked to stress
 every parser/analysis quirk. `examples/sample_route.gpx` is synthetic & offshore
-(no OSM coverage — use `--no-osm`). For iteration prefer synthetic Routes.
+(no OSM coverage → enrichment falls back to geometry-only). For iteration prefer
+synthetic Routes.
 
 By data type (what the pipeline keys on):
 - **Dense tracks** (`<trk>`, ~30–40 pts/mi): `ich-dual-gas` ("sep02 174mi" =

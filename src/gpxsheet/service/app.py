@@ -103,7 +103,6 @@ def create_app(
     max_points: int | None = None,
     rate_limit_per_minute: int | None = None,
     api_keys: frozenset[str] | None = None,
-    allow_osm: bool | None = None,
     cors_origins: list[str] | None = None,
     enable_hsts: bool | None = None,
 ) -> FastAPI:
@@ -121,7 +120,6 @@ def create_app(
         else settings.rate_limit_per_minute()
     )
     keys = api_keys if api_keys is not None else settings.api_keys()
-    osm_allowed = allow_osm if allow_osm is not None else settings.allow_osm()
     origins = cors_origins if cors_origins is not None else settings.cors_origins()
     hsts = enable_hsts if enable_hsts is not None else settings.enable_hsts()
 
@@ -170,11 +168,6 @@ def create_app(
             )
         return data
 
-    def vet_params(params: GenerateParams) -> GenerateParams:
-        if params.use_osm and not osm_allowed:
-            raise HTTPException(status_code=400, detail="OSM enrichment is disabled on this server")
-        return params
-
     def to_status(rec) -> JobStatus:
         result_url = None
         if rec.status == "done" and rec.result_key:
@@ -189,7 +182,6 @@ def create_app(
         "/v1/jobs", status_code=202, response_model=JobStatus, dependencies=[Depends(rate_limited)]
     )
     def create_job(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> JobStatus:
-        vet_params(params)
         data = read_gpx(gpx)
         key = _cache_key(data, params)
         cached = store.get_cached(key)
@@ -224,13 +216,12 @@ def create_app(
 
     @app.post("/v1/analyze", dependencies=[Depends(rate_limited)])
     def analyze(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> dict:
-        vet_params(params)
         return analyze_to_dict(read_gpx(gpx), params)
 
     @app.post("/v1/preview", dependencies=[Depends(rate_limited)])
     def preview(gpx: UploadFile, params: Annotated[GenerateParams, Query()]) -> Response:
-        # Synchronous: a fast, low-res whole-route thumbnail (no job/pagination).
-        vet_params(params)
+        # Synchronous: a whole-route thumbnail (no job/pagination) at the same
+        # resolution as a render.
         png = render_preview_bytes(read_gpx(gpx), params)
         return Response(content=png, media_type="image/png")
 

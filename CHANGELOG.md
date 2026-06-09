@@ -13,20 +13,19 @@ First packaged release. Phase 1 milestones 1–4 complete.
 * **analysis:** route analysis engine — GPX loading (track/route/waypoint),
   geometry cleanup (RDP), decision-point detection, reassurance markers, fuel
   analysis, segmentation, and the `analyze` text output
-* **osm:** optional OpenStreetMap enrichment (`osm` extra) — decisions from
-  durable road-name changes, named segments, and fuel discovery; sparse routes
-  skip it and long routes are queried in chunks; degrades to geometry-only when
-  unavailable
+* **osm:** OpenStreetMap enrichment — decisions from durable road-name changes,
+  named segments, and fuel discovery; sparse routes skip it and long routes are
+  queried in chunks; degrades to the geometry baseline automatically on sparse
+  routes or Overpass failure
 * **strip:** schematic map strip (`strip`) — stylized (default) or faithful
   turns, collision-placed labels with dashed leaders, road ribbon
 * **pdf:** tank-bag PDF (`generate`) — route-aware pagination, landscape
   (one strip per page) and portrait (stacked roadbook lanes) layouts, cue-free
-  header with page mileage, progress bar; portrait + OSM are the CLI defaults
+  header with page mileage, progress bar; portrait is the CLI default orientation
 
 ### Build System
 
-* package for `pip install gpxsheet` (core) / `gpxsheet[osm]` (enrichment);
-  PEP 561 typed
+* package for `pip install gpxsheet` (OSM enrichment included); PEP 561 typed
 
 ### Chores
 

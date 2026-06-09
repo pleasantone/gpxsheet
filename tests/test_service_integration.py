@@ -50,7 +50,7 @@ def test_prod_path_end_to_end(l_route_file):
 
     with open(l_route_file, "rb") as fh:
         r = client.post(
-            "/v1/jobs?use_osm=false&orientation=landscape",
+            "/v1/jobs?orientation=landscape",
             files={"gpx": ("route.gpx", fh, "application/gpx+xml")},
         )
     assert r.status_code == 202

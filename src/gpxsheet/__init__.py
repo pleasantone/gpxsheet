@@ -30,7 +30,6 @@ def generate_pdf(
     *,
     profile: str = DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    use_osm: bool = False,
     turn_style: str = "stylized",
     orientation: str = "landscape",
     paper: str = "letter",
@@ -44,7 +43,6 @@ def generate_pdf(
         output_file: Path to write the rendered PDF to.
         profile: One of ``minimalist``, ``sport-touring``, ``rally``.
         fuel_range: Rider fuel range in miles, used for fuel-gap analysis.
-        use_osm: Enrich with OpenStreetMap road names/fuel (needs the osm extra).
         turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
         orientation: ``"landscape"`` (one big strip per page) or ``"portrait"``
             (several stacked strip lanes per page, roadbook-style).
@@ -62,7 +60,6 @@ def generate_pdf(
         output_file,
         profile=profile,
         fuel_range=fuel_range,
-        use_osm=use_osm,
         turn_style=turn_style,
         orientation=orientation,
         paper=paper,
@@ -77,7 +74,6 @@ def analyze(
     profile: str = DEFAULT_PROFILE,
     fuel_range: float | None = None,
     reassurance_interval: float | None = None,
-    use_osm: bool = False,
     include_hazards: bool = False,
 ) -> Route:
     """Run the route analysis engine on a GPX file.
@@ -96,7 +92,6 @@ def analyze(
         profile=profile,
         fuel_range=fuel_range,
         reassurance_interval=reassurance_interval,
-        use_osm=use_osm,
         include_hazards=include_hazards,
     )
 
@@ -121,7 +116,6 @@ def generate_strip(
     *,
     profile: str = DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    use_osm: bool = False,
     turn_style: str = "stylized",
 ) -> str:
     """Render a route to a schematic map-strip image."""
@@ -132,6 +126,5 @@ def generate_strip(
         output_file,
         profile=profile,
         fuel_range=fuel_range,
-        use_osm=use_osm,
         turn_style=turn_style,
     )

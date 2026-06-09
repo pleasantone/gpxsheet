@@ -11,7 +11,7 @@ WORKDIR /app
 # A BuildKit pip cache mount keeps rebuilds fast when only the source changes.
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN --mount=type=cache,target=/root/.cache/pip pip install ".[service,osm]"
+RUN --mount=type=cache,target=/root/.cache/pip pip install ".[service]"
 
 RUN useradd --create-home app && mkdir -p "$GPXSHEET_RESULTS_DIR" \
     && chown -R app "$GPXSHEET_RESULTS_DIR"

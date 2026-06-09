@@ -366,14 +366,16 @@ def analyze_route(
     profile: str | Profile = "sport-touring",
     fuel_range: float | None = None,
     reassurance_interval: float | None = None,
-    use_osm: bool = False,
     include_hazards: bool = False,
 ) -> Route:
     """Run the full analysis, populating ``route`` in place.
 
-    ``include_hazards`` adds OSM hazard data (ferry crossings; unpaved mileage is
-    always captured when OSM runs) for :func:`gpxsheet.validate.validate_route`.
-    Returns the same :class:`Route` for convenience.
+    Decisions and segments come from OSM road topology (durable road-name changes,
+    named roads), falling back to the geometry baseline (with a warning) when the
+    route is too sparse to sample or the Overpass query fails. ``include_hazards``
+    adds OSM hazard data (ferry crossings; unpaved mileage is captured whenever the
+    OSM pass runs) for :func:`gpxsheet.validate.validate_route`. Returns the same
+    :class:`Route` for convenience.
     """
     prof = profile if isinstance(profile, Profile) else get_profile(profile)
     interval = (
@@ -391,38 +393,27 @@ def analyze_route(
 
     # 2. OSM enrichment: replaces decisions with durable road-name changes,
     #    segments with the named roads, and adds OSM fuel. Must run after step 1.
-    #    Degrades to geometry-only (with a warning) when the extra is missing, the
-    #    route is too sparse, or the live Overpass query fails -- so OSM can be the
-    #    default without breaking core installs or offline use.
-    if use_osm:
-        from .enrich import osm_available
+    #    Sparse waypoint-only routes are skipped (road names sampled along straight
+    #    lines that don't follow roads are meaningless) and a failed Overpass query
+    #    falls back to the geometry baseline, so analysis still produces output.
+    if looks_sparse(route):
+        warnings.warn(
+            "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
+            "OSM enrichment, which would sample road names along straight lines "
+            "that do not follow roads. Using geometry-only analysis.",
+            stacklevel=2,
+        )
+    else:
+        from .enrich import enrich_route
 
-        if not osm_available():
+        try:
+            enrich_route(route, include_fuel=prof.include_fuel, include_hazards=include_hazards)
+        except Exception as exc:  # network/Overpass/data failure -> fall back
             warnings.warn(
-                "OSM enrichment requested but the 'osm' extra is not installed "
-                "(pip install 'gpxsheet[osm]'); using geometry-only analysis.",
+                f"OSM enrichment failed ({type(exc).__name__}: {exc}); "
+                "using geometry-only analysis.",
                 stacklevel=2,
             )
-        elif looks_sparse(route):
-            warnings.warn(
-                "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
-                "OSM enrichment, which would sample road names along straight lines "
-                "that do not follow roads. Using geometry-only analysis.",
-                stacklevel=2,
-            )
-        else:
-            from .enrich import enrich_route
-
-            try:
-                enrich_route(
-                    route, include_fuel=prof.include_fuel, include_hazards=include_hazards
-                )
-            except Exception as exc:  # network/Overpass/data failure -> fall back
-                warnings.warn(
-                    f"OSM enrichment failed ({type(exc).__name__}: {exc}); "
-                    "using geometry-only analysis.",
-                    stacklevel=2,
-                )
 
     # 3. Apply the profile's display threshold to whatever decisions step 1/2
     #    produced, then derive products that depend on the final fuel stops.

@@ -3,8 +3,8 @@
 Reports hazards/warnings for a route: fuel gaps exceeding the rider's range,
 unpaved stretches, and ferry crossings. Operates on an already-analyzed
 :class:`~gpxsheet.models.Route`; the unpaved/ferry checks need OSM data
-(`analyze(..., use_osm=True, include_hazards=True)`), and degrade to a "skipped"
-note when it isn't available.
+(`analyze(..., include_hazards=True)`), and degrade to a "skipped" note when OSM
+data isn't available (osmnx missing, sparse route, or Overpass failure).
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def validate_route(route: Route, *, fuel_range: float | None = None) -> list[Fin
 
     # --- Unpaved surface (needs OSM) -------------------------------------
     if route.unpaved_miles is None:
-        findings.append(Finding(INFO, "unpaved", "Unpaved check skipped (needs --osm)."))
+        findings.append(Finding(INFO, "unpaved", "Unpaved check skipped (no OSM data)."))
     elif route.unpaved_miles >= UNPAVED_WARN_MILES:
         findings.append(
             Finding(
@@ -72,7 +72,7 @@ def validate_route(route: Route, *, fuel_range: float | None = None) -> list[Fin
 
     # --- Ferry crossings (needs OSM) ------------------------------------
     if route.ferry_crossings is None:
-        findings.append(Finding(INFO, "ferry", "Ferry check skipped (needs --osm)."))
+        findings.append(Finding(INFO, "ferry", "Ferry check skipped (no OSM data)."))
     elif route.ferry_crossings:
         names = ", ".join(route.ferry_crossings)
         findings.append(Finding(WARNING, "ferry", f"Ferry crossing present: {names}."))

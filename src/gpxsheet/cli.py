@@ -44,10 +44,6 @@ def generate(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    osm: bool = typer.Option(
-        True, "--osm/--no-osm",
-        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
-    ),
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
@@ -65,7 +61,7 @@ def generate(
         4, "--lane-decisions", min=1, help="Portrait only: max decisions per lane."
     ),
 ) -> None:
-    """Generate a tank-bag navigation PDF (portrait roadbook + OSM by default)."""
+    """Generate a tank-bag navigation PDF (portrait roadbook)."""
     from . import generate_pdf
 
     out = generate_pdf(
@@ -73,7 +69,6 @@ def generate(
         str(output),
         profile=profile,
         fuel_range=fuel_range,
-        use_osm=osm,
         turn_style=turns,
         orientation="landscape" if landscape else "portrait",
         paper=paper,
@@ -95,10 +90,6 @@ def analyze(
     reassurance_interval: float | None = typer.Option(
         None, "--reassurance-interval", help="Miles between reassurance markers."
     ),
-    osm: bool = typer.Option(
-        True, "--osm/--no-osm",
-        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
-    ),
 ) -> None:
     """Produce a text route analysis (decision points, fuel, segments)."""
     from . import analyze as _analyze
@@ -109,7 +100,6 @@ def analyze(
         profile=profile,
         fuel_range=fuel_range,
         reassurance_interval=reassurance_interval,
-        use_osm=osm,
     )
     typer.echo(format_analysis(route))
 
@@ -124,10 +114,6 @@ def strip(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    osm: bool = typer.Option(
-        True, "--osm/--no-osm",
-        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
-    ),
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
@@ -140,7 +126,6 @@ def strip(
         str(output),
         profile=profile,
         fuel_range=fuel_range,
-        use_osm=osm,
         turn_style=turns,
     )
     typer.echo(f"Wrote {out}")
@@ -156,17 +141,12 @@ def preview(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    osm: bool = typer.Option(
-        True, "--osm/--no-osm",
-        help="OpenStreetMap road names/fuel (default on; falls back to geometry-only).",
-    ),
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
     lane_decisions: int = typer.Option(
         4, "--lane-decisions", min=1, help="Max decisions per strip lane."
     ),
-    dpi: int = typer.Option(150, "--dpi", min=1, help="Output image resolution."),
 ) -> None:
     """Render the whole route as one non-paginated image (stacked strip lanes).
 
@@ -180,10 +160,8 @@ def preview(
         str(output),
         profile=profile,
         fuel_range=fuel_range,
-        use_osm=osm,
         turn_style=turns,
         decisions_per_lane=lane_decisions,
-        dpi=dpi,
     )
     typer.echo(f"Wrote {out}")
 
@@ -194,10 +172,6 @@ def validate(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    osm: bool = typer.Option(
-        True, "--osm/--no-osm",
-        help="Use OpenStreetMap for unpaved/ferry checks (default on; else skipped).",
-    ),
 ) -> None:
     """Validate a route for fuel gaps, unpaved segments and ferry crossings.
 
@@ -206,7 +180,7 @@ def validate(
     from . import analyze as _analyze
     from .validate import WARNING, format_findings, validate_route
 
-    route = _analyze(str(gpx_file), fuel_range=fuel_range, use_osm=osm, include_hazards=osm)
+    route = _analyze(str(gpx_file), fuel_range=fuel_range, include_hazards=True)
     findings = validate_route(route, fuel_range=fuel_range)
     typer.echo(format_findings(route, findings))
     if any(f.level == WARNING for f in findings):

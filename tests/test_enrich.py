@@ -1,20 +1,12 @@
 """Tests for OSM enrichment.
 
-The pure helpers are tested without network access (they only need pandas, which
-ships with the ``osm`` extra, so the whole module is skipped when osmnx/pandas
-is absent — e.g. in core-only CI). The end-to-end ``enrich_route`` path hits the
-live Overpass API and only runs when GPXSHEET_LIVE_OSM=1 is set.
+The pure helpers run without network access. The end-to-end ``enrich_route`` path
+runs against committed Overpass responses (``tests/fixtures/osm_cache``) wired up
+by ``conftest``, so it is deterministic and offline; re-record with
+``GPXSHEET_RECORD_OSM=1``.
 """
 
 from __future__ import annotations
-
-import os
-
-import pytest
-
-from gpxsheet.enrich import osm_available
-
-pytestmark = pytest.mark.skipif(not osm_available(), reason="requires the osm extra")
 
 
 def _edges_frame():
@@ -154,22 +146,12 @@ def test_detect_ferries_reports_ride_along():
     assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == ["River Ferry"]
 
 
-@pytest.mark.skipif(
-    os.environ.get("GPXSHEET_LIVE_OSM") != "1",
-    reason="live Overpass query; set GPXSHEET_LIVE_OSM=1 to run",
-)
-def test_enrich_route_live_against_osm():
+def test_enrich_route_against_cached_osm(enrich_route_file):
     from gpxsheet import load_route
     from gpxsheet.analysis import analyze_route
-    from gpxsheet.geo import cumulative_distances
-    from gpxsheet.models import Route
 
-    full = load_route("/Users/pst/gpxtable/samples/gaia.gpx")
-    clip = [p for p, d in zip(full.points, full.distances_m, strict=False) if d < 15 * 1609.344]
-    route = Route(
-        name="live", points=clip, distances_m=cumulative_distances([(p.lat, p.lon) for p in clip])
-    )
-    analyze_route(route, profile="sport-touring", use_osm=True)
+    route = load_route(str(enrich_route_file))
+    analyze_route(route, profile="sport-touring")
     # Segments should be real OSM road names, not generic "Leg N".
     assert route.segments
     assert all(not s.name.startswith("Leg ") for s in route.segments)

@@ -783,8 +783,8 @@ Detects:
 | GPX parsing        | `gpxpy`              | core                                     |
 | Mapping / PDF      | `matplotlib`         | core; strip + PDF (Agg, `PdfPages`)      |
 | CLI                | `typer`              | core                                     |
-| OSM integration    | `osmnx`              | optional `[osm]` extra                   |
-| Geometry           | `shapely`            | optional `[osm]` extra (used by enrich)  |
+| OSM integration    | `osmnx`              | core; OSM enrichment                      |
+| Geometry           | `shapely`            | core; used by enrich                       |
 
 Notes: the strip and PDF are rendered with **matplotlib**, not `reportlab` (the
 single matplotlib stack keeps the strip and page composition consistent and
@@ -844,13 +844,12 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 
   `generate_pdf` is wired into the API and `gpxsheet generate <gpx> -o route.pdf`.
   Open polish (e.g. fuel-at-mile-0 overlapping START) is tracked in TODO.md.
-* **Defaults & graceful degradation:** the CLI defaults to **portrait + OSM**
-  (`--landscape` / `--no-osm` opt out). OSM enrichment falls back to geometry-only
-  (with a warning) when the `osm` extra is missing, the route `looks_sparse`
-  (waypoint-only `<rte>`), or the live Overpass query fails — so the default works
-  on core installs and offline. Sparse routes skip OSM; monster tracks are
-  enriched in chunks. The *library* functions keep `use_osm=False` / landscape
-  defaults for predictable programmatic use; only the CLI flips.
+* **Decisions/segments come from OSM; orientation defaults to portrait.** The
+  OSM-derived navigation structure is the product. Enrichment falls back to the
+  geometry baseline *automatically* (with a warning) when the route `looks_sparse`
+  (waypoint-only `<rte>`) or the live Overpass query fails, so analysis still
+  produces output. Monster tracks are enriched in chunks. Orientation defaults to
+  portrait (`--landscape` for one strip/page).
 * **Milestone 4 — Packaged CLI: ✅ complete (publish-ready).** `pyproject.toml`
   builds a clean sdist + wheel (PEP 639 license, PEP 561 `py.typed`, dynamic
   version from `gpxsheet.__version__`). Core deps slimmed to gpxpy + matplotlib
@@ -892,7 +891,7 @@ curvature alone):
    but **over-detects on twisty roads** — it has no way to know you stayed on
    the same road. Used as a fallback and to supply turn *direction*.
 
-2. **OSM mode (`--osm`).** Implements PRODUCT.md Rule Set 1 (road-name changes),
+2. **OSM enrichment.** Implements PRODUCT.md Rule Set 1 (road-name changes),
    which is what the significance table is really about. The route is sampled
    for OSM road names (~60 m spacing); a name that does not persist for at least
    `MIN_ROAD_RUN_MILES=0.3` is discarded as nearest-edge "flapping" at junctions
@@ -944,14 +943,16 @@ synthetic inputs; the graph-reading is tested with hand-built networkx graphs.
 
 ## OSM enrichment — operational notes
 
-* Optional, via `pip install -e ".[osm]"` (osmnx 2.x + geopandas stack;
-  installs cleanly on Python 3.14).
+* Backed by `osmnx` 2.x + the geopandas stack (a core dependency; installs cleanly
+  on Python 3.14).
 * Queries the **live Overpass API**: needs network, slower than the geometry
   path (≈3 s rural, but tens of seconds to minutes for dense urban areas).
   `osmnx` caches responses, so repeat runs over the same area are fast.
 * Graph is built from a buffered route polygon (not the whole bbox).
-* Helper functions are unit-tested; the end-to-end query is an integration test
-  skipped unless `GPXSHEET_LIVE_OSM=1` (so CI/offline don't depend on network).
+* Helper functions are unit-tested; the end-to-end enrichment path is tested
+  deterministically against **committed Overpass responses**
+  (`tests/fixtures/osm_cache`, replayed via `conftest`), so CI/offline never hit
+  the network. Re-record fixtures with `GPXSHEET_RECORD_OSM=1`.
 
 ## Real-world data quirks handled
 
@@ -965,6 +966,6 @@ synthetic inputs; the graph-reading is tested with hand-built networkx graphs.
 ## Tech stack (as installed)
 
 See the "Technology Stack (as built)" table above. Verified on Python 3.14: core
-= gpxpy + matplotlib + typer; `[osm]` = osmnx 2.1 + shapely + geopandas/pyproj/
-pyogrio; `[dev]` = pytest + ruff + mypy + build + twine.
+= gpxpy + matplotlib + typer + osmnx 2.1 + shapely (+ geopandas/pyproj/pyogrio via
+osmnx); `[dev]` = pytest + ruff + mypy + build + twine.
 

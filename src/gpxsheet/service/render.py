@@ -13,7 +13,8 @@ def render_preview_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
 
     The whole route as one tall image of stacked strip lanes (see
     :func:`gpxsheet.pdf.render_preview`) -- a display-resolution overview for a
-    UI. ``orientation``/``paper`` are ignored (the preview is a single column).
+    UI, rendered at the same resolution as a normal render. ``orientation``/
+    ``paper`` are ignored (the preview is a single column).
     """
     from gpxsheet.pdf import generate_preview
 
@@ -26,7 +27,6 @@ def render_preview_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
             str(out_path),
             profile=params.profile,
             fuel_range=params.fuel_range,
-            use_osm=params.use_osm,
             turn_style=params.turn_style,
             decisions_per_lane=params.decisions_per_lane,
         )
@@ -50,7 +50,6 @@ def render_pdf_bytes(gpx_bytes: bytes, params: GenerateParams) -> bytes:
             str(out_path),
             profile=params.profile,
             fuel_range=params.fuel_range,
-            use_osm=params.use_osm,
             turn_style=params.turn_style,
             orientation=params.orientation,
             paper=params.paper,
@@ -71,7 +70,6 @@ def analyze_to_dict(gpx_bytes: bytes, params: GenerateParams) -> dict:
             str(gpx_path),
             profile=params.profile,
             fuel_range=params.fuel_range,
-            use_osm=params.use_osm,
         )
     return {
         "name": route.name,

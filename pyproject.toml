@@ -26,16 +26,17 @@ classifiers = [
     "Typing :: Typed",
 ]
 
-# Core: GPX parsing, the schematic renderer, and the CLI. The OSM enrichment
-# stack (osmnx + shapely + geopandas ...) is an optional extra.
+# GPX parsing, the schematic renderer, the CLI, and OSM enrichment (osmnx pulls
+# in the geopandas/networkx geo stack; shapely is used directly by enrich.py).
 dependencies = [
     "gpxpy>=1.6",
     "matplotlib>=3.8",
+    "osmnx>=2.0",
+    "shapely>=2.0",
     "typer>=0.12",
 ]
 
 [project.optional-dependencies]
-osm = ["osmnx>=2.0", "shapely>=2.0"]
 # Milestone 5 web service: FastAPI API + Dramatiq/Redis job queue + MinIO storage.
 service = [
     "fastapi>=0.110",

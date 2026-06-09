@@ -36,7 +36,7 @@ def test_healthz(client):
 
 def test_job_lifecycle(client, l_route_file):
     # Eager runner renders synchronously, so the job is already "done" on return.
-    r = _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file)
+    r = _post(client, "/v1/jobs?orientation=landscape", l_route_file)
     assert r.status_code == 202
     body = r.json()
     assert body["status"] == "done"
@@ -52,7 +52,7 @@ def test_job_lifecycle(client, l_route_file):
 
 
 def test_portrait_job(client, l_route_file):
-    r = _post(client, "/v1/jobs?use_osm=false&orientation=portrait&lanes_per_page=3", l_route_file)
+    r = _post(client, "/v1/jobs?orientation=portrait&lanes_per_page=3", l_route_file)
     assert r.status_code == 202
     assert r.json()["status"] == "done"
 
@@ -63,7 +63,7 @@ def test_unknown_job_404(client):
 
 
 def test_analyze(client, l_route_file):
-    r = _post(client, "/v1/analyze?use_osm=false", l_route_file)
+    r = _post(client, "/v1/analyze", l_route_file)
     assert r.status_code == 200
     data = r.json()
     assert data["length_miles"] > 0
@@ -71,7 +71,7 @@ def test_analyze(client, l_route_file):
 
 
 def test_preview_returns_png(client, l_route_file):
-    r = _post(client, "/v1/preview?use_osm=false", l_route_file)
+    r = _post(client, "/v1/preview", l_route_file)
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
     assert r.content[:8] == b"\x89PNG\r\n\x1a\n"  # valid PNG header
@@ -79,37 +79,37 @@ def test_preview_returns_png(client, l_route_file):
 
 def test_empty_upload_rejected(client):
     r = client.post(
-        "/v1/jobs?use_osm=false", files={"gpx": ("empty.gpx", b"", "application/gpx+xml")}
+        "/v1/jobs", files={"gpx": ("empty.gpx", b"", "application/gpx+xml")}
     )
     assert r.status_code == 400
 
 
 def test_invalid_param_rejected(client, l_route_file):
     # orientation must match the model pattern
-    r = _post(client, "/v1/jobs?orientation=diagonal&use_osm=false", l_route_file)
+    r = _post(client, "/v1/jobs?orientation=diagonal", l_route_file)
     assert r.status_code == 422
 
 
 def test_result_cache_hit_reuses_job(client, l_route_file):
     # Identical GPX + params -> the second request returns the first job.
-    first = _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file)
-    second = _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file)
+    first = _post(client, "/v1/jobs?orientation=landscape", l_route_file)
+    second = _post(client, "/v1/jobs?orientation=landscape", l_route_file)
     assert first.json()["id"] == second.json()["id"]
     # Different params -> a different job.
-    third = _post(client, "/v1/jobs?use_osm=false&orientation=portrait", l_route_file)
+    third = _post(client, "/v1/jobs?orientation=portrait", l_route_file)
     assert third.json()["id"] != first.json()["id"]
 
 
 def test_upload_size_cap(tmp_path, l_route_file):
     client = _make_client(tmp_path, max_upload_bytes=10)
-    r = _post(client, "/v1/jobs?use_osm=false", l_route_file)
+    r = _post(client, "/v1/jobs", l_route_file)
     assert r.status_code == 413
 
 
 def test_rate_limit(tmp_path, l_route_file):
     client = _make_client(tmp_path, rate_limit_per_minute=2)
     codes = [
-        _post(client, "/v1/jobs?use_osm=false&orientation=landscape", l_route_file).status_code
+        _post(client, "/v1/jobs?orientation=landscape", l_route_file).status_code
         for _ in range(3)
     ]
     assert codes[:2] == [202, 202]

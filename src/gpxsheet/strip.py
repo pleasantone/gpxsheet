@@ -308,15 +308,12 @@ def generate_strip(
     *,
     profile: str = "sport-touring",
     fuel_range: float | None = None,
-    use_osm: bool = False,
     turn_style: str = TURN_STYLE_STYLIZED,
 ) -> str:
     """Load, analyze, and render a route to a schematic strip image."""
     from .analysis import analyze_route
     from .gpx import load_route
 
-    route = analyze_route(
-        load_route(gpx_file), profile=profile, fuel_range=fuel_range, use_osm=use_osm
-    )
+    route = analyze_route(load_route(gpx_file), profile=profile, fuel_range=fuel_range)
     render_route_strip(route, output_file, turn_style=turn_style)
     return str(output_file)
