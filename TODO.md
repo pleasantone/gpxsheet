@@ -43,14 +43,14 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   in/out across runs; consider hysteresis.
 - **Down-weight straight "Continue onto"** name changes (residential noise);
   needs a ground-truth set.
-- **Junction-degree detection** — catch nameless forks (OSM node topology).
-- **Roads/directions NOT taken at a junction** — at each decision, surface the
-  other branch(es) you do *not* take to disambiguate forks, roundabouts, and
-  multi-way intersections (e.g. a ghosted stub). Needs OSM node degree + the
-  junction's other edges (builds on junction-degree detection).
-- **Roundabout exit numbers** — detect roundabouts (OSM `junction=roundabout` /
-  circular ways) and emit "take the Nth exit" + a roundabout glyph instead of a
-  plain turn; make roundabouts part of the decision output.
+- **Junction-degree detection** — *emit* decisions at nameless forks (OSM node
+  topology). Node-degree reading now exists (`gpxsheet.junctions` +
+  `enrich._junction_degree`, used for roads-not-taken); this remaining piece is
+  promoting a high-degree node with no road-name change into its own decision.
+- **Roads-not-taken / roundabout tuning** — both now implemented (ghosted branch
+  stubs + roundabout "Nth exit" glyph). Validate exit-counting and branch
+  selection against real tracks with live OSM; revisit `BRANCH_MATCH_TOL_DEG` and
+  the ring-traversal heuristics on multi-chunk routes.
 
 ## Service hardening (future)
 

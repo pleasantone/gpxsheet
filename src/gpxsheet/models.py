@@ -42,6 +42,21 @@ class DecisionKind:
     CRITICAL_TURN = "critical_turn"
     CONFIRMATION = "confirmation"
     FUEL = "fuel"
+    ROUNDABOUT = "roundabout"
+
+
+@dataclass(frozen=True, slots=True)
+class Branch:
+    """A road at a junction that the route does NOT take.
+
+    Surfaced at a decision to disambiguate forks / multi-way intersections: the
+    renderer draws a ghosted stub so the rider can tell which road to ignore.
+    ``relative_angle`` is signed degrees off the route's heading (+right/-left).
+    """
+
+    direction: str  # left | right | straight | back (relative to the rider)
+    relative_angle: float
+    name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +70,8 @@ class DecisionPoint:
     lon: float
     kind: str = DecisionKind.CRITICAL_TURN
     turn_angle: float | None = None  # signed degrees; +right / -left
+    branches: tuple[Branch, ...] = ()  # roads NOT taken at this junction
+    roundabout_exit: int | None = None  # Nth exit, when kind == ROUNDABOUT
 
 
 @dataclass(frozen=True, slots=True)

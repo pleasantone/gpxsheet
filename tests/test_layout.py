@@ -3,7 +3,16 @@
 import pytest
 
 from gpxsheet.layout import build_strip_layout
-from gpxsheet.models import DecisionPoint, FuelStop, GeoPoint, ReassuranceMarker, Route, Segment
+from gpxsheet.models import (
+    Branch,
+    DecisionKind,
+    DecisionPoint,
+    FuelStop,
+    GeoPoint,
+    ReassuranceMarker,
+    Route,
+    Segment,
+)
 
 
 def _route_with_segments() -> Route:
@@ -108,3 +117,27 @@ def test_layout_handles_route_without_segments():
     layout = build_strip_layout(route)
     assert len(layout.path) == 2  # single default segment -> 2 nodes
     assert layout.ribbon == ["Bare"]
+
+
+def test_branches_and_roundabout_carry_into_markers():
+    route = Route(
+        name="Topo",
+        points=[GeoPoint(0, 0), GeoPoint(0, 1)],
+        distances_m=[0.0, 20 * 1609.344],
+        segments=[Segment("A Rd", 0, 8), Segment("B Rd", 8, 14), Segment("C Rd", 14, 20)],
+        decision_points=[
+            DecisionPoint(
+                8.0, "Right onto B Rd", 60, 0, 0, turn_angle=80,
+                branches=(Branch("left", -85, "Side St"),),
+            ),
+            DecisionPoint(
+                14.0, "At the roundabout, take the 2nd exit onto C Rd", 60, 0, 0,
+                kind=DecisionKind.ROUNDABOUT, roundabout_exit=2,
+            ),
+        ],
+    )
+    layout = build_strip_layout(route)
+    decision = next(m for m in layout.markers if m.kind == "decision")
+    assert decision.branches and decision.branches[0].name == "Side St"
+    rb = next(m for m in layout.markers if m.kind == "roundabout")
+    assert rb.roundabout_exit == 2

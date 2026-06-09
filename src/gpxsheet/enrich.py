@@ -25,6 +25,7 @@ over-detects on twisty roads). Road/fuel queries hit the live Overpass API.
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from .analysis import (
     CONTINUE_MAX_ANGLE_DEG,
@@ -35,8 +36,9 @@ from .analysis import (
     merge_close_decisions,
     turn_angle_at_mile,
 )
-from .geo import haversine, meters_to_miles, miles_to_meters
-from .models import DecisionKind, DecisionPoint, FuelStop, Route, Segment
+from .geo import bearing, haversine, meters_to_miles, miles_to_meters
+from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
+from .models import Branch, DecisionKind, DecisionPoint, FuelStop, Route, Segment
 from .profiles import SCORE_ROAD_NAME_CHANGE, SCORE_STATE_HWY_JUNCTION
 
 _DEG_PER_M = 1.0 / 111_000.0  # crude latitude-degrees per meter, fine for buffering
@@ -145,6 +147,8 @@ def enrich_route(
     coords = [coord_at_meters(route, m) for m in sample_m]
     names: list[str | None] = [None] * len(sample_m)
     unpaved: list[bool] = [False] * len(sample_m)
+    node_seq: list[int | None] = [None] * len(sample_m)  # nearest OSM node per sample
+    graphs: list[tuple[int, int, object]] = []  # (i0, i1, graph) for the topology pass
 
     chunks = _chunk_ranges(route)
     for i0, i1 in chunks:
@@ -158,13 +162,15 @@ def enrich_route(
             retain_all=True,
             truncate_by_edge=True,
         )
+        ox.bearing.add_edge_bearings(graph)  # 'bearing' per edge, for branch geometry
+        graphs.append((i0, i1, graph))
         edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
         idxs = [k for k, m in enumerate(sample_m) if cs - 1e-6 <= m <= ce + 1e-6]
         if not idxs:
             continue
-        keys = ox.distance.nearest_edges(
-            graph, [coords[k][1] for k in idxs], [coords[k][0] for k in idxs]
-        )
+        xs = [coords[k][1] for k in idxs]
+        ys = [coords[k][0] for k in idxs]
+        keys = ox.distance.nearest_edges(graph, xs, ys)
         for k, key in zip(idxs, keys, strict=True):
             edge = tuple(key)
             names[k] = _edge_name(edges_gdf, edge)
@@ -172,11 +178,18 @@ def enrich_route(
                 _edge_value(edges_gdf, edge, "surface"),
                 _edge_value(edges_gdf, edge, "highway"),
             )
+            # Nearest node = the closer endpoint of the nearest edge. (Avoids
+            # ox.distance.nearest_nodes, which needs the scikit-learn extra.)
+            node_seq[k] = _closer_endpoint(graph, edge, coords[k])
 
     runs = _durable_runs(sample_m, names, miles_to_meters(MIN_ROAD_RUN_MILES))
     if runs:
         route.segments = _segments_from_runs(route, runs)
         route.decision_points = _decisions_from_runs(route, runs)
+        try:  # roads-not-taken + roundabouts are best-effort; never break enrichment
+            _apply_junction_topology(route, graphs, node_seq, sample_m, ox)
+        except Exception:  # noqa: BLE001 - degrade to plain turns on any topology error
+            pass
 
     spacing_m = total_m / (n - 1) if n > 1 else 0.0
     route.unpaved_miles = round(meters_to_miles(sum(unpaved) * spacing_m), 1)
@@ -318,6 +331,230 @@ def _decisions_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[De
             )
         )
     return merge_close_decisions(decisions)
+
+
+# ---------------------------------------------------------------------------
+# Junction topology: roads-not-taken (ghosted stubs) and roundabout exits.
+# These read the osmnx networkx graph (node degree, edge bearings, junction
+# tags) and feed the pure helpers in gpxsheet.junctions. All best-effort: if the
+# graph is ambiguous the decision keeps its plain "turn onto <road>" form.
+# ---------------------------------------------------------------------------
+
+ROUNDABOUT_JUNCTION_TAGS = frozenset({"roundabout", "circular"})
+_BEARING_WINDOW_M = 30.0  # geometry sampled either side of a decision for headings
+
+
+def _first(value):
+    """First element of an OSM list-valued tag, else the value (or None)."""
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _closer_endpoint(graph, edge, latlon):
+    """The nearer of an edge's two endpoints to ``(lat, lon)`` -- the route's node
+    at that sample, without ``ox.distance.nearest_nodes`` (which needs sklearn)."""
+    lat, lon = latlon
+    u, v = edge[0], edge[1]
+    du = haversine(lat, lon, graph.nodes[u]["y"], graph.nodes[u]["x"])
+    dv = haversine(lat, lon, graph.nodes[v]["y"], graph.nodes[v]["x"])
+    return u if du <= dv else v
+
+
+def _nearest_graph_node(graph, lat: float, lon: float, ox=None):
+    """Graph node nearest ``(lat, lon)`` by haversine (no sklearn dependency)."""
+    best, best_d = None, float("inf")
+    for nid, data in graph.nodes(data=True):
+        d = haversine(lat, lon, data["y"], data["x"])
+        if d < best_d:
+            best, best_d = nid, d
+    return best
+
+
+def _junction_degree(graph, node) -> int:
+    """Distinct roads meeting at ``node`` (a fork needs >= 3)."""
+    return len(set(graph.successors(node)) | set(graph.predecessors(node)))
+
+
+def _outgoing_branches(graph, node) -> list[tuple[str | None, float]]:
+    """(name, compass bearing) for each edge leaving ``node``."""
+    out: list[tuple[str | None, float]] = []
+    for _, _v, data in graph.out_edges(node, data=True):
+        b = data.get("bearing")
+        if b is None:
+            continue
+        out.append((_clean_str(_first(data.get("name"))), float(b)))
+    return out
+
+
+def _route_bearings_at(route: Route, mile: float) -> tuple[float, float]:
+    """(arrival, departure) compass bearings of the track through ``mile``."""
+    center = miles_to_meters(mile)
+    before = coord_at_meters(route, max(0.0, center - _BEARING_WINDOW_M))
+    at = coord_at_meters(route, center)
+    after = coord_at_meters(route, min(route.length_m, center + _BEARING_WINDOW_M))
+    return (
+        bearing(before[0], before[1], at[0], at[1]),
+        bearing(at[0], at[1], after[0], after[1]),
+    )
+
+
+def _graph_for_mile(graphs, route: Route, mile: float):
+    target = miles_to_meters(mile)
+    for i0, i1, g in graphs:
+        if route.distances_m[i0] - 1.0 <= target <= route.distances_m[i1] + 1.0:
+            return g
+    return graphs[0][2] if graphs else None
+
+
+def _branches_for(graph, route: Route, decision: DecisionPoint, ox):
+    node = _nearest_graph_node(graph, decision.lat, decision.lon, ox)
+    if node is None or _junction_degree(graph, node) < 3:  # not a fork
+        return ()
+    arrival, taken = _route_bearings_at(route, decision.mile)
+    instr = decision.instruction
+    taken_name = instr.rsplit(" onto ", 1)[-1] if " onto " in instr else None
+    return branches_not_taken(
+        arrival, taken, _outgoing_branches(graph, node), taken_name=taken_name
+    )
+
+
+def _roundabout_rings(graph) -> list[list]:
+    """Ordered node rings for each one-way roundabout/circular way in the graph."""
+    radj: dict = {}
+    nodes: set = set()
+    for u, v, data in graph.edges(data=True):
+        if _first(data.get("junction")) in ROUNDABOUT_JUNCTION_TAGS:
+            radj.setdefault(u, []).append(v)
+            nodes.update((u, v))
+    rings, seen = [], set()
+    for start in nodes:
+        if start in seen:
+            continue
+        ring, cur = [], start
+        while cur is not None and cur not in seen:
+            seen.add(cur)
+            ring.append(cur)
+            nxt = radj.get(cur)
+            cur = nxt[0] if nxt else None
+        if len(ring) >= 3:
+            rings.append(ring)
+    return rings
+
+
+def _ring_exit_flags(graph, ring: list) -> list[bool]:
+    """Per ring node, whether it has a spur leaving the circle (an exit)."""
+    ringset = set(ring)
+    flags = []
+    for nid in ring:
+        spur = any(v not in ringset for v in graph.successors(nid)) or any(
+            u not in ringset for u in graph.predecessors(nid)
+        )
+        flags.append(spur)
+    return flags
+
+
+def _ordinal(n: int) -> str:
+    if 10 <= n % 100 <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
+def _road_after(route: Route, mile: float) -> str | None:
+    """Segment name covering ``mile`` (the road you leave a roundabout onto)."""
+    for seg in route.segments:
+        if seg.start_mile <= mile <= seg.end_mile:
+            return seg.name
+    return None
+
+
+def _roundabout_spur_branches(graph, ring, entry_node, exit_node, arrival_bearing):
+    """Exits the route does NOT take, as branches off the rider's entry heading.
+
+    Each non-taken spur (a road leaving the circle, excluding the approach you
+    arrived on and the exit you take) becomes a :class:`Branch`, so a roundabout's
+    other exits render as ghosted stubs just like a normal junction's branches.
+    """
+    ringset = set(ring)
+    branches: list[Branch] = []
+    for r in ring:
+        if r in (entry_node, exit_node):  # approach in / exit taken
+            continue
+        for _, v, data in graph.out_edges(r, data=True):
+            if v in ringset:  # the circulating edge, not a spur
+                continue
+            b = data.get("bearing")
+            if b is None:
+                continue
+            rel = relative_angle(arrival_bearing, float(b))
+            branches.append(
+                Branch(direction_word(rel), round(rel, 1), _clean_str(_first(data.get("name"))))
+            )
+    branches.sort(key=lambda br: br.relative_angle)
+    return tuple(branches)
+
+
+def _roundabout_decision(graph, ring, route, node_seq, sample_m) -> DecisionPoint | None:
+    """A ROUNDABOUT decision if the route traverses ``ring``, else None."""
+    idx_of = {nid: i for i, nid in enumerate(ring)}
+    on = [k for k, nd in enumerate(node_seq) if nd in idx_of]
+    if not on:
+        return None
+    first_k, last_k = on[0], on[-1]
+    entry_node, exit_node = node_seq[first_k], node_seq[last_k]
+    num = roundabout_exit_number(
+        _ring_exit_flags(graph, ring), idx_of[entry_node], idx_of[exit_node]
+    )
+    if num <= 0:
+        return None
+    exit_mile = meters_to_miles(sample_m[min(last_k + 1, len(sample_m) - 1)])
+    lat, lon = coord_at_meters(route, miles_to_meters(exit_mile))
+    arrival_bearing, _ = _route_bearings_at(route, meters_to_miles(sample_m[first_k]))
+    onto = _road_after(route, exit_mile)
+    instr = f"Take the {_ordinal(num)} exit"
+    if onto:
+        instr += f" onto {onto}"
+    return DecisionPoint(
+        mile=round(exit_mile, 1),
+        instruction=instr,
+        significance=SCORE_STATE_HWY_JUNCTION,
+        lat=lat,
+        lon=lon,
+        kind=DecisionKind.ROUNDABOUT,
+        roundabout_exit=num,
+        branches=_roundabout_spur_branches(graph, ring, entry_node, exit_node, arrival_bearing),
+    )
+
+
+def _merge_roundabout(decisions: list[DecisionPoint], rd: DecisionPoint, tol: float = 0.25):
+    """Drop any plain decision within ``tol`` miles of the roundabout, add ``rd``."""
+    kept = [d for d in decisions if abs(d.mile - rd.mile) > tol]
+    kept.append(rd)
+    return sorted(kept, key=lambda d: d.mile)
+
+
+def _apply_junction_topology(route, graphs, node_seq, sample_m, ox) -> None:
+    if not graphs:
+        return
+    # 1. Roundabouts: replace the plain exit decision with a ROUNDABOUT one.
+    decisions = list(route.decision_points)
+    for _, _, graph in graphs:
+        for ring in _roundabout_rings(graph):
+            rd = _roundabout_decision(graph, ring, route, node_seq, sample_m)
+            if rd is not None:
+                decisions = _merge_roundabout(decisions, rd)
+    # 2. Roads-not-taken on every remaining plain decision.
+    out: list[DecisionPoint] = []
+    for d in decisions:
+        if d.kind == DecisionKind.ROUNDABOUT or d.branches:
+            out.append(d)
+            continue
+        graph = _graph_for_mile(graphs, route, d.mile)
+        branches = _branches_for(graph, route, d, ox) if graph is not None else ()
+        out.append(replace(d, branches=branches) if branches else d)
+    route.decision_points = out
 
 
 def _clean_str(value) -> str | None:

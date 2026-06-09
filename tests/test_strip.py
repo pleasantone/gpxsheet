@@ -27,3 +27,36 @@ def test_strip_cli_command(l_route_file, tmp_path):
     assert result.exit_code == 0, result.output
     assert out.exists()
     assert out.read_bytes()[:8] == PNG_MAGIC
+
+
+def test_strip_renders_branches_and_roundabout(tmp_path):
+    from gpxsheet.models import (
+        Branch,
+        DecisionKind,
+        DecisionPoint,
+        GeoPoint,
+        Route,
+        Segment,
+    )
+    from gpxsheet.strip import render_route_strip
+
+    pts = [GeoPoint(0.0, 0.0), GeoPoint(0.0, 0.2)]
+    route = Route(
+        name="Topo",
+        points=pts,
+        distances_m=[0.0, 16 * 1609.344],
+        segments=[Segment("A Rd", 0, 6), Segment("B Rd", 6, 11), Segment("C Rd", 11, 16)],
+        decision_points=[
+            DecisionPoint(
+                6.0, "Right onto B Rd", 70, 0, 0, turn_angle=80,
+                branches=(Branch("left", -85, "Side St"), Branch("straight", 3, "A Rd")),
+            ),
+            DecisionPoint(
+                11.0, "At the roundabout, take the 2nd exit onto C Rd", 60, 0, 0,
+                kind=DecisionKind.ROUNDABOUT, roundabout_exit=2,
+            ),
+        ],
+    )
+    out = tmp_path / "topo.png"
+    render_route_strip(route, out)
+    assert out.read_bytes()[:8] == PNG_MAGIC

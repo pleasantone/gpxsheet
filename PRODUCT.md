@@ -912,11 +912,29 @@ tracks produce tight clusters of firings at complex intersections.
 to 50, and a sharp turn (≥60°) adds 10. Y/T-intersection and explicit
 junction-geometry scoring are **not yet implemented**.
 
+**Junction topology (OSM mode).** `enrich._apply_junction_topology` (best-effort;
+any failure degrades to plain turns) reads the osmnx graph to enrich decisions:
+
+* *Roads not taken* — at a fork/multi-way (node degree ≥ 3), the other branches
+  are recorded on `DecisionPoint.branches` (name + relative angle/direction,
+  excluding the road arrived on and the road taken). The strip draws each as a
+  ghosted dashed stub so the rider can see which road to ignore.
+* *Roundabouts* — `junction=roundabout`/`circular` ways are reconstructed into
+  ordered rings; the route's entry/exit nodes give the exit number, emitted as a
+  `DecisionKind.ROUNDABOUT` decision ("Take the Nth exit onto …", drawn with a
+  ring glyph). The roundabout's *other* exits (spurs you don't take) populate the
+  same `branches` field, so they render as ghosted stubs like any junction.
+
+The pure counting/geometry lives in `gpxsheet.junctions` and is unit-tested with
+synthetic inputs; the graph-reading is tested with hand-built networkx graphs.
+
 ### Known limitations (decision detection)
 
-* **Nameless forks are missed in OSM mode.** A fork where you must bear one way
-  but the road keeps its name produces no road-name change, so it isn't caught.
-  Fixing this needs junction-degree / node topology from the OSM graph (future).
+* **Nameless forks are still missed as decisions in OSM mode.** A fork where you
+  bear one way but the road keeps its name produces no road-name change, so no
+  decision is *emitted* there. Node-degree/topology reading now exists (used for
+  roads-not-taken), so the remaining work is promoting a high-degree node into its
+  own decision; see TODO.md.
 * **Residential areas show more decisions** (~0.6/mi) than highways (~0.24/mi)
   or mountain roads (~0.13/mi). These are real street-name changes (correctly
   surfaced in `sport-touring`; the `minimalist` threshold filters them), not

@@ -38,11 +38,18 @@ osmnx 2.1 + shapely + geopandas; installs fine on 3.14).
   constants at top of file.
 - `enrich.py` — optional OSM (osmnx): durable road-name-change decisions
   (`_durable_runs`/`_decisions_from_runs`), named segments, fuel; `_chunk_ranges`
-  chunks big routes. `profiles.py` — minimalist/sport-touring/rally thresholds.
+  chunks big routes. `_apply_junction_topology` (best-effort, try/except) reads
+  the osmnx graph (node degree, edge bearings, `junction=roundabout`) to add
+  roads-not-taken branches + roundabout "Nth exit" decisions. `profiles.py` —
+  minimalist/sport-touring/rally thresholds.
+- `junctions.py` — pure topology helpers (no osmnx): `branches_not_taken`,
+  `roundabout_exit_number`, `relative_angle`/`direction_word`. Graph-reading in
+  enrich is tested with hand-built networkx graphs (no Overpass).
 - `layout.py` — pure Schematic Layout Engine: `build_strip_layout` → stylized
   jogging ribbon + placed markers (stylized vs faithful turns; `show_start/end`).
 - `strip.py` — matplotlib renderer: `render_route_strip`/`generate_strip` →
-  `route_strip.png`; `draw_strip` shared with the PDF (Agg, lazy import).
+  `route_strip.png`; `draw_strip` shared with the PDF (Agg, lazy import). Draws
+  ghosted `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph.
 - `paginate.py` — `paginate` (decision-cap, breaks only at decisions) +
   `slice_route` (`rebase=True` landscape / `rebase=False` portrait lane =
   absolute miles).

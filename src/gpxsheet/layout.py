@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .models import DecisionPoint, Route, Segment
+from .models import Branch, DecisionKind, DecisionPoint, Route, Segment
 
 # Schematic sizing (arbitrary units; the renderer scales to fit). A larger floor
 # plus a gentler distance term makes segment lengths more uniform -- short
@@ -54,10 +54,12 @@ class PlacedMarker:
     x: float
     y: float
     mile: float
-    kind: str  # start | end | decision | fuel | reassurance
+    kind: str  # start | end | decision | roundabout | fuel | reassurance
     label: str
     significance: int = 0
     instruction: str | None = None
+    branches: tuple[Branch, ...] = ()  # roads NOT taken, for ghosted stubs
+    roundabout_exit: int | None = None
 
 
 @dataclass(slots=True)
@@ -158,8 +160,12 @@ def build_strip_layout(
         markers.append(PlacedMarker(*nodes[0], 0.0, "start", "START"))
     for d in route.decision_points:
         x, y = pos_at_mile(d.mile)
+        kind = "roundabout" if d.kind == DecisionKind.ROUNDABOUT else "decision"
         markers.append(
-            PlacedMarker(x, y, d.mile, "decision", d.instruction, d.significance, d.instruction)
+            PlacedMarker(
+                x, y, d.mile, kind, d.instruction, d.significance, d.instruction,
+                d.branches, d.roundabout_exit,
+            )
         )
     for fstop in route.fuel_stops:
         x, y = pos_at_mile(fstop.mile)
@@ -177,7 +183,8 @@ def build_strip_layout(
     nodes = [(x - min_x, y - min_y) for x, y in nodes]
     markers = [
         PlacedMarker(
-            m.x - min_x, m.y - min_y, m.mile, m.kind, m.label, m.significance, m.instruction
+            m.x - min_x, m.y - min_y, m.mile, m.kind, m.label, m.significance, m.instruction,
+            m.branches, m.roundabout_exit,
         )
         for m in markers
     ]

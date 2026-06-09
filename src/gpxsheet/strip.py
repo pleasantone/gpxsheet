@@ -22,9 +22,14 @@ _MARKER_STYLE = {
     "start": ("#1b7837", "o", 5),
     "end": ("#762a83", "s", 5),
     "decision": ("#d6312b", "o", 6),
+    "roundabout": ("#d6312b", "o", 6),  # drawn as a ring glyph (see draw_strip)
     "fuel": ("#2166ac", "D", 6),
     "reassurance": ("#7f7f7f", "|", 4),
 }
+
+# Ghosted "road not taken" stubs at a junction.
+_STUB_LEN = 1.6  # schematic units (~ MIN_SEGMENT_LEN); short, subordinate to the route
+_STUB_COLOR = "#bbbbbb"
 
 # Label-placement tuning (display pixels at figure dpi).
 _OFFSET = 30.0  # initial label offset from its marker, along the outward normal
@@ -80,9 +85,14 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
     """
     xs = [p[0] for p in layout.path]
     ys = [p[1] for p in layout.path]
+    _draw_branch_stubs(ax, layout)  # ghosted, behind the route line
     ax.plot(xs, ys, color="#333333", linewidth=4, solid_capstyle="round", zorder=2)
 
     for m in layout.markers:
+        if m.kind == "roundabout":  # open ring + centre dot
+            ax.plot(m.x, m.y, marker="o", mfc="none", mec="#d6312b", ms=14, mew=2.0, zorder=6)
+            ax.plot(m.x, m.y, marker="o", color="#d6312b", markersize=4, zorder=7)
+            continue
         color, marker, z = _MARKER_STYLE.get(m.kind, ("#000000", "o", 5))
         size = 11 if m.kind in ("start", "end") else (9 if m.kind == "decision" else 7)
         ax.plot(m.x, m.y, marker=marker, color=color, markersize=size, zorder=z)
@@ -106,8 +116,38 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
         )
 
 
+def _draw_branch_stubs(ax, layout: StripLayout) -> None:
+    """Ghosted stubs for the road(s) NOT taken at each junction.
+
+    Each stub is drawn off the marker at its branch's angle relative to the
+    rider's *arrival* heading (the incoming ribbon segment), so a fork/multi-way
+    reads at a glance: the route continues on the dark line, the gray stub is the
+    branch to ignore.
+    """
+    path = layout.path
+    if len(path) < 2:
+        return
+    for m in layout.markers:
+        if not m.branches:
+            continue
+        # incoming ribbon direction at this marker == the rider's arrival heading
+        i = min(range(len(path)), key=lambda k: (path[k][0] - m.x) ** 2 + (path[k][1] - m.y) ** 2)
+        j = i - 1 if i > 0 else i + 1
+        tx, ty = path[i][0] - path[j][0], path[i][1] - path[j][1]
+        if i == 0:  # used the next node; flip to point forward
+            tx, ty = -tx, -ty
+        base = math.atan2(ty, tx)
+        for b in m.branches:
+            # +relative_angle is a right turn (clockwise) == negative in math coords
+            ang = base - math.radians(b.relative_angle)
+            ex, ey = m.x + _STUB_LEN * math.cos(ang), m.y + _STUB_LEN * math.sin(ang)
+            ax.plot([m.x, ex], [m.y, ey], color=_STUB_COLOR, lw=1.5,
+                    ls=(0, (2, 2)), zorder=1, solid_capstyle="round")
+            ax.plot([ex], [ey], marker="o", mfc="white", mec=_STUB_COLOR, ms=3, mew=1.0, zorder=1)
+
+
 def _marker_label(m) -> str:
-    if m.kind == "decision":
+    if m.kind in ("decision", "roundabout"):
         # Wrap "<mile> <turn> onto / <road>" so labels are narrower (taller).
         text = f"{m.mile:.1f}  {m.label}"
         return text.replace(" onto ", " onto\n", 1)
@@ -152,7 +192,7 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     texts = []
     for m in markers:
         color, _, _ = _MARKER_STYLE.get(m.kind, ("#000000", "o", 5))
-        weight = "bold" if m.kind == "decision" else "normal"
+        weight = "bold" if m.kind in ("decision", "roundabout") else "normal"
         t = ax.text(
             m.x, m.y, _marker_label(m), ha="center", va="center", fontsize=7,
             color=color, fontweight=weight, clip_on=False, zorder=10,
