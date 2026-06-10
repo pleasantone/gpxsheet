@@ -191,22 +191,14 @@ report = gpxsheet.validate("route.gpx", fuel_range=180)
 
 ---
 
-## Future Web Service
+## Web Service (built)
 
-```http
-POST /generate
-```
-
-Returns:
-
-```json
-{
-  "pdf_url": "...",
-  "decision_points": [...],
-  "fuel_stops": [...],
-  "markers": [...]
-}
-```
+Implemented as a FastAPI app (the `service` extra). Each operation is an async job
+created by a typed POST — `/v1/render` (a map), `/v1/analyze` and `/v1/validate`
+(JSON reports) — with the GPX and parameters as multipart form fields. Submit
+returns a job (`202` + `Location`, or `200` if already cached); poll
+`GET /v1/jobs/{id}` and fetch `GET /v1/jobs/{id}/result`. See **Milestone 5** in
+the Implementation Status section for the full as-built description.
 
 ---
 
@@ -779,6 +771,10 @@ Detects:
 ⚠ Ferry crossing present
 ```
 
+(Fuel-gap, unpaved, and ferry checks are implemented; the seasonal-closure check
+is not yet implemented — it currently emits an informational "not checked yet"
+note. See TODO.md.)
+
 ---
 
 # Technology Stack (as built)
@@ -793,8 +789,9 @@ Detects:
 
 Notes: the strip and PDF are rendered with **matplotlib**, not `reportlab` (the
 single matplotlib stack keeps the strip and page composition consistent and
-vector). `networkx` is pulled in transitively by `osmnx`; GPXSheet does not use
-it directly. The OSM extra also brings `geopandas`/`pyproj`/`pyogrio`.
+vector). `networkx` is pulled in transitively by `osmnx`; GPXSheet reads the osmnx
+graph through it (node degree, edges, bearings) for junction topology. The geo
+stack also brings `geopandas`/`pyproj`/`pyogrio`.
 
 ---
 
@@ -818,7 +815,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 > This section records what is actually built and the engineering decisions made
 > while implementing the spec above. The sections above are the design intent;
 > this section is the as-built reality. Last updated: Phase 1 (milestones 1–5)
-> complete. Planned/queued work is tracked in
+> complete, plus post-Phase-1 rendering/analysis polish and OSM-enrichment
+> robustness, released as **v0.2.0**. Planned/queued work is tracked in
 > [TODO.md](https://github.com/pleasantone/gpxsheet/blob/main/TODO.md).
 
 ## Milestone progress
@@ -833,11 +831,15 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   compressed sub-linearly (`sqrt`) in real distance. Two turn styles:
   **`stylized`** (default — quantized/exaggerated bends, reads like a transit
   map) and **`faithful`** (bend by the real turn angle, capped). `gpxsheet.strip`
-  renders to `route_strip.png` (matplotlib) with decision/fuel/reassurance
-  markers, dashed leader lines (collision-placed and connected to their dots),
-  2-line-wrapped road names, and the road-name ribbon. CLI: `gpxsheet strip
-  <gpx> [-o out.png] [--turns stylized|faithful]`. Validated on real OSM tracks.
-  Remaining polish (non-blocking) is tracked in TODO.md.
+  renders to `route_strip.png` (matplotlib) with markers for decisions, fuel,
+  food/rest and generic waypoints, town reassurance, and roundabouts; fuel/food/
+  ferry markers carry a symbol glyph (font-coverage-aware, with a plain fallback)
+  plus mileage. Unpaved (brown-dashed) and ferry (blue-dashed) stretches draw as
+  styled ribbon overlays with labeled ends. Labels are collision-placed with
+  alternating above/below sides and dashed leaders to their dots; road names wrap
+  to two lines. A marker landing on mile 0 / the route end is nudged clear of the
+  START/END marker. CLI: `gpxsheet strip <gpx> [-o out.png]
+  [--turns stylized|faithful]`. Validated on real OSM tracks.
 * **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
   US-Letter/A4 document with route-aware pagination (`gpxsheet.paginate`,
   breaks at decisions, never mid-road). Lanes **auto-fit by default** — as many
@@ -853,20 +855,21 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
     honor `--lane-decisions` too.
 
   `render` (the library/web entry point) and `gpxsheet generate <gpx> -o route.pdf`
-  drive this. Open polish (e.g. fuel-at-mile-0 overlapping START) is in TODO.md.
+  drive this. (The earlier fuel-at-mile-0/START label overlap is fixed.) Remaining
+  rendering tuning is in TODO.md.
 * **Decisions/segments come from OSM; orientation defaults to portrait.** The
   OSM-derived navigation structure is the product. Enrichment falls back to the
   geometry baseline *automatically* (with a warning) when the route `looks_sparse`
   (waypoint-only `<rte>`) or the live Overpass query fails, so analysis still
   produces output. Monster tracks are enriched in chunks. Orientation defaults to
   portrait (`--landscape` for one strip/page).
-* **Milestone 4 — Packaged CLI: ✅ complete (publish-ready).** `pyproject.toml`
-  builds a clean sdist + wheel (PEP 639 license, PEP 561 `py.typed`, dynamic
-  version from `gpxsheet.__version__`). Core deps slimmed to gpxpy + matplotlib
-  + typer (reportlab/networkx were unused; shapely moved to the `osm` extra).
-  `twine check` passes; verified that a fresh **core-only** install runs the CLI
-  and produces a PDF, degrading gracefully without the `osm` extra. Actual
-  `twine upload` to PyPI is the maintainer's step (needs PyPI credentials).
+* **Milestone 4 — Packaged + published: ✅ complete.** `pyproject.toml` builds a
+  clean sdist + wheel (PEP 639 license, PEP 561 `py.typed`, version from
+  `gpxsheet.__version__`). Core deps are gpxpy + matplotlib + typer + osmnx +
+  shapely (OSM is integral, not an optional extra); extras: `service`, `dev`,
+  `docs`. `twine check` passes. Releases are automated: conventional commits →
+  release-please PR → merging it tags `vX.Y.Z` → `publish.yml` publishes to
+  TestPyPI then PyPI via OIDC trusted publishing (v0.2.0 shipped this way).
 * **Milestone 5 — Web service: ✅ complete (verified live).** `gpxsheet.service`
   is a FastAPI app (the `service` extra) exposing the engine over REST. Every
   operation is an async job created via a typed POST: `/v1/render` (a map),
@@ -893,8 +896,11 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   hits. Tests: dev path end-to-end via `TestClient` (incl. cache/cap/limit); the
   Redis/MinIO prod path has a gated integration test (`GPXSHEET_SERVICE_IT=1`).
 
-`validate` (CLI) is still a stub. Planned work — including future service
-hardening (auth/API keys, metrics, distributed rate limiting) — is in TODO.md.
+`validate` (CLI, library `gpxsheet.validate`, and `/v1/validate`) reports fuel-gap,
+unpaved, and ferry findings as a `ValidationReport`; the seasonal-closure check is
+still a placeholder ("not checked yet"). Planned work — including the seasonal
+check and future service hardening (auth/API keys, metrics, distributed rate
+limiting) — is in TODO.md.
 
 ## Decision Point Engine — as built
 
@@ -926,8 +932,12 @@ tracks produce tight clusters of firings at complex intersections.
 
 **Significance** currently uses a subset of the spec table: road-name change
 = 40, highway-like name (regex over "Freeway"/"Highway"/"CA-1" etc.) raises it
-to 50, and a sharp turn (≥60°) adds 10. Y/T-intersection and explicit
-junction-geometry scoring are **not yet implemented**.
+to 50, and a sharp turn (≥60°) adds 10. A straight "Continue onto" change onto a
+minor cul-de-sac road (unambiguous suffixes only) is penalized below the display
+threshold as residential-grid noise, and promoted nameless forks (below) score by
+turn angle. Y/T-intersection and explicit junction-geometry scoring are **not yet
+implemented** (`SCORE_Y_INTERSECTION` / `SCORE_T_INTERSECTION` are defined but
+unused) — see TODO.md.
 
 **Junction topology (OSM mode).** `enrich._apply_junction_topology` (best-effort;
 any failure degrades to plain turns) reads the osmnx graph to enrich decisions:
@@ -937,21 +947,26 @@ any failure degrades to plain turns) reads the osmnx graph to enrich decisions:
   excluding the road arrived on and the road taken). The strip draws each as a
   ghosted dashed stub so the rider can see which road to ignore.
 * *Roundabouts* — `junction=roundabout`/`circular` ways are reconstructed into
-  ordered rings; the route's entry/exit nodes give the exit number, emitted as a
+  ordered rings; the route's entry/exit nodes give the exit number (counted from
+  *outgoing* spurs only, so one-way feeder roads don't inflate it), emitted as a
   `DecisionKind.ROUNDABOUT` decision ("Take the Nth exit onto …", drawn with a
   ring glyph). The roundabout's *other* exits (spurs you don't take) populate the
   same `branches` field, so they render as ghosted stubs like any junction.
+* *Nameless forks* — a high-degree node where the route turns off a *named,
+  differently-named* through-road (so no road-name change flags it) is promoted to
+  its own decision ("Left/Right at the fork"), with that through-road as a ghosted
+  branch. Gated (turn angle + named non-minor through-road, dropping the same-named
+  road you stay on) so switchbacks and service-stub junctions aren't flagged.
 
 The pure counting/geometry lives in `gpxsheet.junctions` and is unit-tested with
 synthetic inputs; the graph-reading is tested with hand-built networkx graphs.
 
 ### Known limitations (decision detection)
 
-* **Nameless forks are still missed as decisions in OSM mode.** A fork where you
-  bear one way but the road keeps its name produces no road-name change, so no
-  decision is *emitted* there. Node-degree/topology reading now exists (used for
-  roads-not-taken), so the remaining work is promoting a high-degree node into its
-  own decision; see TODO.md.
+* **Heuristic thresholds, not a labeled fit.** Nameless-fork promotion and the
+  residential "Continue onto" down-weighting use conservative thresholds validated
+  by inspecting real tracks (Mt Hamilton, a Riverbank roundabout, SF arterials),
+  not a labeled ground-truth set; edge cases may still slip through.
 * **Residential areas show more decisions** (~0.6/mi) than highways (~0.24/mi)
   or mountain roads (~0.13/mi). These are real street-name changes (correctly
   surfaced in `sport-touring`; the `minimalist` threshold filters them), not
@@ -966,7 +981,11 @@ synthetic inputs; the graph-reading is tested with hand-built networkx graphs.
 * Queries the **live Overpass API**: needs network, slower than the geometry
   path (≈3 s rural, but tens of seconds to minutes for dense urban areas).
   `osmnx` caches responses, so repeat runs over the same area are fast.
-* Graph is built from a buffered route polygon (not the whole bbox).
+* Graph is built from a buffered route polygon (not the whole bbox), in chunks for
+  long routes. Each chunk graph is built through a network fallback
+  (`drive` → `drive_service` → wider buffer); a chunk that still yields no drivable
+  network is skipped rather than aborting enrichment for the whole route. Remote
+  roads (e.g. Mt Hamilton Rd) only resolve under `drive_service`.
 * Helper functions are unit-tested; the end-to-end enrichment path is tested
   deterministically against **committed Overpass responses**
   (`tests/fixtures/osm_cache`, replayed via `conftest`), so CI/offline never hit
@@ -986,4 +1005,40 @@ synthetic inputs; the graph-reading is tested with hand-built networkx graphs.
 See the "Technology Stack (as built)" table above. Verified on Python 3.14: core
 = gpxpy + matplotlib + typer + osmnx 2.1 + shapely (+ geopandas/pyproj/pyogrio via
 osmnx); `[dev]` = pytest + ruff + mypy + build + twine.
+
+## Rendering backend — matplotlib vs. SVG (analysis)
+
+We evaluated whether matplotlib is the right rendering backend, given how much
+hand-written machinery the renderer carries (label de-collision, transform
+juggling, the analytic `fit_pages` estimate, font-coverage probing, hand-composed
+PDF pages). A throwaway SVG-emit spike for the `strip` layout (pure-Python SVG +
+`cairosvg`, wired behind a `render_layout(engine="svg")` hook) informed these
+conclusions. The spike was discarded; the findings are kept here.
+
+* **matplotlib is being used as a vector canvas + ad-hoc layout engine**, not as a
+  plotting library — there are no plots/axes/scales. That mismatch is the source of
+  most incidental complexity (data↔pixel round-trips, draw-then-measure after
+  `set_aspect`, the glyph-coverage fallback that exists only because matplotlib
+  doesn't do font fallback, and the hand-rolled page composition in `pdf.py`).
+* **Label de-collision is intrinsic, not a backend artifact.** Automatic map
+  labeling is heuristic in *any* backend; the spike's simpler single-pass placement
+  visibly collided where matplotlib's force-directed pass did not. Switching
+  backends does **not** make this cheaper — it must be ported and improved either
+  way. This is the renderer's real complexity.
+* **The SVG architecture is clean and slots in trivially** (`layout.py` is already
+  backend-agnostic; the `engine=` hook was ~10 lines): pure-Python emission, direct
+  coordinates (no transforms), one document → SVG/PNG/PDF, and output that is
+  unit-testable as XML. ~250 LOC covered the whole `strip`.
+* **The font/glyph win depends on the rasterizer, not on SVG itself.** `cairosvg`
+  rendered the ⚓/☕ marker glyphs as tofu (worse than matplotlib); the
+  "real glyphs for free" benefit needs **resvg** or a browser, plus a runtime
+  dependency cost (libcairo / resvg) that matters for the service container.
+
+**Decision: keep matplotlib for now.** Migrating the strip alone is not worth it —
+the label algorithm doesn't get simpler and the glyph win needs a heavier
+rasterizer. The larger payoff, if revisited, is **CSS Paged Media (e.g. WeasyPrint)
+for the portrait roadbook pagination**, where matplotlib's hand-composed pages cost
+the most; the per-lane strip could be embedded SVG. Triggers to reconsider: wanting
+reliable symbol glyphs, the label/transform code becoming a maintenance sink, or
+needing finer typographic / pagination control.
 
