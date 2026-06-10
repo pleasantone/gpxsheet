@@ -13,34 +13,31 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Rendering / analysis polish
 
-- **Strip label de-collision** (`_place_labels_with_leaders`) is heuristic; can
-  bunch on very dense routes. Possible: leader routing, smarter side selection,
-  per-page label caps.
-- **Stylized "curl"** — same-direction turns accumulate; long routes can spiral.
-  May need gentle relaxation toward horizontal.
-- **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`
-  and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
-- **PDF: fuel stop at mile 0 overlaps the START label** — small offset needed.
-- **Reassurance-label prominence** (towns render small/gray) — revisit.
-- **OSM determinism near `MIN_ROAD_RUN_MILES`** — a ~0.3 mi run flipped a decision
-  in/out across runs; consider hysteresis.
-- **Down-weight straight "Continue onto"** name changes (residential noise);
-  needs a ground-truth set.
-- **Junction-degree detection** — *emit* decisions at nameless forks (OSM node
-  topology). Node-degree reading now exists (`gpxsheet.junctions` +
-  `enrich._junction_degree`, used for roads-not-taken); this remaining piece is
-  promoting a high-degree node with no road-name change into its own decision.
-- **Roads-not-taken / roundabout tuning** — both now implemented (ghosted branch
-  stubs + roundabout "Nth exit" glyph). Validate exit-counting and branch
-  selection against real tracks with live OSM; revisit `BRANCH_MATCH_TOL_DEG` and
-  the ring-traversal heuristics on multi-chunk routes.
-- Make sure waypoints are displayed and labeled on the strip, if they are real waypoints or non-via non-shaping points.
+Shipped (`feat/render-analysis-polish`): START/END marker offset, stylized-curl
+relaxation, prominent town labels, durable-run deadband near `MIN_ROAD_RUN_MILES`,
+residential "Continue onto" down-weighting, nameless-fork promotion, waypoint
+display + labeling, fuel/food/ferry glyphs + mileage, unpaved (brown-dashed) and
+ferry (blue-dashed) span ribbons with labeled ends, and alternating label sides
+for de-collision.
 
-- Use emoji or proper symbols to indicate fuel, ferry boarding/disembarking, and food stops. Include milage.
+Still open — these need a real-route ground-truth set and live-OSM validation
+(the mechanisms above ship with conservative, eyeballed defaults, not
+empirically tuned constants):
 
-- When displaying unpaved segments, make the ribbon brown and dashed between the start and end of the unpaved segment. Label the beginning and end of unpaved segments similar to waypoints.
-
-- When displaying ferry segments, make the ribbon blue and dashed between the start and end of the ferry segment. Label the beginning and end of ferry segments similar to waypoints.
+- **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
+  `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
+- **Validate "Continue onto" down-weighting** — `_MINOR_ROAD_SUFFIXES` and
+  `SCORE_CONTINUE_PENALTY` were chosen by eye; confirm against a labeled set that
+  real arterials are never dropped and grid noise reliably is.
+- **Validate nameless-fork promotion** — `PROMOTE_FORK_MIN_ANGLE_DEG` and the
+  "left a straight-ahead road" gate need checking on real tracks so genuine forks
+  are caught without flagging side streets ridden straight through.
+- **Roads-not-taken / roundabout tuning** — validate exit-counting and branch
+  selection against real tracks with live OSM; revisit the ring-traversal
+  heuristics on multi-chunk routes.
+- **Strip label de-collision** — alternating sides + repulsion is much better but
+  still heuristic; very dense lanes may want leader routing or per-lane caps
+  beyond the current auto-fit pagination.
 
 
 ## Service hardening (future)
