@@ -4,6 +4,31 @@ All notable changes are documented here. From the next release onward this file
 is maintained automatically by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [0.2.1](https://github.com/pleasantone/gpxsheet/compare/v0.2.0...v0.2.1) (2026-06-10)
+
+
+### Features
+
+* **analysis:** drop off-route waypoints past a cross-track cutoff ([9a2b843](https://github.com/pleasantone/gpxsheet/commit/9a2b843748d78055fe206a3f23acc87b7f49f9f9))
+* **analysis:** drop off-route waypoints past a cross-track cutoff ([4cd4a5f](https://github.com/pleasantone/gpxsheet/commit/4cd4a5fe9d96bd7050ed409b33ccb898d22f25b1))
+* **render:** reproducible fonts + vendored symbol glyphs ([504a780](https://github.com/pleasantone/gpxsheet/commit/504a780284c9f58e0600a941a011128e1d479298))
+* **render:** reproducible fonts + vendored symbol glyphs ([740653e](https://github.com/pleasantone/gpxsheet/commit/740653e3343ff300967781b4ed1e905564b44518))
+
+
+### Refactoring
+
+* **profiles:** drop unused significance-score constants ([93d4c50](https://github.com/pleasantone/gpxsheet/commit/93d4c50c901d8f55438d17a6eab586e0575a2ba8))
+* **strip:** extract label placement into a pure, tested module ([3fd28b2](https://github.com/pleasantone/gpxsheet/commit/3fd28b2eda0535290b8774124c0d379537cf5109))
+* **strip:** extract label placement into a pure, tested module ([4c99327](https://github.com/pleasantone/gpxsheet/commit/4c993274c225d1f91a25c4efccb696b6c6ef024c))
+
+
+### Documentation
+
+* move PRODUCT.md to docs ([add876c](https://github.com/pleasantone/gpxsheet/commit/add876ca76c51440f34ec04bb73c8edcf968ba39))
+* **product:** record rendering-backend analysis (matplotlib vs SVG) ([1665c5a](https://github.com/pleasantone/gpxsheet/commit/1665c5a7e6460ab3be576ccc2a8851e99eeb222a))
+* sync TODO.md and PRODUCT.md with as-built state ([e62a1dc](https://github.com/pleasantone/gpxsheet/commit/e62a1dc0f02d710befe8fa8184d56f3e4e3b0cfd))
+* sync TODO.md and PRODUCT.md with as-built state ([c1c8802](https://github.com/pleasantone/gpxsheet/commit/c1c88025c91b1b42545dcd449782928731c18e47))
+
 ## [0.2.0](https://github.com/pleasantone/gpxsheet/compare/v0.1.1...v0.2.0) (2026-06-10)
 
 
