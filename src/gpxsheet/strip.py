@@ -195,9 +195,16 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     for m in markers:
         color, _, _ = _MARKER_STYLE.get(m.kind, (colors.MARKER_FALLBACK, "o", 5))
         weight = "bold" if m.kind in ("decision", "roundabout") else "normal"
+        style = "normal"
+        size = 7
+        if m.kind == "reassurance":
+            # Named towns/landmarks earn a darker, italic, slightly larger label
+            # so they stand out from the muted interval ticks (which carry no
+            # text); the tick dot itself stays grey.
+            color, style, size = colors.REASSURANCE_TOWN, "italic", 7.5
         t = ax.text(
-            m.x, m.y, _marker_label(m), ha="center", va="center", fontsize=7,
-            color=color, fontweight=weight, clip_on=False, zorder=10,
+            m.x, m.y, _marker_label(m), ha="center", va="center", fontsize=size,
+            color=color, fontweight=weight, fontstyle=style, clip_on=False, zorder=10,
         )
         texts.append(t)
 

@@ -20,6 +20,7 @@ END = "#762a83"  # end marker (plum)
 DECISION = "#d6312b"  # decision points + roundabout ring; also PDF "YOU" / current-page accent
 FUEL = "#2166ac"  # fuel stops (blue)
 REASSURANCE = "#7f7f7f"  # reassurance ticks (grey)
+REASSURANCE_TOWN = "#3a6b6b"  # named town/landmark reassurance labels (muted teal)
 MARKER_FALLBACK = "#000000"  # unknown marker kind
 
 # PDF map-zone panel
