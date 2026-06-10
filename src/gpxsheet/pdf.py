@@ -73,8 +73,7 @@ def iter_page_figures(
     page_w_in, page_h_in = PAGE_SIZES[paper]  # portrait (width, height) inches
     lanes_per_page = max(1, lanes_per_page)
     auto = not decisions_per_lane  # 0 or None -> auto-fit
-    if not auto:
-        decisions_per_lane = max(1, decisions_per_lane)
+    cap = max(1, decisions_per_lane) if decisions_per_lane else 1  # fixed-cap value
     import matplotlib
 
     matplotlib.use("Agg")
@@ -88,7 +87,7 @@ def iter_page_figures(
                 route, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
             )
         else:
-            lanes = paginate(route, max_decisions=decisions_per_lane)
+            lanes = paginate(route, max_decisions=cap)
         page_groups = [
             lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
         ]
@@ -105,7 +104,7 @@ def iter_page_figures(
                 route, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
             )
         else:
-            pages = paginate(route, max_decisions=decisions_per_lane)
+            pages = paginate(route, max_decisions=cap)
         for i, (start, end) in enumerate(pages, start=1):
             fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
             _compose_page(
@@ -366,8 +365,7 @@ def render_preview(
     overview. The image format follows ``output_path``'s extension.
     """
     auto = not decisions_per_lane  # 0 or None -> auto-fit
-    if not auto:
-        decisions_per_lane = max(1, decisions_per_lane)
+    cap = max(1, decisions_per_lane) if decisions_per_lane else 1  # fixed-cap value
     import matplotlib
 
     matplotlib.use("Agg")
@@ -383,7 +381,7 @@ def render_preview(
             route, box_w_in=box_w, box_h_in=box_h, turn_style=turn_style, show_start=True
         )
     else:
-        lanes = paginate(route, max_decisions=decisions_per_lane)
+        lanes = paginate(route, max_decisions=cap)
     n = max(1, len(lanes))
 
     fig_h = PREVIEW_HEADER_IN + n * PREVIEW_LANE_HEIGHT_IN

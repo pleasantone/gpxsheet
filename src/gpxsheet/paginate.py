@@ -84,11 +84,11 @@ def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) 
         if start - eps <= p.mile <= end + eps
     ]
     spans = []
-    for s in route.spans:
-        a = max(s.start_mile, start)
-        b = min(s.end_mile, end)
+    for sp in route.spans:
+        a = max(sp.start_mile, start)
+        b = min(sp.end_mile, end)
         if b - a > 1e-6:
-            spans.append(replace(s, start_mile=a - off, end_mile=b - off))
+            spans.append(replace(sp, start_mile=a - off, end_mile=b - off))
 
     edge_points = [route.points[0], route.points[-1]] if route.points else []
     return Route(

@@ -9,14 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Significance contributions from PRODUCT.md's scoring table.
+# Significance contributions actually used today (a subset of PRODUCT.md's scoring
+# table). The unused entries — county-road / Y- / T-intersection / fuel / town-center
+# scoring — were removed rather than advertise scoring the engine doesn't do; see
+# TODO.md for the Y/T-junction-geometry work that would reintroduce them.
 SCORE_ROAD_NAME_CHANGE = 40
 SCORE_STATE_HWY_JUNCTION = 50
-SCORE_COUNTY_ROAD_JUNCTION = 30
-SCORE_Y_INTERSECTION = 60
-SCORE_T_INTERSECTION = 60
-SCORE_FUEL = 20
-SCORE_TOWN_CENTER = 20
 # A straight-through road-name change ("Continue onto ...") with no real heading
 # change is usually residential-grid noise, not a navigation moment. Penalize it
 # (below the sport-touring threshold) unless it is onto a numbered highway, where

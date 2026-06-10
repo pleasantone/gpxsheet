@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import time
 from collections import defaultdict
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +17,7 @@ from .jobs import (
     DramatiqRunner,
     EagerRunner,
     InMemoryJobStore,
+    JobRecord,
     JobStore,
     TaskRunner,
     prod_components,
@@ -25,12 +26,12 @@ from .models import JobState, JobStatus, RenderForm, RenderParams, ReportForm, R
 from .storage import LocalStorage, Storage
 
 # Error responses we declare on endpoints so they show up in the OpenAPI schema.
-_UPLOAD_ERRORS = {
+_UPLOAD_ERRORS: dict[int | str, dict[str, Any]] = {
     400: {"description": "Empty or non-GPX upload"},
     413: {"description": "Upload or route too large"},
     429: {"description": "Rate limit exceeded"},
 }
-_JOB_RESPONSES = {
+_JOB_RESPONSES: dict[int | str, dict[str, Any]] = {
     200: {"model": JobStatus, "description": "Job already complete (returned as-is)"},
     202: {"model": JobStatus, "description": "Job accepted and queued"},
     **_UPLOAD_ERRORS,
@@ -111,7 +112,7 @@ def _cache_key(data: bytes, op: str, params: ReportParams, identity: str) -> str
     ).hexdigest()
 
 
-def _to_params(form: ReportParams, model: type) -> ReportParams:
+def _to_params(form: ReportParams, model: type[ReportParams]) -> ReportParams:
     """Extract the plain (queue-serializable) params from a multipart form body."""
     return model(**{k: getattr(form, k) for k in model.model_fields})
 
@@ -121,9 +122,9 @@ def default_components() -> tuple[JobStore, Storage, TaskRunner]:
     if settings.redis_url():
         store, storage = prod_components()
         return store, storage, DramatiqRunner()
-    store = InMemoryJobStore()
-    storage = LocalStorage(settings.results_dir())
-    return store, storage, EagerRunner(store, storage)
+    mem = InMemoryJobStore()
+    local = LocalStorage(settings.results_dir())
+    return mem, local, EagerRunner(mem, local)
 
 
 def create_app(
@@ -200,13 +201,13 @@ def create_app(
             )
         return data
 
-    def to_status(rec) -> JobStatus:
+    def to_status(rec: JobRecord) -> JobStatus:
         result_url = None
         if rec.status == "done" and rec.result_key:
             result_url = storage.url(rec.result_key) or f"/v1/jobs/{rec.id}/result"
         return JobStatus(
             id=rec.id,
-            status=rec.status,
+            status=JobState(rec.status),
             error=rec.error,
             result_url=result_url,
             content_type=rec.content_type,
@@ -229,7 +230,9 @@ def create_app(
         else:
             job_id = store.create(cache_key=key, owner=identity)
             runner.submit(job_id, op, data, params)
-            rec = store.get(job_id)
+            fresh = store.get(job_id)
+            assert fresh is not None  # just created -> always present
+            rec = fresh
         status = to_status(rec)
         response.headers["Location"] = f"/v1/jobs/{status.id}"
         if status.status in (JobState.done, JobState.error):
