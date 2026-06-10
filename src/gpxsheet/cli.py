@@ -1,6 +1,6 @@
 """Command-line interface for GPXSheet.
 
-Exposes the three output modes from PRODUCT.md: generate (default), ``analyze``
+Exposes the three output modes from docs/product.md: generate (default), ``analyze``
 and ``validate``.
 """
 

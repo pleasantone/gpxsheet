@@ -2,7 +2,7 @@
 
 Public library API. The three entry points mirror the web service:
 :func:`render` (a map), :func:`analyze` and :func:`validate` (reports). See
-``PRODUCT.md`` for the full design specification.
+``docs/product.md`` for the full design specification.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def analyze(
     Loads the GPX, runs decision-point detection, reassurance-marker placement,
     fuel analysis and segmentation, and returns the populated :class:`Route`.
     ``include_hazards`` adds OSM hazard data for validation. See the ``analyze``
-    output mode in ``PRODUCT.md``.
+    output mode in ``docs/product.md``.
     """
     from .analysis import analyze_route as _analyze_route
     from .gpx import load_route as _load_route

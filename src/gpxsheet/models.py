@@ -1,6 +1,6 @@
 """Core data models for the GPXSheet route graph.
 
-These map directly onto the Route Graph Model in PRODUCT.md::
+These map directly onto the Route Graph Model in docs/product.md::
 
     Route
      ├─ Segments
@@ -37,7 +37,7 @@ class Waypoint:
 
 
 class DecisionKind:
-    """Decision-point categories from PRODUCT.md."""
+    """Decision-point categories from docs/product.md."""
 
     CRITICAL_TURN = "critical_turn"
     CONFIRMATION = "confirmation"

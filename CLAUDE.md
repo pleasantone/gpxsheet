@@ -2,16 +2,13 @@
 
 GPXSheet converts GPX routes into glanceable, map-centric **motorcycle tank-bag
 navigation PDFs** (sport-touring). Full design spec + as-built notes:
-[PRODUCT.md](PRODUCT.md) — read its "Implementation Status & Engineering Notes"
+[docs/product.md](docs/product.md) — read its "Implementation Status & Engineering Notes"
 section when resuming.
 
 - **Repo:** private GitHub `pleasantone/gpxsheet`, branch `main`.
 - **Python:** 3.14, project-local `.venv`. `source .venv/bin/activate`.
-- **Status:** Phase 1 **complete** (analysis engine, schematic strip, tank-bag
-  PDF in landscape + portrait, publish-ready package, web service verified live).
-  Portrait roadbook is the default orientation. Decisions/segments come from OSM,
-  degrading to the geometry baseline automatically on sparse routes or Overpass
-  failure. Planned work is in [TODO.md](TODO.md).
+
+Planned work is in [TODO.md](TODO.md).
 
 ## Commands
 
@@ -72,7 +69,7 @@ geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
 - **Decision detection is two-tier.** Pure geometry floods twisty roads (can't
   tell a curve from a junction — Mt Hamilton Rd gave 100+ false turns). OSM mode
-  uses *durable road-name changes* (PRODUCT.md Rule Set 1). Validated on real Bay
+  uses *durable road-name changes* (docs/product.md Rule Set 1). Validated on real Bay
   Area tracks in `~/gpxtable/samples/`.
 - **Tuned constants** (threshold sweeps on real tracks): analysis
   `MIN_ROAD_RUN_MILES=0.3`, `MERGE_MIN_SEPARATION_MILES=0.2`,
@@ -126,22 +123,6 @@ Special cases:
 - `bad-xml.gpx` — intentionally malformed (truncated `<rte>`, mismatched tag at
   line 599); error-handling fixture.
 
-## Open work / TODO
-
-All planned and queued work is tracked in **[TODO.md](TODO.md)**.
-
-The web service is shipped and verified live; run it with
-`uvicorn gpxsheet.service.asgi:app` (dev) or `docker compose up`, worker
-`dramatiq gpxsheet.service.jobs`. Typed POST per operation (GPX + params as
-multipart **form fields** via `*Form` models): `/v1/render` (`RenderParams`:
-`layout` portrait|landscape|preview|strip × `format` pdf|png), `/v1/analyze`,
-`/v1/validate` (`ReportParams` → JSON); all create a job (`202`+`Location`, or
-`200` if already done) polled at `GET /v1/jobs/{id}` and fetched at `.../result`
-(`425` until ready, `409` on failure, immutable `ETag`). An internal `op` string
-(not client-facing) routes the worker. Jobs are owned by their creating identity
-(others 404 when keys configured). `/healthz` (live) + `/readyz` (deps reachable).
-The layout×format matrix is dispatched by `pdf.render_layout` (paginated PNGs
-stack pages via `render_pages_png`).
 
 ## Conventions
 

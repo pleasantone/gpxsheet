@@ -1,6 +1,6 @@
 """Rider profiles control which route events are shown and at what threshold.
 
-See the "User Profiles" and "Significance Scoring" sections of PRODUCT.md.
+See the "User Profiles" and "Significance Scoring" sections of docs/product.md.
 Profile settings determine display thresholds rather than what gets detected;
 detection always runs, profiles filter the output.
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Significance contributions actually used today (a subset of PRODUCT.md's scoring
+# Significance contributions actually used today (a subset of docs/product.md's scoring
 # table). The unused entries — county-road / Y- / T-intersection / fuel / town-center
 # scoring — were removed rather than advertise scoring the engine doesn't do; see
 # TODO.md for the Y/T-junction-geometry work that would reintroduce them.

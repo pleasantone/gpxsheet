@@ -1,10 +1,10 @@
 """OpenStreetMap enrichment.
 
-This is the "OSM Enrichment" pipeline stage from PRODUCT.md. It derives navigation
-structure from OSM topology rather than raw geometry, which is what PRODUCT.md's
+This is the "OSM Enrichment" pipeline stage from docs/product.md. It derives navigation
+structure from OSM topology rather than raw geometry, which is what docs/product.md's
 significance scoring is actually about:
 
-* decision points come from *durable* road-name changes (PRODUCT.md Rule Set 1):
+* decision points come from *durable* road-name changes (docs/product.md Rule Set 1):
   the route is sampled for road names, names that don't persist for
   :data:`~gpxsheet.analysis.MIN_ROAD_RUN_MILES` are discarded as nearest-edge
   flapping at junctions, and each surviving change becomes "Left/Right/Continue

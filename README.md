@@ -14,7 +14,6 @@ within the overall route.
 
 **Documentation:** [gpxsheet.readthedocs.io](https://gpxsheet.readthedocs.io) —
 library API, web API guide + interactive reference, and deployment notes.
-See [PRODUCT.md](PRODUCT.md) for the full design specification.
 
 ## Status
 

@@ -1,6 +1,6 @@
 """GPX loading: turn a ``.gpx`` file into a :class:`Route` geometry.
 
-Supports the inputs listed in PRODUCT.md: GPX tracks (``<trk>``), routes
+Supports the inputs listed in docs/product.md: GPX tracks (``<trk>``), routes
 (``<rte>``) and waypoints (``<wpt>``). Track segments and multiple tracks are
 concatenated in document order; waypoints are kept separately for fuel/marker
 enrichment.

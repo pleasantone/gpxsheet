@@ -1,6 +1,6 @@
 """Text rendering of a route analysis (the ``analyze`` output mode).
 
-Mirrors the example in PRODUCT.md's "Analyze" section.
+Mirrors the example in docs/product.md's "Analyze" section.
 """
 
 from __future__ import annotations

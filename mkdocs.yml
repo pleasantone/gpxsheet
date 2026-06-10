@@ -58,4 +58,4 @@ nav:
       - Guide: web-api.md
       - API reference: web-api-reference.md
   - Deployment & security: security-audit.md
-  - Design notes: design.md
+  - Design notes: product.md

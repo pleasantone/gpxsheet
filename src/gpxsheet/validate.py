@@ -1,4 +1,4 @@
-"""Route validation (the ``validate`` output mode in PRODUCT.md).
+"""Route validation (the ``validate`` output mode in docs/product.md).
 
 Reports hazards/warnings for a route: fuel gaps exceeding the rider's range,
 unpaved stretches, and ferry crossings. Operates on an already-analyzed

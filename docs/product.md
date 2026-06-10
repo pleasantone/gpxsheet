@@ -915,7 +915,7 @@ curvature alone):
    but **over-detects on twisty roads** — it has no way to know you stayed on
    the same road. Used as a fallback and to supply turn *direction*.
 
-2. **OSM enrichment.** Implements PRODUCT.md Rule Set 1 (road-name changes),
+2. **OSM enrichment.** Implements Rule Set 1 (road-name changes),
    which is what the significance table is really about. The route is sampled
    for OSM road names (~60 m spacing); a name that does not persist for at least
    `MIN_ROAD_RUN_MILES=0.3` is discarded as nearest-edge "flapping" at junctions
