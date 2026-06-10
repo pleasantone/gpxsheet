@@ -79,6 +79,17 @@ def enrich_route_file() -> Path:
     return FIXTURES_DIR / "enrich_route.gpx"
 
 
+@pytest.fixture
+def mthamilton_route_file() -> Path:
+    """A remote Mt Hamilton clip whose roads the strict "drive" filter drops.
+
+    Regression fixture for the ``drive`` -> ``drive_service`` enrichment fallback:
+    plain ``drive`` returns no graph nodes here, so without the fallback the route
+    silently degrades to the geometry baseline.
+    """
+    return FIXTURES_DIR / "mthamilton_route.gpx"
+
+
 def _trkpt(lat: float, lon: float) -> str:
     return f'<trkpt lat="{lat:.6f}" lon="{lon:.6f}"></trkpt>'
 

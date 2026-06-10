@@ -108,6 +108,41 @@ FERRY_FOLLOW_FRACTION = 0.5
 MAX_CHUNK_POINTS = 4000
 MAX_CHUNK_MILES = 120.0
 
+# Road network filters tried, in order, when building a chunk graph. "drive" is
+# the clean default, but remote sport-touring roads (e.g. Mt Hamilton Rd, forest
+# highways) sit on segments the strict "drive" filter drops, leaving the chunk
+# with no graph nodes; "drive_service" reaches them without the path/track noise
+# of "all". A wider buffer is tried last for genuinely thin clip polygons.
+_NETWORK_FALLBACKS = ("drive", "drive_service")
+_THIN_POLYGON_BUFFER_FACTOR = 4.0
+
+
+def _chunk_graph(ox, sg, sub: list[tuple[float, float]], road_buffer_m: float):
+    """Build the OSM graph for one chunk, with network/buffer fallbacks.
+
+    Returns an osmnx graph (with edge bearings added) or ``None`` if no drivable
+    network could be found. A missing chunk is then skipped so the rest of the
+    route still enriches, rather than one bad chunk aborting all enrichment.
+    """
+    from osmnx._errors import InsufficientResponseError
+
+    line = sg.LineString(sub)
+    attempts = [(net, road_buffer_m) for net in _NETWORK_FALLBACKS]
+    attempts.append(("drive_service", road_buffer_m * _THIN_POLYGON_BUFFER_FACTOR))
+    for network_type, buffer_m in attempts:
+        try:
+            graph = ox.graph_from_polygon(
+                line.buffer(buffer_m * _DEG_PER_M),
+                network_type=network_type,
+                retain_all=True,
+                truncate_by_edge=True,
+            )
+        except (InsufficientResponseError, ValueError):
+            continue  # no/empty network for this filter+buffer; try the next
+        ox.bearing.add_edge_bearings(graph)  # 'bearing' per edge, for branch geometry
+        return graph
+    return None
+
 
 def enrich_route(
     route: Route,
@@ -146,13 +181,9 @@ def enrich_route(
         sub = [(route.points[k].lon, route.points[k].lat) for k in range(i0, i1 + 1)]
         if len(sub) < 2:
             continue
-        graph = ox.graph_from_polygon(
-            sg.LineString(sub).buffer(road_buffer_m * _DEG_PER_M),
-            network_type="drive",
-            retain_all=True,
-            truncate_by_edge=True,
-        )
-        ox.bearing.add_edge_bearings(graph)  # 'bearing' per edge, for branch geometry
+        graph = _chunk_graph(ox, sg, sub, road_buffer_m)
+        if graph is None:
+            continue  # no drivable network here; other chunks still enrich
         graphs.append((i0, i1, graph))
         edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
         idxs = [k for k, m in enumerate(sample_m) if cs - 1e-6 <= m <= ce + 1e-6]
