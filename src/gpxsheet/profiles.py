@@ -17,6 +17,11 @@ SCORE_Y_INTERSECTION = 60
 SCORE_T_INTERSECTION = 60
 SCORE_FUEL = 20
 SCORE_TOWN_CENTER = 20
+# A straight-through road-name change ("Continue onto ...") with no real heading
+# change is usually residential-grid noise, not a navigation moment. Penalize it
+# (below the sport-touring threshold) unless it is onto a numbered highway, where
+# the name change is genuinely worth flagging.
+SCORE_CONTINUE_PENALTY = 18
 
 
 @dataclass(frozen=True, slots=True)

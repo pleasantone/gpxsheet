@@ -34,7 +34,11 @@ from .analysis import (
 from .geo import bearing, haversine, meters_to_miles, miles_to_meters
 from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
 from .models import Branch, DecisionKind, DecisionPoint, FuelStop, Route, Segment
-from .profiles import SCORE_ROAD_NAME_CHANGE, SCORE_STATE_HWY_JUNCTION
+from .profiles import (
+    SCORE_CONTINUE_PENALTY,
+    SCORE_ROAD_NAME_CHANGE,
+    SCORE_STATE_HWY_JUNCTION,
+)
 
 _DEG_PER_M = 1.0 / 111_000.0  # crude latitude-degrees per meter, fine for buffering
 
@@ -286,12 +290,33 @@ def _is_highway(name: str) -> bool:
     return bool(_HIGHWAY_RE.search(name))
 
 
+# Minor-road name suffixes (cul-de-sac / subdivision streets). A straight-through
+# name change onto one of these is residential-grid noise, not a navigation
+# moment. Arterials (Road / Avenue / Boulevard / Highway) are deliberately
+# excluded so a straight "Continue onto Sand Hill Road" keeps full weight.
+_MINOR_ROAD_SUFFIXES = frozenset(
+    {
+        "court", "ct", "lane", "ln", "place", "pl", "circle", "cir", "terrace",
+        "ter", "close", "cove", "loop", "way", "alley", "walk", "path", "row",
+    }
+)
+
+
+def _is_minor_residential(name: str) -> bool:
+    last = name.strip().rsplit(" ", 1)[-1].rstrip(".").lower() if name.strip() else ""
+    return last in _MINOR_ROAD_SUFFIXES
+
+
 def _road_change_significance(name: str, angle: float) -> int:
     sig = SCORE_ROAD_NAME_CHANGE
     if _is_highway(name):
         sig = max(sig, SCORE_STATE_HWY_JUNCTION)
     if abs(angle) >= 60.0:
         sig += 10
+    # A straight-through name change onto a minor residential road is grid noise;
+    # down-weight it (below the sport-touring threshold) so profiles filter it.
+    elif abs(angle) < CONTINUE_MAX_ANGLE_DEG and _is_minor_residential(name):
+        sig = max(0, sig - SCORE_CONTINUE_PENALTY)
     return sig
 
 

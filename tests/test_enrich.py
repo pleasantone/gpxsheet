@@ -50,6 +50,23 @@ def test_durable_runs_drops_transient_flaps():
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
 
 
+def test_continue_onto_residential_is_down_weighted():
+    # A straight name change onto a minor residential road is penalized below the
+    # sport-touring threshold; arterials and highways keep full weight.
+    from gpxsheet.enrich import _road_change_significance
+    from gpxsheet.profiles import SCORE_ROAD_NAME_CHANGE, get_profile
+
+    threshold = get_profile("sport-touring").decision_threshold
+    cul_de_sac = _road_change_significance("Toro Court", angle=2.0)
+    assert cul_de_sac < SCORE_ROAD_NAME_CHANGE
+    assert cul_de_sac < threshold  # filtered out as noise
+    # A sharp turn onto the same minor road is a real decision -> full weight.
+    assert _road_change_significance("Toro Court", angle=80.0) >= threshold
+    # A straight continue onto an arterial or a numbered highway is not penalized.
+    assert _road_change_significance("Sand Hill Road", angle=2.0) >= threshold
+    assert _road_change_significance("US-101", angle=2.0) >= threshold
+
+
 def test_durable_runs_deadband_keeps_borderline_run():
     # A 3-sample interior run spans 200 m between its first/last sample, but the
     # one-spacing pad credits it 300 m so a run sitting on the 250 m threshold is
