@@ -936,8 +936,8 @@ to 50, and a sharp turn (≥60°) adds 10. A straight "Continue onto" change ont
 minor cul-de-sac road (unambiguous suffixes only) is penalized below the display
 threshold as residential-grid noise, and promoted nameless forks (below) score by
 turn angle. Y/T-intersection and explicit junction-geometry scoring are **not yet
-implemented** (`SCORE_Y_INTERSECTION` / `SCORE_T_INTERSECTION` are defined but
-unused) — see TODO.md.
+implemented** (the corresponding `SCORE_*` constants were removed rather than
+advertise unused scoring) — see TODO.md.
 
 **Junction topology (OSM mode).** `enrich._apply_junction_topology` (best-effort;
 any failure degrades to plain turns) reads the osmnx graph to enrich decisions:

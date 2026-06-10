@@ -19,9 +19,9 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   Implement a real assessment (e.g. OSM seasonal / `access:conditional` tags, or a
   curated pass/closure list for known seasonal roads).
 - **Y/T-intersection & junction-geometry significance scoring** — PRODUCT.md's
-  scoring table includes Y/T-intersection scores (`SCORE_Y_INTERSECTION` /
-  `SCORE_T_INTERSECTION` exist in `profiles.py` but are unused); only road-name /
-  highway-name / sharp-turn scoring is wired up today.
+  scoring table defines Y/T-intersection scores, but only road-name / highway-name /
+  sharp-turn scoring is wired up today. Implementing this would reintroduce the
+  `SCORE_*` constants (county-road / Y / T / town-center) that were removed as dead.
 - **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
   `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
 - **Waypoint projection has no off-route cutoff** — `detect_pois` (and
