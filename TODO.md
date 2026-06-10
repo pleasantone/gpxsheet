@@ -20,21 +20,18 @@ display + labeling, fuel/food/ferry glyphs + mileage, unpaved (brown-dashed) and
 ferry (blue-dashed) span ribbons with labeled ends, and alternating label sides
 for de-collision.
 
-Still open — these need a real-route ground-truth set and live-OSM validation
-(the mechanisms above ship with conservative, eyeballed defaults, not
-empirically tuned constants):
+Validated against real tracks with live OSM and fixed (`feat/osm-enrichment-robustness`):
+"Continue onto" down-weighting (suffix set narrowed to unambiguous cul-de-sac
+types so arterials like "…Way" survive), nameless-fork promotion (no longer
+floods switchbacks — requires a *named, differently-named* through-road), and
+roundabout exit-counting (one-way feeders no longer inflate the exit number).
+Committed offline regression fixtures cover the Mt Hamilton and Riverbank-
+roundabout cases.
+
+Still open:
 
 - **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
   `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
-- **Validate "Continue onto" down-weighting** — `_MINOR_ROAD_SUFFIXES` and
-  `SCORE_CONTINUE_PENALTY` were chosen by eye; confirm against a labeled set that
-  real arterials are never dropped and grid noise reliably is.
-- **Validate nameless-fork promotion** — `PROMOTE_FORK_MIN_ANGLE_DEG` and the
-  "left a straight-ahead road" gate need checking on real tracks so genuine forks
-  are caught without flagging side streets ridden straight through.
-- **Roads-not-taken / roundabout tuning** — validate exit-counting and branch
-  selection against real tracks with live OSM; revisit the ring-traversal
-  heuristics on multi-chunk routes.
 - **Strip label de-collision** — alternating sides + repulsion is much better but
   still heuristic; very dense lanes may want leader routing or per-lane caps
   beyond the current auto-fit pagination.
@@ -42,14 +39,15 @@ empirically tuned constants):
 
 ## OSM enrichment robustness
 
-- **`graph_from_polygon` "no graph nodes within the requested polygon"** — on some
-  real geometries (observed live on a thin ~12 mi `ich-dual-gas` clip) the 50 m
-  `road_buffer_m` polygon passed to `enrich._enrich`/`ox.graph_from_polygon` is too
-  thin for osmnx's `truncate_by_edge` truncation, so it raises and the route
-  silently degrades to the geometry-only baseline (generic "Leg N" segments, no
-  road names). Widen/adapt the buffer (or fall back to a fatter buffer + retry
-  before giving up) so onshore routes reliably enrich. Pre-existing; surfaced
-  during the render/analysis-polish live-OSM validation.
+- **Done — `drive` → `drive_service` fallback.** `graph_from_polygon` with
+  `network_type="drive"` returned no graph nodes on some real sport-touring roads
+  (e.g. Mt Hamilton Rd), silently degrading the whole route to the geometry-only
+  baseline. Each chunk graph is now built through a fallback chain (`drive`, then
+  `drive_service`, then a wider buffer) and a per-chunk failure is non-fatal, so
+  one bad chunk no longer aborts enrichment for the entire route.
+
+
+## Service hardening (future)
 
 - Distributed (Redis-backed) rate limiting + quotas (current limiter is
   per-process, so quotas are per-replica). Optional API-key auth already exists.
