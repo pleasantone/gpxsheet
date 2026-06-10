@@ -383,10 +383,13 @@ def _is_highway(name: str) -> bool:
 # name change onto one of these is residential-grid noise, not a navigation
 # moment. Arterials (Road / Avenue / Boulevard / Highway) are deliberately
 # excluded so a straight "Continue onto Sand Hill Road" keeps full weight.
+# Restricted to unambiguous cul-de-sac types: live validation flagged that
+# "Way" / "Loop" / "Row" are also used for real arterials, so penalizing them
+# risked dropping genuine roads.
 _MINOR_ROAD_SUFFIXES = frozenset(
     {
-        "court", "ct", "lane", "ln", "place", "pl", "circle", "cir", "terrace",
-        "ter", "close", "cove", "loop", "way", "alley", "walk", "path", "row",
+        "court", "ct", "lane", "ln", "place", "pl", "circle", "cir",
+        "terrace", "ter", "close", "cove", "alley", "cul-de-sac",
     }
 )
 
