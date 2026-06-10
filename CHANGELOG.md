@@ -4,6 +4,62 @@ All notable changes are documented here. From the next release onward this file
 is maintained automatically by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [0.2.0](https://github.com/pleasantone/gpxsheet/compare/v0.1.1...v0.2.0) (2026-06-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** gpxsheet.generate_pdf and gpxsheet.generate_strip are removed. Use gpxsheet.render(layout=..., format=...) instead (layout defaults to portrait). gpxsheet.validate now returns a ValidationReport, not None.
+* **service:** the web API is reorganized. POST /v1/jobs, the synchronous POST /v1/analyze and POST /v1/preview, and the use_osm/kind request fields are removed. Submit jobs to POST /v1/render, /v1/analyze, or /v1/validate with the GPX and parameters as multipart form fields; poll GET /v1/jobs/{id} and fetch GET /v1/jobs/{id}/result.
+* **osm:** the use_osm parameter (library + CLI --osm/--no-osm + service GenerateParams.use_osm) and the GPXSHEET_ALLOW_OSM service setting are removed; OSM enrichment always runs. The [osm] install extra is removed (osmnx is now a core dependency). The preview --dpi flag is removed.
+
+### Features
+
+* **api:** unify the library API into render/analyze/validate ([31ece70](https://github.com/pleasantone/gpxsheet/commit/31ece7073d789e99118dd60a05f35a24966f085c))
+* display named GPX waypoints on the strip ([aa6d305](https://github.com/pleasantone/gpxsheet/commit/aa6d3053f6c0f71c78409bfb25d3355dc95b8cd9))
+* **enrich:** down-weight straight "Continue onto" residential changes ([58f7988](https://github.com/pleasantone/gpxsheet/commit/58f7988857c0fee8fea337a40ec8cccec66e633d))
+* **enrich:** promote nameless high-degree forks to decisions ([be22f22](https://github.com/pleasantone/gpxsheet/commit/be22f222fd78fbb7a51fe059d059676c711df508))
+* **enrich:** stabilize durable-run detection near MIN_ROAD_RUN_MILES ([391b008](https://github.com/pleasantone/gpxsheet/commit/391b008614a97657b840772193728d6e38d28e4f))
+* **layout:** nudge START/END-coincident markers off the endpoint ([e8acca8](https://github.com/pleasantone/gpxsheet/commit/e8acca8ccd6ffbdf2ffecbe366de1ce37417dc1d))
+* **layout:** relax stylized turn accumulation to curb ribbon curl ([b1675e8](https://github.com/pleasantone/gpxsheet/commit/b1675e8cb96536b4aa3970d4cfbd6fb50e4003c4))
+* **osm:** make OSM enrichment intrinsic and a core dependency ([a55e834](https://github.com/pleasantone/gpxsheet/commit/a55e8340a67eae8a23a7439883af84a9a422984d))
+* record unpaved & ferry spans and render styled ribbon stretches ([36bbac0](https://github.com/pleasantone/gpxsheet/commit/36bbac00a56d2254065b43e8e40fe26a328b4321))
+* **render:** auto-fit decisions per lane (decisions_per_lane=0/None) ([8b43eea](https://github.com/pleasantone/gpxsheet/commit/8b43eea48f431913b0ef19e404b15646e0517d6d))
+* **render:** auto-fit decisions per lane (decisions_per_lane=0/None) ([c8b9ee9](https://github.com/pleasantone/gpxsheet/commit/c8b9ee95b430224fd1d157725931ed21ddd26ba4))
+* **render:** default decisions_per_lane to auto-fit ([8c954cc](https://github.com/pleasantone/gpxsheet/commit/8c954cc151faebcc578a89235b58855b9fa83b19))
+* **render:** default decisions_per_lane to auto-fit ([c205554](https://github.com/pleasantone/gpxsheet/commit/c20555450c3490f9f8e28d8ee4fc86043f16dc31))
+* **render:** make landscape honor decisions_per_lane ([b0bab60](https://github.com/pleasantone/gpxsheet/commit/b0bab60c3adc2a71136133d23c428cbbd029ba2b))
+* **service:** redesign web API around typed async job endpoints ([8df0149](https://github.com/pleasantone/gpxsheet/commit/8df0149dd8a11a2e255a476692c92ee3baf6c08d))
+* **strip:** alternate label sides to de-collide dense strips ([0bac099](https://github.com/pleasantone/gpxsheet/commit/0bac099758a072ff75b2c24e0296b81df6c0a578))
+* **strip:** make named reassurance (town) labels more prominent ([fedf270](https://github.com/pleasantone/gpxsheet/commit/fedf2705f2ff2e3c620ec858bc1e2869bff18ff2))
+* **strip:** symbol glyphs and mileage on fuel/food/ferry markers ([bc148a3](https://github.com/pleasantone/gpxsheet/commit/bc148a354d276898b8a717ccb9764805a6c48609))
+
+
+### Bug Fixes
+
+* **enrich:** count only outgoing spurs as roundabout exits ([903a96d](https://github.com/pleasantone/gpxsheet/commit/903a96d4b6d3d9f13966dc82d23a09e902a3ce90))
+* **enrich:** fall back to drive_service so remote roads still enrich ([a6b8398](https://github.com/pleasantone/gpxsheet/commit/a6b8398737623cc6d486f4cbbc752007696d7d49))
+* **enrich:** restrict Continue-onto penalty to unambiguous cul-de-sac suffixes ([8ef0c5e](https://github.com/pleasantone/gpxsheet/commit/8ef0c5e4ae96ca90a2e41df5f123fb53c598c427))
+* **enrich:** stop nameless-fork promotion flooding twisty roads ([239c2aa](https://github.com/pleasantone/gpxsheet/commit/239c2aa95d4d135e7aa7e73f1507815568150d73))
+
+
+### Refactoring
+
+* **render:** name the renderer colors instead of inline hex ([88c4971](https://github.com/pleasantone/gpxsheet/commit/88c49718eed599b36903b42890ecbbea587c0fe3))
+* **render:** named colors + landscape honors decisions_per_lane ([452299f](https://github.com/pleasantone/gpxsheet/commit/452299f264a7c22adf56813426bcd914c6733b5d))
+
+
+### Documentation
+
+* add front-end web API integration guide ([10c8946](https://github.com/pleasantone/gpxsheet/commit/10c8946508acb72c7fc58118b59c285a3dbabbbb))
+* **pdf:** drop stale cue-zone wording from pdf docstrings ([0a0eb63](https://github.com/pleasantone/gpxsheet/commit/0a0eb636c5aae518046686157f0c9e391f689e11))
+* publish library + web API documentation to ReadTheDocs ([83b5ddd](https://github.com/pleasantone/gpxsheet/commit/83b5ddde1b19284f9d911e9c42b2b7831e841015))
+* publish library + web API documentation to ReadTheDocs ([26262ed](https://github.com/pleasantone/gpxsheet/commit/26262edb42006f3044c327400e622b9dad022c0f))
+* **todo:** mark OSM robustness + [#7](https://github.com/pleasantone/gpxsheet/issues/7)/[#8](https://github.com/pleasantone/gpxsheet/issues/8)/[#9](https://github.com/pleasantone/gpxsheet/issues/9) validated and fixed ([5fef18d](https://github.com/pleasantone/gpxsheet/commit/5fef18d70255e22ca8a54a4e32f1180a5f32a43b))
+* **todo:** note osmnx thin-polygon enrichment fallback ([ca10be7](https://github.com/pleasantone/gpxsheet/commit/ca10be7c25e09fa29ec3369dbd8b8ce18ba9146d))
+* **todo:** note waypoint-projection cutoff + name-prefix revisit ([feedd34](https://github.com/pleasantone/gpxsheet/commit/feedd346f3219686658e27563aecd52adfe3ac87))
+* **todo:** record shipped polish + remaining ground-truth tuning ([0bd620f](https://github.com/pleasantone/gpxsheet/commit/0bd620f147219f8c50fe229e41b4845dd78fcea1))
+
 ## [0.1.1](https://github.com/pleasantone/gpxsheet/compare/v0.1.0...v0.1.1) (2026-06-09)
 
 
