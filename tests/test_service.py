@@ -105,6 +105,13 @@ def test_queued_job_returns_202_then_425(tmp_path, l_route_file):
     assert res.headers["retry-after"]
 
 
+def test_render_auto_fit_accepted(client, l_route_file):
+    # decisions_per_lane=0 (auto-fit) is accepted over the wire (ge=0).
+    r = _post(client, "/v1/render", l_route_file, decisions_per_lane=0)
+    assert r.status_code == 200
+    assert r.json()["status"] == "done"
+
+
 def test_unknown_job_404(client):
     assert client.get("/v1/jobs/nope").status_code == 404
     assert client.get("/v1/jobs/nope/result").status_code == 404

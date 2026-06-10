@@ -49,9 +49,10 @@ geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 - `strip.py` — matplotlib renderer: `render_route_strip` → strip image;
   `draw_strip` shared with the PDF (Agg, lazy import). Draws ghosted
   `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph.
-- `paginate.py` — `paginate` (decision-cap, breaks only at decisions) +
+- `paginate.py` — `paginate` (fixed decision-cap, breaks only at decisions) +
   `slice_route` (`rebase=True` landscape / `rebase=False` portrait lane =
-  absolute miles).
+  absolute miles). `decisions_per_lane=0/None` switches to `strip.fit_pages`
+  (analytic greedy auto-fit: pack a lane until labels would overlap, then break).
 - `pdf.py` — renderers `render_pdf`/`render_pages_png`/`render_preview` + the
   `render_layout(layout, fmt)` dispatcher (layout × pdf/png). Landscape (one
   strip/page, framed hug, progress bar) + portrait (stacked `_draw_lane` strips,

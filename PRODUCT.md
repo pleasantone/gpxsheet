@@ -840,8 +840,10 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   Remaining polish (non-blocking) is tracked in TODO.md.
 * **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
   US-Letter/A4 document with route-aware pagination (`gpxsheet.paginate`,
-  decision-cap only — breaks at decisions, never mid-road). Header shows the
-  (truncated) route name, page mileage in green, and page counter. Two layouts:
+  decision-cap only — breaks at decisions, never mid-road; `--lane-decisions 0`
+  auto-fits as many decisions per lane as fit without label overlap, via
+  `strip.fit_pages`). Header shows the (truncated) route name, page mileage in
+  green, and page counter. Two layouts:
   - **portrait** (CLI default): stacked strip "lanes" per page (roadbook/TripTik),
     each a framed strip over its absolute mile range with its own road ribbon.
     Tunable via `--lanes N` / `--lane-decisions M`; partial pages top-aligned.

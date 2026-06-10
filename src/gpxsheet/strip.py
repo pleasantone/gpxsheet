@@ -11,6 +11,7 @@ and a dashed leader connects a moved label back to its marker.
 
 from __future__ import annotations
 
+import functools
 import math
 from pathlib import Path
 
@@ -301,3 +302,117 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
                 [mdx, edx], [mdy, edy],
                 linestyle=(0, (2, 2)), color=colors.LEADER_LINE, linewidth=0.6, zorder=3,
             )
+
+
+# --- Auto-fit pagination (decisions_per_lane = 0/None) ----------------------
+# Pack as many decisions into a lane as fit without labels overlapping anything,
+# with whitespace to keep objects distinct. This is an *analytic* estimate (no
+# render/measure feedback loop): the strip is scaled into the fixed lane box the
+# same way the renderer does, labels are measured once, and they're packed into
+# two rows (above/below the ribbon). Best-effort and conservative (it breaks the
+# lane early rather than risk an overlap). Markers may sit on the line; only the
+# dots are allowed to touch the route.
+
+_FIT_LABEL_PAD_IN = 0.06  # min horizontal whitespace between adjacent label boxes
+_FIT_MARKER_GAP_IN = 0.10  # min spacing between adjacent marker dots
+# Mirror draw_strip's xlim/ylim padding so the scale matches the rendered strip.
+_FIT_WIDTH_PAD = 1.24  # xlim spans width * 1.24 (pad_x = 0.12*width per side)
+
+
+@functools.lru_cache(maxsize=2048)
+def _label_size_in(text: str, bold: bool) -> tuple[float, float]:
+    """(width, height) of a label in inches at the strip's font size.
+
+    Measured at 72 dpi so window-extent pixels equal points, i.e. inches*72 --
+    a physical size independent of the eventual render dpi.
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig = plt.figure(dpi=72)
+    t = fig.text(0, 0, text, fontsize=8, fontweight="bold" if bold else "normal")
+    fig.canvas.draw()
+    ext = t.get_window_extent(fig.canvas.get_renderer())
+    plt.close(fig)
+    return ext.width / 72.0, ext.height / 72.0
+
+
+def _lane_fits(layout: StripLayout, box_w_in: float, box_h_in: float) -> bool:
+    """Whether ``layout`` renders into a ``box_w_in`` x ``box_h_in`` lane with no
+    label overlaps (two-row packing) and distinguishable marker dots."""
+    sw = layout.width or 1e-6
+    sh = layout.height or 0.0
+    # Scale the strip (with the renderer's padding) into the box, aspect-preserving.
+    scale = min(box_w_in / (_FIT_WIDTH_PAD * sw), box_h_in / (1.6 * sh + 2.0))
+    if scale <= 0.0:
+        return True  # degenerate; don't block progress
+
+    pts = sorted(((m.x * scale, m) for m in layout.markers), key=lambda t: t[0])
+
+    # 1. Every adjacent marker dot needs whitespace to read as a separate object.
+    xs = [x for x, _ in pts]
+    if any(b - a < _FIT_MARKER_GAP_IN for a, b in zip(xs, xs[1:], strict=False)):
+        return False
+
+    # 2. Labels pack into two rows (above / below the ribbon) without overlap.
+    row_right = [-1e18, -1e18]  # right edge (inches) of the last label in each row
+    for x, m in pts:
+        text = _marker_label(m)
+        if not text:
+            continue
+        w, h = _label_size_in(text, m.kind in ("decision", "roundabout"))
+        if h > box_h_in / 2.0:  # too tall for the half-lane band
+            return False
+        left = x - w / 2.0
+        # Place in the row with the most room (smallest right edge) that fits.
+        for r in sorted((0, 1), key=lambda i: row_right[i]):
+            if left >= row_right[r] + _FIT_LABEL_PAD_IN:
+                row_right[r] = x + w / 2.0
+                break
+        else:
+            return False
+    return True
+
+
+def fit_pages(
+    route: Route,
+    *,
+    box_w_in: float,
+    box_h_in: float,
+    turn_style: str = TURN_STYLE_STYLIZED,
+    show_start: bool = False,
+) -> list[tuple[float, float]]:
+    """Greedy auto-fit pagination: ``(start, end)`` spans that each pack as many
+    decisions as fit a ``box_w_in`` x ``box_h_in`` lane (always >= 1 decision)."""
+    from .paginate import slice_route
+
+    eps = 1e-9
+    length = route.length_miles
+    miles = sorted(d.mile for d in route.decision_points if eps < d.mile < length - eps)
+    if not miles:
+        return [(0.0, length)]
+
+    pages: list[tuple[float, float]] = []
+    start = 0.0
+    i = 0
+    n = len(miles)
+    while i < n:
+        accepted = i  # at least one decision per lane, even if it "doesn't fit"
+        for k in range(i, n):
+            end = length if k == n - 1 else miles[k]
+            sub = slice_route(route, start, end, rebase=False)
+            layout = build_strip_layout(
+                sub, turn_style=turn_style,
+                show_start=(show_start and start <= eps), show_end=(end >= length - eps),
+            )
+            if _lane_fits(layout, box_w_in, box_h_in):
+                accepted = k
+            else:
+                break
+        end = length if accepted == n - 1 else miles[accepted]
+        pages.append((start, end))
+        start = end
+        i = accepted + 1
+    return pages
