@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 
 from . import colors
+from .labels import place_labels
 from .layout import TURN_STYLE_STYLIZED, StripLayout, build_strip_layout
 from .models import Route
 
@@ -42,19 +43,6 @@ _OVERLAY_STYLE = {
 
 # Ghosted "road not taken" stubs at a junction.
 _STUB_LEN = 1.6  # schematic units (~ MIN_SEGMENT_LEN); short, subordinate to the route
-
-# Label-placement tuning (display pixels at figure dpi).
-_OFFSET = 30.0  # initial label offset from its marker, along the outward normal
-_PAD = 5.0  # min gap between label boxes
-_LINE_CLEAR = 11.0  # min gap from a label to the route line
-_ANCHOR = 0.04  # spring keeping a label near its marker's outward offset
-_REPEL = 0.85  # label-label separation strength
-_LINE_REPEL = 1.3  # push off the route line
-_MARKER_CLEAR = 9.0  # min gap from a label to any marker dot (incl. its own)
-_MARKER_REPEL = 1.2
-_STEP = 0.5
-_ITERS = 400
-_LEADER_MIN = 12.0  # draw a leader once a label is at least this far from marker
 
 
 def render_route_strip(
@@ -225,28 +213,12 @@ def _marker_label(m) -> str:
     return ""
 
 
-def _point_seg_dist(p, a, b):
-    """(distance, nearest point) from point p to segment a-b, in 2D."""
-    px, py = p
-    ax_, ay = a
-    bx, by = b
-    dx, dy = bx - ax_, by - ay
-    seg2 = dx * dx + dy * dy
-    if seg2 == 0.0:
-        return math.hypot(px - ax_, py - ay), (ax_, ay)
-    t = max(0.0, min(1.0, ((px - ax_) * dx + (py - ay) * dy) / seg2))
-    nx, ny = ax_ + t * dx, ay + t * dy
-    return math.hypot(px - nx, py - ny), (nx, ny)
-
-
 def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> None:
-    """Place each label near its marker, offset to the outside of the route.
+    """Draw each marker's label, placed by the pure solver in :mod:`gpxsheet.labels`.
 
-    Labels start offset along the route's local outward normal (so they sit on
-    the outside of bends), then a repulsion pass separates them from each other,
-    off the route line, and clear of every marker dot in ``obstacles`` (so a
-    label never covers its own or a neighbour's dot). A dashed leader connects
-    any moved label to its dot.
+    Builds the text objects, measures them in display pixels, hands the geometry
+    to :func:`gpxsheet.labels.place_labels`, then sets the solved positions and
+    draws a dashed leader for any label the solver moved off its dot.
     """
     if not markers:
         return
@@ -272,103 +244,28 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     # the data<->pixel mapping during the draw, so transforms taken earlier would
     # be stale (which previously left leader lines disconnected from their dots).
     fig.canvas.draw()
-    r = fig.canvas.get_renderer()
+    r = fig.canvas.get_renderer()  # type: ignore[attr-defined]
     trans = ax.transData.transform
     inv = ax.transData.inverted().transform
-    obstacles_px = [trans(o) for o in obstacles]
 
-    markers_px = [trans((m.x, m.y)) for m in markers]
-    nodes_px = [trans(p) for p in path_nodes]
-    segs = list(zip(nodes_px, nodes_px[1:], strict=False))
-    sizes = [(e.width, e.height) for e in (t.get_window_extent(r) for t in texts)]
+    def _px(p) -> tuple[float, float]:
+        x, y = trans(p)
+        return float(x), float(y)
 
-    def side_normal(i, above):
-        """Unit normal off the route at marker i, on the chosen side (above/below).
+    anchors = [_px((m.x, m.y)) for m in markers]
+    sizes = [(float(e.width), float(e.height)) for e in (t.get_window_extent(r) for t in texts)]
+    nodes_px = [_px(p) for p in path_nodes]
+    segments = list(zip(nodes_px, nodes_px[1:], strict=False))
+    obstacle_px = [_px(o) for o in obstacles]
 
-        Perpendicular to the nearest ribbon segment so labels sit square to the
-        line; the ``above`` flag selects the upper or lower side. ``markers`` is
-        mile-sorted, so alternating the side spreads dense labels into two rows
-        instead of bunching them all above the line.
-        """
-        mx, my = markers_px[i]
-        best = min(segs, key=lambda s: _point_seg_dist((mx, my), s[0], s[1])[0])
-        tx, ty = best[1][0] - best[0][0], best[1][1] - best[0][1]
-        nlen = math.hypot(tx, ty) or 1.0
-        nx, ny = -ty / nlen, tx / nlen
-        if (ny >= 0) != above:  # orient to the requested side of the ribbon
-            nx, ny = -nx, -ny
-        return nx, ny
-
-    centers = []
-    normals = []
-    for i in range(len(markers)):
-        mx, my = markers_px[i]
-        nx, ny = side_normal(i, above=(i % 2 == 0))  # alternate rows along the route
-        normals.append((nx, ny))
-        off = _OFFSET + sizes[i][1] * 0.5
-        centers.append([mx + nx * off, my + ny * off])
-
-    n = len(centers)
-    for _ in range(_ITERS):
-        for i in range(n):
-            cx, cy = centers[i]
-            w, h = sizes[i]
-            mx, my = markers_px[i]
-            nx, ny = normals[i]
-            off = _OFFSET + h * 0.5
-            fx = (mx + nx * off - cx) * _ANCHOR
-            fy = (my + ny * off - cy) * _ANCHOR
-
-            for j in range(n):
-                if i == j:
-                    continue
-                ox, oy = centers[j]
-                ow, oh = sizes[j]
-                penx = (w + ow) / 2 + _PAD - abs(cx - ox)
-                peny = (h + oh) / 2 + _PAD - abs(cy - oy)
-                if penx > 0 and peny > 0:
-                    if peny <= penx:
-                        fy += math.copysign(peny, cy - oy or 1.0) * _REPEL
-                    else:
-                        fx += math.copysign(penx, cx - ox or 1.0) * _REPEL
-
-            for a, b in segs:
-                d, (px, py) = _point_seg_dist((cx, cy), a, b)
-                d = max(d, 1e-6)
-                ux, uy = (cx - px) / d, (cy - py) / d
-                # clearance must account for the box extent along the push
-                # direction, so a wide label clears a vertical line by its width.
-                clear = abs(ux) * w / 2 + abs(uy) * h / 2 + _LINE_CLEAR
-                if d < clear:
-                    fx += ux * (clear - d) * _LINE_REPEL
-                    fy += uy * (clear - d) * _LINE_REPEL
-
-            for omx, omy in obstacles_px:
-                dx, dy = cx - omx, cy - omy
-                dd = math.hypot(dx, dy) or 1e-6
-                ux, uy = dx / dd, dy / dd
-                clear = abs(ux) * w / 2 + abs(uy) * h / 2 + _MARKER_CLEAR
-                if dd < clear:
-                    fx += ux * (clear - dd) * _MARKER_REPEL
-                    fy += uy * (clear - dd) * _MARKER_REPEL
-
-            centers[i][0] = cx + fx * _STEP
-            centers[i][1] = cy + fy * _STEP
-
-    for i, t in enumerate(texts):
-        cx, cy = centers[i]
-        t.set_position(inv((cx, cy)))
-        mx, my = markers_px[i]
-        if math.hypot(cx - mx, cy - my) > _LEADER_MIN:
-            # leader from marker toward the label box edge (not its center)
-            w, h = sizes[i]
-            dx, dy = cx - mx, cy - my
-            dist = math.hypot(dx, dy) or 1.0
-            ex = cx - dx / dist * (w / 2)
-            ey = cy - dy / dist * (h / 2)
-            (mdx, mdy), (edx, edy) = inv((mx, my)), inv((ex, ey))
+    placements = place_labels(anchors, sizes, segments, obstacle_px)
+    for t, pl in zip(texts, placements, strict=True):
+        t.set_position(inv(pl.center))
+        if pl.leader is not None:
+            start, edge = pl.leader
+            (sx, sy), (ex, ey) = inv(start), inv(edge)
             ax.plot(
-                [mdx, edx], [mdy, edy],
+                [sx, ex], [sy, ey],
                 linestyle=(0, (2, 2)), color=colors.LEADER_LINE, linewidth=0.6, zorder=3,
             )
 
