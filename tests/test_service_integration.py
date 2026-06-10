@@ -25,12 +25,15 @@ def test_redis_job_store_roundtrip():
     from gpxsheet.service import settings
     from gpxsheet.service.jobs import RedisJobStore
 
-    store = RedisJobStore(settings.redis_url())
+    redis_url = settings.redis_url()
+    assert redis_url is not None  # GPXSHEET_SERVICE_IT implies the URL is set
+    store = RedisJobStore(redis_url)
     job_id = store.create()
-    assert store.get(job_id).status == "queued"
+    queued = store.get(job_id)
+    assert queued is not None and queued.status == "queued"
     store.update(job_id, status="done", result_key=f"{job_id}.pdf")
     rec = store.get(job_id)
-    assert rec.status == "done" and rec.result_key == f"{job_id}.pdf"
+    assert rec is not None and rec.status == "done" and rec.result_key == f"{job_id}.pdf"
     assert store.get("missing") is None
 
 
@@ -44,7 +47,9 @@ def test_prod_path_end_to_end(l_route_file):
     from gpxsheet.service.jobs import EagerRunner, RedisJobStore
     from gpxsheet.service.storage import MinioStorage
 
-    store = RedisJobStore(settings.redis_url())
+    redis_url = settings.redis_url()
+    assert redis_url is not None
+    store = RedisJobStore(redis_url)
     storage = MinioStorage(**settings.minio_config())
     client = TestClient(create_app(store, storage, EagerRunner(store, storage)))
 

@@ -96,3 +96,9 @@ addopts = "-ra"
 python_version = "3.11"
 # Geo/plotting/web deps ship no stubs; we don't want their internals to gate us.
 ignore_missing_imports = true
+# Type-check the bodies of unannotated functions too (notably the test suite),
+# so the mypy gate is meaningful for all our code, not just annotated defs.
+check_untyped_defs = true
+# Teach mypy that pydantic models synthesize __init__ with defaulted fields
+# (otherwise RenderParams() reads as "missing named arguments").
+plugins = ["pydantic.mypy"]

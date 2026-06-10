@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from typing import TypedDict
+
 from gpxsheet.models import DecisionPoint, GeoPoint, Route, Segment
 from gpxsheet.strip import fit_pages
 
+
+class _Box(TypedDict):
+    box_w_in: float
+    box_h_in: float
+    turn_style: str
+
+
 # A roomy portrait-ish lane box (inches), like _portrait_lane_box_in default.
-BOX = {"box_w_in": 7.65, "box_h_in": 1.73, "turn_style": "stylized"}
+BOX: _Box = {"box_w_in": 7.65, "box_h_in": 1.73, "turn_style": "stylized"}
 
 
 def _route(labels):
