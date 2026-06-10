@@ -15,7 +15,7 @@ from . import colors
 from .layout import TURN_STYLE_STYLIZED, build_strip_layout
 from .models import Route
 from .paginate import paginate, slice_route
-from .strip import draw_strip, fit_pages
+from .strip import _use_bundled_fonts, draw_strip, fit_pages
 
 # Portrait mode: each page stacks several route "lanes" (strips), each covering
 # a few decisions, clearly separated -- a roadbook / TripTik layout.
@@ -78,6 +78,8 @@ def iter_page_figures(
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
+    _use_bundled_fonts()  # reproducible text/glyphs regardless of system fonts
 
     total = route.length_miles
     if orientation == "portrait":
@@ -371,6 +373,7 @@ def render_preview(
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    _use_bundled_fonts()  # reproducible text/glyphs regardless of system fonts
     output_path = Path(output_path)
     total = route.length_miles
     if auto:
