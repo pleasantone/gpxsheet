@@ -40,7 +40,16 @@ empirically tuned constants):
   beyond the current auto-fit pagination.
 
 
-## Service hardening (future)
+## OSM enrichment robustness
+
+- **`graph_from_polygon` "no graph nodes within the requested polygon"** — on some
+  real geometries (observed live on a thin ~12 mi `ich-dual-gas` clip) the 50 m
+  `road_buffer_m` polygon passed to `enrich._enrich`/`ox.graph_from_polygon` is too
+  thin for osmnx's `truncate_by_edge` truncation, so it raises and the route
+  silently degrades to the geometry-only baseline (generic "Leg N" segments, no
+  road names). Widen/adapt the buffer (or fall back to a fatter buffer + retry
+  before giving up) so onshore routes reliably enrich. Pre-existing; surfaced
+  during the render/analysis-polish live-OSM validation.
 
 - Distributed (Redis-backed) rate limiting + quotas (current limiter is
   per-process, so quotas are per-replica). Optional API-key auth already exists.
