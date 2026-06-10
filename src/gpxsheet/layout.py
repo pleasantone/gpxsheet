@@ -44,6 +44,11 @@ NORMAL_TURN_DEG = 30.0
 SHARP_TURN_DEG = 55.0
 # Faithful mode caps a single bend so hairpins don't fold back over the line.
 MAX_BEND_DEG = 150.0
+# Stylized turns accumulate heading; a run of same-direction turns would spiral
+# the ribbon (it stops reading left-to-right and can fold over itself). After
+# each stylized bend the heading is relaxed toward horizontal by this fraction,
+# bounding the cumulative drift while keeping every individual turn visible.
+CURL_RELAX = 0.25
 MARKER_MATCH_TOLERANCE_MILES = 0.15
 
 # A non-decision marker (fuel/reassurance/waypoint) landing on the START or END
@@ -147,6 +152,8 @@ def build_strip_layout(
         nodes.append((x + length * math.cos(heading), y + length * math.sin(heading)))
         if i < len(segments) - 1:  # turn at the boundary into the next segment
             heading += math.radians(_bend_degrees(_decision_at(route, seg.end_mile), turn_style))
+            if turn_style == TURN_STYLE_STYLIZED:
+                heading *= 1.0 - CURL_RELAX  # relax toward horizontal; curb spiral
 
     # 2. Map any route-mile to a point along the ribbon (linear within a segment).
     def pos_at_mile(mile: float) -> tuple[float, float]:

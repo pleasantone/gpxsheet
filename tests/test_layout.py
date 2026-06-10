@@ -119,6 +119,24 @@ def test_layout_handles_route_without_segments():
     assert layout.ribbon == ["Bare"]
 
 
+def test_same_direction_turns_do_not_spiral():
+    # A long run of same-direction turns must not curl the ribbon back on itself;
+    # heading relaxation keeps it flowing left-to-right (x strictly increasing).
+    n = 9
+    pts = [GeoPoint(0, 0), GeoPoint(0, 1)]
+    segs = [Segment(f"R{i}", float(i * 4), float((i + 1) * 4)) for i in range(n)]
+    decisions = [
+        DecisionPoint(float(i * 4), "Right", 60, 0, 0, turn_angle=70)
+        for i in range(1, n)
+    ]
+    route = Route(
+        name="spiral", points=pts, distances_m=[0.0, n * 4 * 1609.344],
+        segments=segs, decision_points=decisions,
+    )
+    xs = [p[0] for p in build_strip_layout(route).path]
+    assert all(b > a for a, b in zip(xs, xs[1:], strict=False))
+
+
 def test_fuel_at_mile_zero_is_nudged_off_start():
     # A fuel stop at mile 0 must not draw on top of the START marker.
     route = Route(
