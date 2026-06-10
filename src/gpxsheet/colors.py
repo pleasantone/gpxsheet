@@ -13,6 +13,8 @@ from __future__ import annotations
 
 # Route geometry
 ROUTE_LINE = "#333333"  # the drawn route ribbon (strip)
+UNPAVED_RIBBON = "#8b5a2b"  # unpaved/gravel stretches (brown, dashed)
+FERRY_RIBBON = "#1f6feb"  # ferry crossings (blue, dashed)
 
 # Marker / accent colors, by role.
 START = "#1b7837"  # start marker; also PDF page-mileage + segment-name labels

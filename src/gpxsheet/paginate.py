@@ -83,6 +83,12 @@ def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) 
         for p in route.pois
         if start - eps <= p.mile <= end + eps
     ]
+    spans = []
+    for s in route.spans:
+        a = max(s.start_mile, start)
+        b = min(s.end_mile, end)
+        if b - a > 1e-6:
+            spans.append(replace(s, start_mile=a - off, end_mile=b - off))
 
     edge_points = [route.points[0], route.points[-1]] if route.points else []
     return Route(
@@ -94,5 +100,6 @@ def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) 
         fuel_stops=fuel,
         reassurance_markers=reassurance,
         pois=pois,
+        spans=spans,
         fuel_report=route.fuel_report,
     )

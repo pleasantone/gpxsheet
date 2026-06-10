@@ -138,6 +138,29 @@ def test_pois_are_placed_and_labeled():
     assert by_kind["food"].label == "Joe's Diner"
 
 
+def test_spans_become_overlays_and_endpoint_markers():
+    from gpxsheet.models import RouteSpan, SpanKind
+
+    route = Route(
+        name="S",
+        points=[GeoPoint(0, 0), GeoPoint(0, 1)],
+        distances_m=[0.0, 30 * 1609.344],
+        segments=[Segment("A Rd", 0.0, 30.0)],
+        spans=[
+            RouteSpan(5.0, 9.0, SpanKind.UNPAVED),
+            RouteSpan(18.0, 22.0, SpanKind.FERRY, "Bay Ferry"),
+        ],
+    )
+    layout = build_strip_layout(route)
+    assert {o.kind for o in layout.overlays} == {"unpaved", "ferry"}
+    assert all(len(o.points) >= 2 for o in layout.overlays)
+    kinds = [m.kind for m in layout.markers]
+    assert kinds.count("unpaved") == 2  # start + end labeled
+    assert kinds.count("ferry") == 2
+    ferry_start = next(m for m in layout.markers if m.kind == "ferry")
+    assert "Bay Ferry" in ferry_start.label
+
+
 def test_same_direction_turns_do_not_spiral():
     # A long run of same-direction turns must not curl the ribbon back on itself;
     # heading relaxation keeps it flowing left-to-right (x strictly increasing).

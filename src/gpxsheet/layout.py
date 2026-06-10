@@ -16,9 +16,9 @@ The engine is pure geometry/data (no matplotlib), so it is fully unit-testable;
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .models import Branch, DecisionKind, DecisionPoint, Route, Segment
+from .models import Branch, DecisionKind, DecisionPoint, Route, RouteSpan, Segment
 
 # Schematic sizing (arbitrary units; the renderer scales to fit). A larger floor
 # plus a gentler distance term makes segment lengths more uniform -- short
@@ -72,6 +72,14 @@ class PlacedMarker:
     roundabout_exit: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RibbonOverlay:
+    """A stretch of the ribbon to redraw in a distinct style (unpaved / ferry)."""
+
+    kind: str  # unpaved | ferry
+    points: list[tuple[float, float]]  # polyline along the ribbon for this span
+
+
 @dataclass(slots=True)
 class StripLayout:
     """A schematic strip ready to render."""
@@ -81,6 +89,7 @@ class StripLayout:
     ribbon: list[str]  # ordered road names (the road-name ribbon)
     width: float
     height: float
+    overlays: list[RibbonOverlay] = field(default_factory=list)  # unpaved/ferry stretches
 
 
 def _compressed_length(miles: float) -> float:
@@ -107,6 +116,14 @@ def _bend_degrees(decision: DecisionPoint | None, style: str) -> float:
     else:
         stylized = CONTINUE_TURN_DEG
     return -math.copysign(stylized, angle)
+
+
+def _span_labels(span: RouteSpan) -> tuple[str, str]:
+    """(start, end) labels for a styled span, labeled like waypoints at each end."""
+    if span.kind == "ferry":
+        base = span.name or "Ferry"
+        return f"{base} — board", "Ferry — land"
+    return "Unpaved", "Unpaved end"
 
 
 def _segments_or_default(route: Route) -> list[Segment]:
@@ -206,6 +223,23 @@ def build_strip_layout(
     for poi in route.pois:
         x, y = cleared_pos(poi.mile)
         markers.append(PlacedMarker(x, y, poi.mile, poi.kind, poi.name))
+
+    # Styled spans (unpaved / ferry): a recolored ribbon stretch plus a labeled
+    # marker at each end (the boarding/landing or surface-change points).
+    overlays: list[RibbonOverlay] = []
+    for s in route.spans:
+        pts = [pos_at_mile(s.start_mile)]
+        for i, seg in enumerate(segments):
+            if s.start_mile < seg.end_mile < s.end_mile:
+                pts.append(nodes[i + 1])
+        pts.append(pos_at_mile(s.end_mile))
+        overlays.append(RibbonOverlay(kind=s.kind, points=pts))
+        start_label, end_label = _span_labels(s)
+        sx, sy = cleared_pos(s.start_mile)
+        ex, ey = cleared_pos(s.end_mile)
+        markers.append(PlacedMarker(sx, sy, s.start_mile, s.kind, start_label))
+        markers.append(PlacedMarker(ex, ey, s.end_mile, s.kind, end_label))
+
     if show_end:
         markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
 
@@ -221,6 +255,10 @@ def build_strip_layout(
         )
         for m in markers
     ]
+    overlays = [
+        RibbonOverlay(kind=o.kind, points=[(x - min_x, y - min_y) for x, y in o.points])
+        for o in overlays
+    ]
     width = max(xs) - min_x
     height = max(ys) - min_y
 
@@ -230,4 +268,5 @@ def build_strip_layout(
         ribbon=[seg.name for seg in segments],
         width=width,
         height=height,
+        overlays=overlays,
     )

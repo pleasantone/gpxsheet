@@ -28,7 +28,16 @@ _MARKER_STYLE = {
     "fuel": (colors.FUEL, "D", 6),
     "food": (colors.FOOD, "P", 6),
     "waypoint": (colors.WAYPOINT, "^", 5),
+    "ferry": (colors.FERRY_RIBBON, "v", 6),
+    "unpaved": (colors.UNPAVED_RIBBON, "v", 6),
     "reassurance": (colors.REASSURANCE, "|", 4),
+}
+
+# Styled ribbon overlays (unpaved / ferry): (color, linestyle) drawn over the
+# base route line for that stretch.
+_OVERLAY_STYLE = {
+    "unpaved": (colors.UNPAVED_RIBBON, (0, (4, 3))),
+    "ferry": (colors.FERRY_RIBBON, (0, (1, 2))),
 }
 
 # Ghosted "road not taken" stubs at a junction.
@@ -90,6 +99,7 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
     ys = [p[1] for p in layout.path]
     _draw_branch_stubs(ax, layout)  # ghosted, behind the route line
     ax.plot(xs, ys, color=colors.ROUTE_LINE, linewidth=4, solid_capstyle="round", zorder=2)
+    _draw_overlays(ax, layout)  # recolor unpaved/ferry stretches over the base line
 
     for m in layout.markers:
         if m.kind == "roundabout":  # open ring + centre dot
@@ -117,6 +127,18 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
             0.5, -0.02, "  ›  ".join(layout.ribbon), transform=ax.transAxes,
             ha="center", va="top", fontsize=8, color=colors.TEXT_LABEL,
         )
+
+
+def _draw_overlays(ax, layout: StripLayout) -> None:
+    """Redraw unpaved/ferry stretches in their own colour + dash over the ribbon."""
+    for ov in layout.overlays:
+        if len(ov.points) < 2:
+            continue
+        color, dash = _OVERLAY_STYLE.get(ov.kind, (colors.ROUTE_LINE, (0, (4, 3))))
+        oxs = [p[0] for p in ov.points]
+        oys = [p[1] for p in ov.points]
+        ax.plot(oxs, oys, color=color, linewidth=4, linestyle=dash,
+                solid_capstyle="round", zorder=3)
 
 
 def _draw_branch_stubs(ax, layout: StripLayout) -> None:
@@ -189,7 +211,9 @@ def _marker_label(m) -> str:
         return f"{_kind_glyph('fuel')}{base}  ({m.mile:.1f} mi)"
     if m.kind == "food":
         return f"{_kind_glyph('food')}{m.label}  ({m.mile:.1f} mi)"
-    if m.kind == "waypoint":
+    if m.kind == "ferry":
+        return f"{_kind_glyph('ferry')}{m.label}  ({m.mile:.1f} mi)"
+    if m.kind in ("waypoint", "unpaved"):
         return f"{m.label}  ({m.mile:.1f} mi)"
     if m.kind == "reassurance":
         # Generic mileage markers ("15 mi") get a tick but no text; only named

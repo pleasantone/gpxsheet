@@ -34,7 +34,16 @@ from .analysis import (
 )
 from .geo import bearing, haversine, meters_to_miles, miles_to_meters
 from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
-from .models import Branch, DecisionKind, DecisionPoint, FuelStop, Route, Segment
+from .models import (
+    Branch,
+    DecisionKind,
+    DecisionPoint,
+    FuelStop,
+    Route,
+    RouteSpan,
+    Segment,
+    SpanKind,
+)
 from .profiles import (
     SCORE_CONTINUE_PENALTY,
     SCORE_ROAD_NAME_CHANGE,
@@ -174,36 +183,84 @@ def enrich_route(
 
     spacing_m = total_m / (n - 1) if n > 1 else 0.0
     route.unpaved_miles = round(meters_to_miles(sum(unpaved) * spacing_m), 1)
+    route.spans = _unpaved_spans(sample_m, unpaved, spacing_m)
 
     if include_fuel:
         _add_fuel(route, ox, chunks, fuel_buffer_m)
     if include_hazards:
-        route.ferry_crossings = _detect_ferries(route, ox, sg, road_buffer_m)
+        ferry_spans = _detect_ferries(route, ox, sg, road_buffer_m)
+        route.ferry_crossings = sorted({s.name for s in ferry_spans if s.name})
+        route.spans = sorted([*route.spans, *ferry_spans], key=lambda s: s.start_mile)
     return route
 
 
-def _detect_ferries(route: Route, ox, sg, buffer_m: float) -> list[str]:
-    """Names/types of OSM ferry ways (route=ferry) crossing the route corridor."""
+# Runs shorter than this are dropped from the unpaved overlay as sampling noise.
+MIN_UNPAVED_SPAN_MILES = 0.1
+
+
+def _unpaved_spans(sample_m, unpaved, spacing_m) -> list[RouteSpan]:
+    """Contiguous unpaved sample runs as :class:`RouteSpan` overlays.
+
+    Each run is credited half a sample spacing at both ends so the drawn span
+    covers the surface change rather than stopping at the sampled vertices.
+    """
+    spans: list[RouteSpan] = []
+    half = 0.5 * spacing_m
+    i, n = 0, len(unpaved)
+    while i < n:
+        if not unpaved[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < n and unpaved[j + 1]:
+            j += 1
+        start = meters_to_miles(max(0.0, sample_m[i] - half))
+        end = meters_to_miles(sample_m[j] + half)
+        if end - start >= MIN_UNPAVED_SPAN_MILES:
+            spans.append(RouteSpan(round(start, 1), round(end, 1), SpanKind.UNPAVED))
+        i = j + 1
+    return spans
+
+
+def _detect_ferries(route: Route, ox, sg, buffer_m: float) -> list[RouteSpan]:
+    """Ferry crossings (route=ferry ways the route rides along) as spans.
+
+    Each ferry the route follows becomes a :class:`RouteSpan` covering the route
+    miles that run alongside the ferry way, so the renderer can draw the crossing
+    as a styled ribbon stretch and label its boarding/landing ends.
+    """
     from osmnx._errors import InsufficientResponseError
 
     line = sg.LineString([(p.lon, p.lat) for p in route.points])
-    corridor = line.buffer(buffer_m * _DEG_PER_M)
+    buf = buffer_m * _DEG_PER_M
+    corridor = line.buffer(buf)
     try:
         feats = ox.features_from_polygon(corridor, tags={"route": "ferry"})
     except InsufficientResponseError:
         return []
     if feats.empty:
         return []
-    names = []
+    spans: list[RouteSpan] = []
     for _, row in feats.iterrows():
-        ferry_len = getattr(row.geometry, "length", 0.0)
+        geom = row.geometry
+        ferry_len = getattr(geom, "length", 0.0)
         if not ferry_len:
             continue
         # Count only ferries the route rides along, not ones whose terminal we pass.
-        overlap = row.geometry.intersection(corridor).length
-        if overlap >= FERRY_FOLLOW_FRACTION * ferry_len:
-            names.append(_clean_str(row.get("name")) or "ferry")
-    return sorted(set(names))
+        if geom.intersection(corridor).length < FERRY_FOLLOW_FRACTION * ferry_len:
+            continue
+        # Route miles that run alongside this ferry way -> the crossing span.
+        miles = [
+            meters_to_miles(route.distances_m[i])
+            for i, p in enumerate(route.points)
+            if geom.distance(sg.Point(p.lon, p.lat)) <= buf
+        ]
+        if not miles:
+            continue
+        name = _clean_str(row.get("name")) or "ferry"
+        spans.append(RouteSpan(round(min(miles), 1), round(max(miles), 1), SpanKind.FERRY, name))
+    spans.sort(key=lambda s: s.start_mile)
+    return spans
 
 
 def _chunk_ranges(

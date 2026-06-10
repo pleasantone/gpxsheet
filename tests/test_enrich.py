@@ -50,6 +50,20 @@ def test_durable_runs_drops_transient_flaps():
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
 
 
+def test_unpaved_spans_run_length_encode():
+    from gpxsheet.enrich import _unpaved_spans
+    from gpxsheet.models import SpanKind
+
+    # Samples every 100 m; a contiguous unpaved run (indices 3..6) -> one span,
+    # a single-sample blip is dropped as noise.
+    sample_m = [i * 100.0 for i in range(12)]
+    unpaved = [False, False, False, True, True, True, True, False, False, True, False, False]
+    spans = _unpaved_spans(sample_m, unpaved, spacing_m=100.0)
+    assert len(spans) == 1
+    assert spans[0].kind == SpanKind.UNPAVED
+    assert spans[0].start_mile < spans[0].end_mile
+
+
 def test_detect_pois_classifies_and_skips_fuel():
     from gpxsheet.analysis import detect_pois
     from gpxsheet.geo import cumulative_distances
@@ -167,11 +181,15 @@ def _ferry_feats(geoms, names):
 
 
 def _vertical_route():
+    from gpxsheet.geo import cumulative_distances
     from gpxsheet.models import GeoPoint, Route
 
-    # Runs north along lon=0 from lat 0.0 to 0.1.
-    pts = [GeoPoint(lat, 0.0) for lat in (0.0, 0.05, 0.1)]
-    return Route(name="t", points=pts, distances_m=[0.0, 0.0, 0.0])
+    # Runs north along lon=0 from lat 0.0 to 0.1, sampled finely.
+    pts = [GeoPoint(round(i * 0.01, 3), 0.0) for i in range(11)]
+    return Route(
+        name="t", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+    )
 
 
 def test_detect_ferries_ignores_passed_terminal():
@@ -185,15 +203,21 @@ def test_detect_ferries_ignores_passed_terminal():
     assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == []
 
 
-def test_detect_ferries_reports_ride_along():
+def test_detect_ferries_reports_ride_along_span():
     import shapely.geometry as sg
 
     from gpxsheet.enrich import _detect_ferries
+    from gpxsheet.models import SpanKind
 
     # A ferry the route rides along (coincides with the route corridor).
     along = sg.LineString([(0.0, 0.02), (0.0, 0.08)])
     feats = _ferry_feats([along], ["River Ferry"])
-    assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == ["River Ferry"]
+    spans = _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0)
+    assert len(spans) == 1
+    s = spans[0]
+    assert s.kind == SpanKind.FERRY
+    assert s.name == "River Ferry"
+    assert s.end_mile > s.start_mile  # covers a real mile range, not a point
 
 
 def test_enrich_route_against_cached_osm(enrich_route_file):

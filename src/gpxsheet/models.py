@@ -113,6 +113,32 @@ class POI:
     kind: str = POIKind.WAYPOINT
 
 
+class SpanKind:
+    """Surface/conveyance span categories drawn as styled ribbon stretches."""
+
+    UNPAVED = "unpaved"
+    FERRY = "ferry"
+
+
+@dataclass(frozen=True, slots=True)
+class RouteSpan:
+    """A stretch of the route to draw with a distinct ribbon style.
+
+    Unpaved surface (brown, dashed) or a ferry crossing (blue, dashed), with the
+    beginning and end labeled like waypoints. ``name`` is the ferry/road name when
+    known.
+    """
+
+    start_mile: float
+    end_mile: float
+    kind: str
+    name: str | None = None
+
+    @property
+    def length_miles(self) -> float:
+        return self.end_mile - self.start_mile
+
+
 @dataclass(frozen=True, slots=True)
 class Segment:
     """A named stretch of road between transitions."""
@@ -149,6 +175,7 @@ class Route:
     fuel_stops: list[FuelStop] = field(default_factory=list)
     pois: list[POI] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
+    spans: list[RouteSpan] = field(default_factory=list)
     fuel_report: FuelReport | None = None
     # Hazard data from OSM enrichment; None means "not assessed" (no OSM run).
     unpaved_miles: float | None = None
