@@ -13,10 +13,15 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from gpxsheet.service.app import create_app  # noqa: E402
 from gpxsheet.service.jobs import EagerRunner, InMemoryJobStore  # noqa: E402
+from gpxsheet.service.models import RenderParams  # noqa: E402
 from gpxsheet.service.storage import LocalStorage  # noqa: E402
 
 PDF_MAGIC = b"%PDF"
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def test_render_params_default_auto_fit():
+    assert RenderParams().decisions_per_lane == 0  # default = auto-fit
 
 
 def _make_client(tmp_path, **kwargs):
