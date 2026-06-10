@@ -11,30 +11,19 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   CSRF, CSP, rate limits, no creds in the browser, served behind TLS/reverse
   proxy). Decide SPA vs server-rendered; keep deps minimal.
 
-## Rendering / analysis polish
+## Analysis (open)
 
-Shipped (`feat/render-analysis-polish`): START/END marker offset, stylized-curl
-relaxation, prominent town labels, durable-run deadband near `MIN_ROAD_RUN_MILES`,
-residential "Continue onto" down-weighting, nameless-fork promotion, waypoint
-display + labeling, fuel/food/ferry glyphs + mileage, unpaved (brown-dashed) and
-ferry (blue-dashed) span ribbons with labeled ends, and alternating label sides
-for de-collision.
-
-Validated against real tracks with live OSM and fixed (`feat/osm-enrichment-robustness`):
-"Continue onto" down-weighting (suffix set narrowed to unambiguous cul-de-sac
-types so arterials like "…Way" survive), nameless-fork promotion (no longer
-floods switchbacks — requires a *named, differently-named* through-road), and
-roundabout exit-counting (one-way feeders no longer inflate the exit number).
-Committed offline regression fixtures cover the Mt Hamilton and Riverbank-
-roundabout cases.
-
-Still open:
-
+- **Seasonal-closure risk check** — `validate.validate_route` only emits an INFO
+  "Seasonal-closure risk is not checked yet" placeholder (the `seasonal` finding
+  code is already reserved in the validate report, the web API, and PRODUCT.md).
+  Implement a real assessment (e.g. OSM seasonal / `access:conditional` tags, or a
+  curated pass/closure list for known seasonal roads).
+- **Y/T-intersection & junction-geometry significance scoring** — PRODUCT.md's
+  scoring table includes Y/T-intersection scores (`SCORE_Y_INTERSECTION` /
+  `SCORE_T_INTERSECTION` exist in `profiles.py` but are unused); only road-name /
+  highway-name / sharp-turn scoring is wired up today.
 - **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
   `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
-- **Strip label de-collision** — alternating sides + repulsion is much better but
-  still heuristic; very dense lanes may want leader routing or per-lane caps
-  beyond the current auto-fit pagination.
 - **Waypoint projection has no off-route cutoff** — `detect_pois` (and
   `detect_fuel_stops`) project every named waypoint to its *nearest* route vertex
   with no max-distance check, so a waypoint that isn't actually near the route
@@ -48,16 +37,11 @@ Still open:
   others `01 Evergreen`, `76 Bodega Bay`). These render verbatim today; decide
   whether to keep, strip, or surface them (e.g. as a stop number) on the strip.
 
+## Rendering (open)
 
-## OSM enrichment robustness
-
-- **Done — `drive` → `drive_service` fallback.** `graph_from_polygon` with
-  `network_type="drive"` returned no graph nodes on some real sport-touring roads
-  (e.g. Mt Hamilton Rd), silently degrading the whole route to the geometry-only
-  baseline. Each chunk graph is now built through a fallback chain (`drive`, then
-  `drive_service`, then a wider buffer) and a per-chunk failure is non-fatal, so
-  one bad chunk no longer aborts enrichment for the entire route.
-
+- **Strip label de-collision** — alternating sides + repulsion is much better but
+  still heuristic; very dense lanes may want leader routing or per-lane caps
+  beyond the current auto-fit pagination.
 
 ## Service hardening (future)
 
