@@ -256,7 +256,7 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
         color, _, _ = _MARKER_STYLE.get(m.kind, (colors.MARKER_FALLBACK, "o", 5))
         weight = "bold" if m.kind in ("decision", "roundabout") else "normal"
         style = "normal"
-        size = 7
+        size: float = 7
         if m.kind == "reassurance":
             # Named towns/landmarks earn a darker, italic, slightly larger label
             # so they stand out from the muted interval ticks (which carry no
@@ -403,7 +403,7 @@ def _label_size_in(text: str, bold: bool) -> tuple[float, float]:
     fig = plt.figure(dpi=72)
     t = fig.text(0, 0, text, fontsize=8, fontweight="bold" if bold else "normal")
     fig.canvas.draw()
-    ext = t.get_window_extent(fig.canvas.get_renderer())
+    ext = t.get_window_extent(fig.canvas.get_renderer())  # type: ignore[attr-defined]
     plt.close(fig)
     return ext.width / 72.0, ext.height / 72.0
 

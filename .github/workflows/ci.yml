@@ -38,8 +38,7 @@ jobs:
         run: pytest
 
   typecheck:
-    # Honor the shipped py.typed marker: mypy gates the typed library core (the
-    # renderer/service are exempted in [tool.mypy] until their own typing pass).
+    # Honor the shipped py.typed marker: mypy gates the whole package.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

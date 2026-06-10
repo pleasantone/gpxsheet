@@ -96,10 +96,3 @@ addopts = "-ra"
 python_version = "3.11"
 # Geo/plotting/web deps ship no stubs; we don't want their internals to gate us.
 ignore_missing_imports = true
-
-# The renderer and the web service lean on matplotlib / FastAPI / redis, whose
-# typing has gaps that aren't worth fighting yet; type-check the (typed) library
-# core and exempt these until they get their own typing pass (see TODO.md).
-[[tool.mypy.overrides]]
-module = ["gpxsheet.strip", "gpxsheet.pdf", "gpxsheet.service.*"]
-ignore_errors = true

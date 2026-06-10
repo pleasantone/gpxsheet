@@ -17,7 +17,7 @@ import json
 import logging
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import dramatiq
 
@@ -120,7 +120,8 @@ class RedisJobStore:
         return job_id
 
     def get(self, job_id: str) -> JobRecord | None:
-        raw = self._r.get(self._key(job_id))
+        # redis-py types .get() as sync-or-async; this is the sync client.
+        raw = cast("bytes | str | None", self._r.get(self._key(job_id)))
         return JobRecord(**json.loads(raw)) if raw else None
 
     def update(self, job_id: str, **fields) -> None:
@@ -131,7 +132,7 @@ class RedisJobStore:
             self._put(rec)
 
     def get_cached(self, cache_key: str) -> JobRecord | None:
-        job_id = self._r.get(f"gpxsheet:cache:{cache_key}")
+        job_id = cast("bytes | str | None", self._r.get(f"gpxsheet:cache:{cache_key}"))
         if not job_id:
             return None
         rec = self.get(job_id.decode() if isinstance(job_id, bytes) else job_id)
@@ -195,7 +196,9 @@ def prod_components() -> tuple[RedisJobStore, Storage]:
     """Build the Redis store + MinIO storage shared by the API and the worker."""
     from .storage import MinioStorage
 
-    return RedisJobStore(settings.redis_url()), MinioStorage(**settings.minio_config())
+    url = settings.redis_url()
+    assert url is not None  # prod path is only selected when a Redis URL is set
+    return RedisJobStore(url), MinioStorage(**settings.minio_config())
 
 
 @dramatiq.actor(max_retries=0, time_limit=RENDER_TIME_LIMIT_MS)
