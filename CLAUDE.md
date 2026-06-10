@@ -14,6 +14,7 @@ Planned work is in [TODO.md](TODO.md).
 
 ```bash
 .venv/bin/ruff check .      # lint (CI runs it; keep clean)
+.venv/bin/mypy src tests docs  # type-check ALL our code, not just the core (CI gate)
 .venv/bin/pytest -q         # all should pass; deterministic + offline (cached OSM)
 GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cache
 .venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
