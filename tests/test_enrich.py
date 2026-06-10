@@ -50,6 +50,27 @@ def test_durable_runs_drops_transient_flaps():
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
 
 
+def test_detect_pois_classifies_and_skips_fuel():
+    from gpxsheet.analysis import detect_pois
+    from gpxsheet.geo import cumulative_distances
+    from gpxsheet.models import GeoPoint, POIKind, Route, Waypoint
+
+    pts = [GeoPoint(0.0, i * 0.01) for i in range(6)]
+    route = Route(
+        name="w", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+        waypoints=[
+            Waypoint(0.0, 0.0, "Start Overlook", None),
+            Waypoint(0.0, 0.02, "Joe's Diner", "Restaurant"),
+            Waypoint(0.0, 0.04, "Shell Station", "Gas Station"),  # fuel -> skipped
+            Waypoint(0.0, 0.05, None, None),  # unnamed -> skipped
+        ],
+    )
+    pois = detect_pois(route)
+    names = {p.name: p.kind for p in pois}
+    assert names == {"Start Overlook": POIKind.WAYPOINT, "Joe's Diner": POIKind.FOOD}
+
+
 def test_continue_onto_residential_is_down_weighted():
     # A straight name change onto a minor residential road is penalized below the
     # sport-touring threshold; arterials and highways keep full weight.

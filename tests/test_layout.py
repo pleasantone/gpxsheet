@@ -4,11 +4,13 @@ import pytest
 
 from gpxsheet.layout import build_strip_layout
 from gpxsheet.models import (
+    POI,
     Branch,
     DecisionKind,
     DecisionPoint,
     FuelStop,
     GeoPoint,
+    POIKind,
     ReassuranceMarker,
     Route,
     Segment,
@@ -117,6 +119,23 @@ def test_layout_handles_route_without_segments():
     layout = build_strip_layout(route)
     assert len(layout.path) == 2  # single default segment -> 2 nodes
     assert layout.ribbon == ["Bare"]
+
+
+def test_pois_are_placed_and_labeled():
+    route = Route(
+        name="P",
+        points=[GeoPoint(0, 0), GeoPoint(0, 1)],
+        distances_m=[0.0, 20 * 1609.344],
+        segments=[Segment("A Rd", 0.0, 20.0)],
+        pois=[
+            POI(5.0, "Vista Point", 0, 0, POIKind.WAYPOINT),
+            POI(8.0, "Joe's Diner", 0, 0, POIKind.FOOD),
+        ],
+    )
+    layout = build_strip_layout(route)
+    by_kind = {m.kind: m for m in layout.markers}
+    assert by_kind["waypoint"].label == "Vista Point"
+    assert by_kind["food"].label == "Joe's Diner"
 
 
 def test_same_direction_turns_do_not_spiral():

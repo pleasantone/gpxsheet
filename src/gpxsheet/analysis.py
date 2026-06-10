@@ -20,11 +20,13 @@ from dataclasses import replace
 
 from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters
 from .models import (
+    POI,
     DecisionKind,
     DecisionPoint,
     FuelReport,
     FuelStop,
     GeoPoint,
+    POIKind,
     ReassuranceMarker,
     Route,
     Segment,
@@ -77,6 +79,12 @@ def looks_sparse(route: Route) -> bool:
 
 # Fuel-stop detection from waypoint names/symbols when OSM is unavailable.
 _FUEL_HINTS = ("fuel", "gas", "petrol", "station", "shell", "chevron", "76", "arco")
+# Food / rest-stop detection from waypoint names/symbols.
+_FOOD_HINTS = (
+    "restaurant", "cafe", "café", "diner", "food", "grill", "bbq", "coffee",
+    "deli", "pizza", "taqueria", "taco", "brewery", "brewpub", "pub", "bakery",
+    "lunch", "breakfast", "eatery", "fast food",
+)
 
 
 def _turn_word(total_angle: float) -> str:
@@ -291,6 +299,44 @@ def _looks_like_fuel(wp_name: str | None, wp_symbol: str | None) -> bool:
     return any(h in haystack for h in _FUEL_HINTS)
 
 
+def _looks_like_food(wp_name: str | None, wp_symbol: str | None) -> bool:
+    haystack = f"{wp_name or ''} {wp_symbol or ''}".lower()
+    return any(h in haystack for h in _FOOD_HINTS)
+
+
+def detect_pois(route: Route) -> list[POI]:
+    """Project named GPX waypoints onto the route for display on the strip.
+
+    Real rider waypoints (``<wpt>``; shaping/via points are not loaded as
+    waypoints) become POI markers. Fuel waypoints are skipped -- they are already
+    shown as fuel stops -- and food/rest stops are tagged so the renderer can give
+    them their own glyph. Each waypoint is projected to its nearest route vertex
+    for a mileage estimate.
+    """
+    from .geo import haversine
+
+    pois: list[POI] = []
+    for wp in route.waypoints:
+        if not wp.name or _looks_like_fuel(wp.name, wp.symbol):
+            continue
+        nearest = min(
+            range(len(route.points)),
+            key=lambda i: haversine(route.points[i].lat, route.points[i].lon, wp.lat, wp.lon),
+        )
+        kind = POIKind.FOOD if _looks_like_food(wp.name, wp.symbol) else POIKind.WAYPOINT
+        pois.append(
+            POI(
+                mile=round(meters_to_miles(route.distances_m[nearest]), 1),
+                name=wp.name,
+                lat=wp.lat,
+                lon=wp.lon,
+                kind=kind,
+            )
+        )
+    pois.sort(key=lambda p: p.mile)
+    return pois
+
+
 def detect_fuel_stops(route: Route) -> list[FuelStop]:
     """Find fuel stops from GPX waypoints (OSM enrichment supersedes this)."""
     stops: list[FuelStop] = []
@@ -424,4 +470,5 @@ def analyze_route(
     route.reassurance_markers = (
         generate_reassurance_markers(route, interval) if prof.include_reassurance else []
     )
+    route.pois = detect_pois(route) if prof.include_reassurance else []
     return route

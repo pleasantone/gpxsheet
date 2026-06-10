@@ -26,6 +26,8 @@ _MARKER_STYLE = {
     "decision": (colors.DECISION, "o", 6),
     "roundabout": (colors.DECISION, "o", 6),  # drawn as a ring glyph (see draw_strip)
     "fuel": (colors.FUEL, "D", 6),
+    "food": (colors.FOOD, "P", 6),
+    "waypoint": (colors.WAYPOINT, "^", 5),
     "reassurance": (colors.REASSURANCE, "|", 4),
 }
 
@@ -155,6 +157,8 @@ def _marker_label(m) -> str:
         return text.replace(" onto ", " onto\n", 1)
     if m.kind == "fuel":
         return "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
+    if m.kind in ("food", "waypoint"):
+        return m.label
     if m.kind == "reassurance":
         # Generic mileage markers ("15 mi") get a tick but no text; only named
         # places (towns/landmarks) are worth the label clutter.

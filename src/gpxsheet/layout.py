@@ -203,6 +203,9 @@ def build_strip_layout(
     for m in route.reassurance_markers:
         x, y = cleared_pos(m.mile)
         markers.append(PlacedMarker(x, y, m.mile, "reassurance", m.label))
+    for poi in route.pois:
+        x, y = cleared_pos(poi.mile)
+        markers.append(PlacedMarker(x, y, poi.mile, poi.kind, poi.name))
     if show_end:
         markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
 

@@ -95,6 +95,24 @@ class FuelStop:
     lon: float
 
 
+class POIKind:
+    """Point-of-interest categories surfaced on the strip from GPX waypoints."""
+
+    WAYPOINT = "waypoint"  # a generic named rider waypoint
+    FOOD = "food"  # a food / rest stop
+
+
+@dataclass(frozen=True, slots=True)
+class POI:
+    """A named GPX waypoint projected onto the route for display on the strip."""
+
+    mile: float
+    name: str
+    lat: float
+    lon: float
+    kind: str = POIKind.WAYPOINT
+
+
 @dataclass(frozen=True, slots=True)
 class Segment:
     """A named stretch of road between transitions."""
@@ -129,6 +147,7 @@ class Route:
     decision_points: list[DecisionPoint] = field(default_factory=list)
     reassurance_markers: list[ReassuranceMarker] = field(default_factory=list)
     fuel_stops: list[FuelStop] = field(default_factory=list)
+    pois: list[POI] = field(default_factory=list)
     segments: list[Segment] = field(default_factory=list)
     fuel_report: FuelReport | None = None
     # Hazard data from OSM enrichment; None means "not assessed" (no OSM run).
