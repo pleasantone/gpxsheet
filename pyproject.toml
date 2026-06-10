@@ -77,7 +77,7 @@ version = { attr = "gpxsheet.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-gpxsheet = ["py.typed"]
+gpxsheet = ["py.typed", "fonts/*.ttf", "fonts/OFL.txt"]
 
 [tool.ruff]
 line-length = 100

@@ -60,6 +60,7 @@ def render_route_strip(
     matplotlib.use("Agg")  # headless; no display needed
     import matplotlib.pyplot as plt
 
+    _use_bundled_fonts()  # reproducible text/glyphs regardless of system fonts
     layout = layout or build_strip_layout(route, turn_style=turn_style)
     output_path = Path(output_path)
 
@@ -172,12 +173,75 @@ _GLYPH_CANDIDATES = {
 }
 
 
+# Our vendored monochrome symbol font (subset of Google Noto Emoji, OFL): a tiny
+# per-glyph fallback for the fuel/ferry/food symbols DejaVu Sans lacks. See
+# ``fonts/README.md``. Listed AFTER DejaVu so it only supplies those glyphs.
+_NOTO_SUBSET = Path(__file__).parent / "fonts" / "NotoEmoji-subset.ttf"
+
+
+@functools.lru_cache(maxsize=1)
+def _bundled_sans_path() -> str:
+    """Path to matplotlib's vendored DejaVu Sans TTF (always shipped with mpl)."""
+    from matplotlib import get_data_path
+
+    return str(Path(get_data_path()) / "fonts" / "ttf" / "DejaVuSans.ttf")
+
+
+@functools.lru_cache(maxsize=1)
+def _render_font_paths() -> tuple[str, ...]:
+    """The font files the renderer pins, in fallback order (text, then symbols)."""
+    paths = [_bundled_sans_path()]
+    if _NOTO_SUBSET.exists():  # vendored; guard so a stripped install still renders
+        paths.append(str(_NOTO_SUBSET))
+    return tuple(paths)
+
+
+@functools.lru_cache(maxsize=1)
+def _register_bundled_fonts() -> list[str]:
+    """Register the pinned font files by path; return their family names in order."""
+    from matplotlib import font_manager
+
+    names = []
+    for path in _render_font_paths():
+        font_manager.fontManager.addfont(path)
+        names.append(font_manager.FontProperties(fname=path).get_name())
+    return names
+
+
+def _use_bundled_fonts() -> None:
+    """Pin matplotlib to bundled fonts for *reproducible* output.
+
+    Without this, ``findfont`` resolves through whatever fonts the machine has
+    installed, so the same route renders different text (and selects different
+    symbol glyphs) on different machines. We register matplotlib's own DejaVu
+    Sans plus our vendored Noto Emoji subset (the fuel/ferry/food glyphs DejaVu
+    lacks) by path and pin them as a ``font.sans-serif`` fallback chain, so
+    rendering depends only on these files -- not on system font config.
+    Idempotent; call before each render.
+    """
+    from matplotlib import rcParams
+
+    names = _register_bundled_fonts()
+    # Pin the *explicit* family list (not the generic "sans-serif" alias, which
+    # collapses to a single font): matplotlib's per-glyph fallback only walks the
+    # families named directly in font.family, so this is what lets the fuel/ferry/
+    # food glyphs fall through from DejaVu Sans to the Noto Emoji subset.
+    rcParams["font.family"] = names  # DejaVu first; Noto Emoji per-glyph fallback
+    rcParams["font.sans-serif"] = names
+    rcParams["mathtext.fontset"] = "dejavusans"
+
+
 @functools.lru_cache(maxsize=256)
 def _font_covers(codepoint: int) -> bool:
-    """Whether the active default font has a glyph for ``codepoint``."""
-    from matplotlib.font_manager import FontProperties, findfont, get_font
+    """Whether any pinned render font has a glyph for ``codepoint``.
 
-    return bool(get_font(findfont(FontProperties())).get_char_index(codepoint))
+    Probes the same files :func:`_use_bundled_fonts` pins (DejaVu Sans + the Noto
+    Emoji subset), so glyph selection matches what matplotlib actually draws --
+    not whatever ``findfont`` would have resolved from system fonts.
+    """
+    from matplotlib.font_manager import get_font
+
+    return any(get_font(p).get_char_index(codepoint) for p in _render_font_paths())
 
 
 @functools.lru_cache(maxsize=8)
@@ -297,6 +361,7 @@ def _label_size_in(text: str, bold: bool) -> tuple[float, float]:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
+    _use_bundled_fonts()  # measure with the same font the renderer pins
     fig = plt.figure(dpi=72)
     t = fig.text(0, 0, text, fontsize=8, fontweight="bold" if bold else "normal")
     fig.canvas.draw()
