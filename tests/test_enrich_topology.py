@@ -156,7 +156,9 @@ def _fork_route():
 
 
 def _fork_graph():
-    """Junction J (deg 3): arrive from S, through-road N (not taken), bear NE."""
+    """Junction J (deg 3): the rider stays on County Road (arrive S, bear NE),
+    while a *different* named road (Old Mine Road) runs straight ahead -- the
+    fork the rider could mistakenly take."""
     import networkx as nx
 
     g = nx.MultiDiGraph()
@@ -164,9 +166,9 @@ def _fork_graph():
         "J": (0.0, 0.0), "S": (0.0, -0.01), "N": (0.0, 0.01), "E": (0.007, 0.007)
     }.items():
         g.add_node(nid, x=x, y=y)
-    g.add_edge("J", "S", name="County Road", bearing=180.0)
-    g.add_edge("J", "N", name="County Road", bearing=0.0)  # straight ahead, not taken
-    g.add_edge("J", "E", name="County Road", bearing=45.0)  # the route bears right
+    g.add_edge("J", "S", name="County Road", bearing=180.0, highway="secondary")
+    g.add_edge("J", "N", name="Old Mine Road", bearing=0.0, highway="unclassified")  # not taken
+    g.add_edge("J", "E", name="County Road", bearing=45.0, highway="secondary")  # taken
     return g
 
 

@@ -108,6 +108,41 @@ FERRY_FOLLOW_FRACTION = 0.5
 MAX_CHUNK_POINTS = 4000
 MAX_CHUNK_MILES = 120.0
 
+# Road network filters tried, in order, when building a chunk graph. "drive" is
+# the clean default, but remote sport-touring roads (e.g. Mt Hamilton Rd, forest
+# highways) sit on segments the strict "drive" filter drops, leaving the chunk
+# with no graph nodes; "drive_service" reaches them without the path/track noise
+# of "all". A wider buffer is tried last for genuinely thin clip polygons.
+_NETWORK_FALLBACKS = ("drive", "drive_service")
+_THIN_POLYGON_BUFFER_FACTOR = 4.0
+
+
+def _chunk_graph(ox, sg, sub: list[tuple[float, float]], road_buffer_m: float):
+    """Build the OSM graph for one chunk, with network/buffer fallbacks.
+
+    Returns an osmnx graph (with edge bearings added) or ``None`` if no drivable
+    network could be found. A missing chunk is then skipped so the rest of the
+    route still enriches, rather than one bad chunk aborting all enrichment.
+    """
+    from osmnx._errors import InsufficientResponseError
+
+    line = sg.LineString(sub)
+    attempts = [(net, road_buffer_m) for net in _NETWORK_FALLBACKS]
+    attempts.append(("drive_service", road_buffer_m * _THIN_POLYGON_BUFFER_FACTOR))
+    for network_type, buffer_m in attempts:
+        try:
+            graph = ox.graph_from_polygon(
+                line.buffer(buffer_m * _DEG_PER_M),
+                network_type=network_type,
+                retain_all=True,
+                truncate_by_edge=True,
+            )
+        except (InsufficientResponseError, ValueError):
+            continue  # no/empty network for this filter+buffer; try the next
+        ox.bearing.add_edge_bearings(graph)  # 'bearing' per edge, for branch geometry
+        return graph
+    return None
+
 
 def enrich_route(
     route: Route,
@@ -146,13 +181,9 @@ def enrich_route(
         sub = [(route.points[k].lon, route.points[k].lat) for k in range(i0, i1 + 1)]
         if len(sub) < 2:
             continue
-        graph = ox.graph_from_polygon(
-            sg.LineString(sub).buffer(road_buffer_m * _DEG_PER_M),
-            network_type="drive",
-            retain_all=True,
-            truncate_by_edge=True,
-        )
-        ox.bearing.add_edge_bearings(graph)  # 'bearing' per edge, for branch geometry
+        graph = _chunk_graph(ox, sg, sub, road_buffer_m)
+        if graph is None:
+            continue  # no drivable network here; other chunks still enrich
         graphs.append((i0, i1, graph))
         edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
         idxs = [k for k, m in enumerate(sample_m) if cs - 1e-6 <= m <= ce + 1e-6]
@@ -352,10 +383,13 @@ def _is_highway(name: str) -> bool:
 # name change onto one of these is residential-grid noise, not a navigation
 # moment. Arterials (Road / Avenue / Boulevard / Highway) are deliberately
 # excluded so a straight "Continue onto Sand Hill Road" keeps full weight.
+# Restricted to unambiguous cul-de-sac types: live validation flagged that
+# "Way" / "Loop" / "Row" are also used for real arterials, so penalizing them
+# risked dropping genuine roads.
 _MINOR_ROAD_SUFFIXES = frozenset(
     {
-        "court", "ct", "lane", "ln", "place", "pl", "circle", "cir", "terrace",
-        "ter", "close", "cove", "loop", "way", "alley", "walk", "path", "row",
+        "court", "ct", "lane", "ln", "place", "pl", "circle", "cir",
+        "terrace", "ter", "close", "cove", "alley", "cul-de-sac",
     }
 )
 
@@ -463,6 +497,37 @@ def _outgoing_branches(graph, node) -> list[tuple[str | None, float]]:
     return out
 
 
+# Highway classes that are not a navigation choice when the route stays on the
+# main road: a driveway / track / path branching off is not a fork the rider can
+# mistakenly take. Used to gate nameless-fork promotion so a twisty road with
+# service-road stubs at every switchback isn't flooded with false "forks".
+_MINOR_HIGHWAYS = frozenset(
+    {
+        "service", "track", "path", "footway", "cycleway", "bridleway", "steps",
+        "pedestrian", "construction", "raceway", "busway", "corridor",
+    }
+)
+
+
+def _named_road_branches(graph, node) -> list[tuple[str, float]]:
+    """(name, bearing) for each *named, drivable* edge leaving ``node``.
+
+    Minor service/track/path edges and unnamed stubs are excluded, so only roads
+    a rider could genuinely take are considered when judging whether a junction
+    is a real fork.
+    """
+    out: list[tuple[str, float]] = []
+    for _, _v, data in graph.out_edges(node, data=True):
+        b = data.get("bearing")
+        if b is None:
+            continue
+        name = _clean_str(_first(data.get("name")))
+        highway = _first(data.get("highway"))
+        if name and highway not in _MINOR_HIGHWAYS:
+            out.append((name, float(b)))
+    return out
+
+
 def _route_bearings_at(route: Route, mile: float) -> tuple[float, float]:
     """(arrival, departure) compass bearings of the track through ``mile``."""
     center = miles_to_meters(mile)
@@ -519,15 +584,15 @@ def _roundabout_rings(graph) -> list[list]:
 
 
 def _ring_exit_flags(graph, ring: list) -> list[bool]:
-    """Per ring node, whether it has a spur leaving the circle (an exit)."""
+    """Per ring node, whether it has an *exit* spur (a road leaving the circle).
+
+    Only outgoing spurs count: an edge leaving the ring is an exit you can take,
+    while a road that only feeds *into* the roundabout (incoming-only spur) is an
+    entrance, not an exit. Counting entrances would inflate the "take the Nth
+    exit" number (observed live: a one-way feeder made a 2nd exit read as 3rd).
+    """
     ringset = set(ring)
-    flags = []
-    for nid in ring:
-        spur = any(v not in ringset for v in graph.successors(nid)) or any(
-            u not in ringset for u in graph.predecessors(nid)
-        )
-        flags.append(spur)
-    return flags
+    return [any(v not in ringset for v in graph.successors(nid)) for nid in ring]
 
 
 def _ordinal(n: int) -> str:
@@ -643,9 +708,10 @@ def _promote_fork_decisions(route, graphs, node_seq, sample_m) -> None:
     name through the junction, so :func:`_decisions_from_runs` never flags it --
     yet if the route turns off an obvious straight-ahead road there, the rider
     needs to be told. Promote such a node to a decision when the route turns by
-    at least :data:`PROMOTE_FORK_MIN_ANGLE_DEG` and a straight-ahead road is left
-    untaken; the branches render as ghosted stubs. Deliberately conservative so
-    side streets the route passes straight through are not flagged.
+    at least :data:`PROMOTE_FORK_MIN_ANGLE_DEG` and a *named, non-minor* road is
+    left going straight ahead; the branches render as ghosted stubs. Deliberately
+    conservative -- service-road / driveway stubs (common at switchbacks) and
+    side streets ridden straight through are not flagged.
     """
     existing = [d.mile for d in route.decision_points]
     added: list[DecisionPoint] = []
@@ -665,9 +731,14 @@ def _promote_fork_decisions(route, graphs, node_seq, sample_m) -> None:
         if abs(angle) < PROMOTE_FORK_MIN_ANGLE_DEG:
             continue  # rode basically straight through -> a side street, not a fork
         arrival, taken = _route_bearings_at(route, mile)
-        branches = branches_not_taken(arrival, taken, _outgoing_branches(graph, node))
+        # Drop the road the rider stays on (same name): at a switchback the far
+        # limb of the same road runs "straight ahead", which is a bend, not a fork.
+        taken_name = _road_after(route, mile)
+        branches = branches_not_taken(
+            arrival, taken, _named_road_branches(graph, node), taken_name=taken_name
+        )
         if not any(b.direction == "straight" for b in branches):
-            continue  # no obvious through-road was left -> just a bend, not a fork
+            continue  # no *differently named* through-road was left -> not a fork
         lat, lon = coord_at_meters(route, miles_to_meters(mile))
         added.append(
             DecisionPoint(
