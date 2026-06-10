@@ -35,11 +35,13 @@ def test_render_pdf_multipage(tmp_path):
         segments=[Segment("Road", 0, 200)],
     )
     out = tmp_path / "multi.pdf"
-    render_pdf(route, out)
+    # cap 2 decisions/page -> the 4 decisions span two pages.
+    render_pdf(route, out, decisions_per_lane=2)
     data = out.read_bytes()
     assert data[:4] == PDF_MAGIC
-    # PdfPages writes one "/Type /Page" per page (plus one "/Type /Pages" tree).
-    assert data.count(b"/Type /Page") >= 2
+    # Count page objects precisely: "/Type /Pages" (the tree) also contains the
+    # substring "/Type /Page", so subtract it to get the real page count.
+    assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 2
 
 
 def test_landscape_respects_decisions_per_lane():
