@@ -41,7 +41,7 @@ def render(
     turn_style: str = "stylized",
     paper: str = "letter",
     lanes_per_page: int = 4,
-    decisions_per_lane: int | None = 4,
+    decisions_per_lane: int | None = None,
 ) -> str:
     """Render a GPX route to a tank-bag navigation map.
 
@@ -61,8 +61,9 @@ def render(
         paper: Page size for paginated PDF layouts, ``"letter"`` or ``"a4"``.
         lanes_per_page: ``portrait`` only -- strip lanes per page.
         decisions_per_lane: max decisions per page/lane for the paginated layouts
-            (``portrait`` / ``landscape`` / ``preview``); ``0`` or ``None``
-            auto-fits as many as fit each lane without overlap.
+            (``portrait`` / ``landscape`` / ``preview``). The default (``None``;
+            also ``0``) auto-fits as many as fit each lane without overlap; pass a
+            positive number to force a fixed cap.
 
     Returns:
         The path to the written file.

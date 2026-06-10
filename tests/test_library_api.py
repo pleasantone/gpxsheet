@@ -58,6 +58,12 @@ def test_validate_returns_report(l_route_file):
     assert any(f.level == "warning" for f in report.findings)
 
 
+def test_render_defaults_to_auto_fit():
+    import inspect
+
+    assert inspect.signature(gpxsheet.render).parameters["decisions_per_lane"].default is None
+
+
 def test_removed_helpers_are_gone():
     # generate_pdf / generate_strip were replaced by render().
     assert not hasattr(gpxsheet, "generate_pdf")
