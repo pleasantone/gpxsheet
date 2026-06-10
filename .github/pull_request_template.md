@@ -4,10 +4,10 @@
 
 ## Related
 
-<!-- Link to the relevant milestone in PRODUCT.md or an issue. -->
+<!-- Link to the relevant milestone in docs/product.md or an issue. -->
 
 ## Checklist
 
 - [ ] `ruff check .` passes
 - [ ] `pytest` passes
-- [ ] Updated docs / PRODUCT.md if behavior changed
+- [ ] Updated docs (incl. `docs/product.md`) if behavior changed

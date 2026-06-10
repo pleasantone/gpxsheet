@@ -63,8 +63,8 @@ def test_leader_emitted_when_moved_and_starts_at_anchor():
     start, edge = p.leader
     assert start == (0.0, 0.0)  # leader begins at the anchor/dot
     # the edge point lies between the anchor and the label centre
-    assert math.hypot(*[c - s for c, s in zip(p.center, start)]) > math.hypot(
-        *[e - s for e, s in zip(edge, start)]
+    assert math.hypot(*[c - s for c, s in zip(p.center, start, strict=True)]) > math.hypot(
+        *[e - s for e, s in zip(edge, start, strict=True)]
     )
 
 

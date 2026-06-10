@@ -1,6 +1,6 @@
 # GPXSheet — TODO
 
-Planned work, queued. As-built status lives in [PRODUCT.md](PRODUCT.md);
+Planned work, queued. As-built status lives in [docs/product.md](docs/product.md);
 architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Features (requested)
@@ -15,10 +15,10 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 - **Seasonal-closure risk check** — `validate.validate_route` only emits an INFO
   "Seasonal-closure risk is not checked yet" placeholder (the `seasonal` finding
-  code is already reserved in the validate report, the web API, and PRODUCT.md).
+  code is already reserved in the validate report, the web API, and docs/product.md).
   Implement a real assessment (e.g. OSM seasonal / `access:conditional` tags, or a
   curated pass/closure list for known seasonal roads).
-- **Y/T-intersection & junction-geometry significance scoring** — PRODUCT.md's
+- **Y/T-intersection & junction-geometry significance scoring** — docs/product.md's
   scoring table defines Y/T-intersection scores, but only road-name / highway-name /
   sharp-turn scoring is wired up today. Implementing this would reintroduce the
   `SCORE_*` constants (county-road / Y / T / town-center) that were removed as dead.

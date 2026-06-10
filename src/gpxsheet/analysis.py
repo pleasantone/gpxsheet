@@ -1,6 +1,6 @@
 """The route analysis engine.
 
-Geometry-only baseline for the pipeline stages in PRODUCT.md:
+Geometry-only baseline for the pipeline stages in docs/product.md:
 
     Geometry Cleanup -> Decision Point Detection
                      -> Reassurance Marker Detection

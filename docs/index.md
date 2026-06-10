@@ -45,4 +45,4 @@ pip install "gpxsheet[service]"   # + the web service
 - [Web API reference](web-api-reference.md) — interactive OpenAPI for every
   endpoint.
 - [Deployment & security](security-audit.md) — hardening for public exposure.
-- [Design notes](design.md) — the full product/engineering specification.
+- [Design notes](product.md) — the full product/engineering specification.

@@ -1,8 +1,8 @@
 """Geometry cleanup via Ramer-Douglas-Peucker simplification.
 
-Used as the "Geometry Cleanup" pipeline stage in PRODUCT.md: it strips GPS
+Used as the "Geometry Cleanup" pipeline stage in docs/product.md: it strips GPS
 noise and redundant points before bearing/turn analysis, which makes
-decision-point detection far more robust on recorded tracks. PRODUCT.md targets
+decision-point detection far more robust on recorded tracks. docs/product.md targets
 95%+ point reduction for recorded tracks.
 
 This is a planar RDP using the equirectangular approximation, which is more than

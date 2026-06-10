@@ -1,6 +1,6 @@
 """Route-aware pagination.
 
-Splits an analyzed route into pages for the PDF. Per PRODUCT.md, pages are *not*
+Splits an analyzed route into pages for the PDF. Per docs/product.md, pages are *not*
 split by mileage -- breaks fall only on decision points, so a page never cuts a
 navigation moment in half and a long decision-free stretch stays on one page
 (the strip compresses it; the progress bar conveys absolute distance). Each page

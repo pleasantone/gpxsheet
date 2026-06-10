@@ -1,7 +1,7 @@
 """Schematic Layout Engine.
 
 Turns the analyzed :class:`~gpxsheet.models.Route` graph into a *schematic* strip
--- not a plot of the GPX. Following PRODUCT.md's "Hybrid Schematic Map System":
+-- not a plot of the GPX. Following docs/product.md's "Hybrid Schematic Map System":
 
 * the route is drawn as a ribbon that jogs at each decision (preserving turn
   *direction* and rough character, transit-map style), not the literal track,
@@ -23,13 +23,13 @@ from .models import Branch, DecisionKind, DecisionPoint, Route, RouteSpan, Segme
 # Schematic sizing (arbitrary units; the renderer scales to fit). A larger floor
 # plus a gentler distance term makes segment lengths more uniform -- short
 # segments get enough room for their labels, long roads stay compressed
-# (information density matters more than raw distance, per PRODUCT.md).
+# (information density matters more than raw distance, per docs/product.md).
 MIN_SEGMENT_LEN = 2.6  # every segment gets at least this much strip, however short
 DIST_SCALE = 1.0  # multiplies sqrt(miles); sub-linear compression of long roads
 
 # Two ways to bend the ribbon at a turn:
 #   "stylized" (default): quantize to a few exaggerated angles by sharpness, so
-#       the strip reads like a transit map (PRODUCT.md: "exaggerates important
+#       the strip reads like a transit map (docs/product.md: "exaggerates important
 #       junctions", "improves readability").
 #   "faithful": bend by the route's actual turn angle (a 90-degree turn bends
 #       the line ~90 degrees), capped so a hairpin doesn't fold over the line.
