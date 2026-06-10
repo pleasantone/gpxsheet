@@ -282,18 +282,20 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     segs = list(zip(nodes_px, nodes_px[1:], strict=False))
     sizes = [(e.width, e.height) for e in (t.get_window_extent(r) for t in texts)]
 
-    cxs = sum(px for px, _ in nodes_px) / len(nodes_px)
-    cys = sum(py for _, py in nodes_px) / len(nodes_px)
+    def side_normal(i, above):
+        """Unit normal off the route at marker i, on the chosen side (above/below).
 
-    def outward_normal(i):
-        """Unit normal at marker i, pointing away from the route centroid."""
+        Perpendicular to the nearest ribbon segment so labels sit square to the
+        line; the ``above`` flag selects the upper or lower side. ``markers`` is
+        mile-sorted, so alternating the side spreads dense labels into two rows
+        instead of bunching them all above the line.
+        """
         mx, my = markers_px[i]
-        # tangent from the nearest path segment
         best = min(segs, key=lambda s: _point_seg_dist((mx, my), s[0], s[1])[0])
         tx, ty = best[1][0] - best[0][0], best[1][1] - best[0][1]
         nlen = math.hypot(tx, ty) or 1.0
         nx, ny = -ty / nlen, tx / nlen
-        if (mx - cxs) * nx + (my - cys) * ny < 0:  # point away from centroid
+        if (ny >= 0) != above:  # orient to the requested side of the ribbon
             nx, ny = -nx, -ny
         return nx, ny
 
@@ -301,7 +303,7 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     normals = []
     for i in range(len(markers)):
         mx, my = markers_px[i]
-        nx, ny = outward_normal(i)
+        nx, ny = side_normal(i, above=(i % 2 == 0))  # alternate rows along the route
         normals.append((nx, ny))
         off = _OFFSET + sizes[i][1] * 0.5
         centers.append([mx + nx * off, my + ny * off])
