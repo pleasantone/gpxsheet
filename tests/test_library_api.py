@@ -38,6 +38,15 @@ def test_render_default_output_name(l_route_file, tmp_path, monkeypatch):
     assert (tmp_path / "route.png").read_bytes()[:8] == PNG_MAGIC
 
 
+@pytest.mark.parametrize("dpl", [0, None])
+@pytest.mark.parametrize("layout", ["portrait", "landscape", "preview"])
+def test_render_auto_fit_decisions_per_lane(l_route_file, tmp_path, layout, dpl):
+    # decisions_per_lane=0/None -> auto-fit; must still render a valid PDF.
+    out = tmp_path / f"{layout}.pdf"
+    gpxsheet.render(str(l_route_file), str(out), layout=layout, decisions_per_lane=dpl)
+    assert out.read_bytes()[:4] == PDF_MAGIC
+
+
 def test_validate_returns_report(l_route_file):
     report = gpxsheet.validate(str(l_route_file), fuel_range=1.0)
     assert isinstance(report, ValidationReport)

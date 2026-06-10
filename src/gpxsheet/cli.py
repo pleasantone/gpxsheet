@@ -58,8 +58,8 @@ def generate(
         4, "--lanes", min=1, help="Portrait only: strip lanes per page."
     ),
     lane_decisions: int = typer.Option(
-        4, "--lane-decisions", min=1,
-        help="Max decisions per page (portrait lane / landscape page).",
+        4, "--lane-decisions", min=0,
+        help="Max decisions per page (portrait lane / landscape page); 0 = auto-fit.",
     ),
 ) -> None:
     """Generate a tank-bag navigation PDF (portrait roadbook)."""
@@ -149,7 +149,7 @@ def preview(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
     lane_decisions: int = typer.Option(
-        4, "--lane-decisions", min=1, help="Max decisions per strip lane."
+        4, "--lane-decisions", min=0, help="Max decisions per strip lane; 0 = auto-fit."
     ),
 ) -> None:
     """Render the whole route as one non-paginated image (stacked strip lanes).

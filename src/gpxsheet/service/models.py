@@ -43,7 +43,8 @@ class RenderParams(ReportParams):
     turn_style: str = Field("stylized", pattern="^(stylized|faithful)$")
     paper: str = Field("letter", pattern="^(letter|a4)$")  # pdf paginated layouts only
     lanes_per_page: int = Field(4, ge=1)  # portrait only
-    decisions_per_lane: int = Field(4, ge=1)  # portrait / landscape / preview
+    # portrait / landscape / preview; 0 = auto-fit as many as fit per lane
+    decisions_per_lane: int = Field(4, ge=0)
 
 
 class ReportForm(ReportParams):
