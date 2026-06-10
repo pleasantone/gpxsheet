@@ -24,18 +24,6 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   `SCORE_*` constants (county-road / Y / T / town-center) that were removed as dead.
 - **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
   `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
-- **Waypoint projection has no off-route cutoff** — `detect_pois` (and
-  `detect_fuel_stops`) project every named waypoint to its *nearest* route vertex
-  with no max-distance check, so a waypoint that isn't actually near the route
-  still renders at whatever vertex is closest. On a sub-route slice this stacks
-  out-of-window waypoints onto the start/end vertex (seen while rendering a 6 mi
-  twixtmas clip that carried all 13 full-route waypoints at 0.0/5.9 mi).
-  Consider a proximity threshold (cf. the 1.0 mi cap in `_label_near`) so distant
-  waypoints are dropped, and de-conflict multiple waypoints landing on one mile.
-- **Rider-sequence waypoint name prefixes** — many GPX waypoints carry an authored
-  ordering prefix (twixtmas uses day×10+stop: `11 SilverCreek` … `34 Livermore`;
-  others `01 Evergreen`, `76 Bodega Bay`). These render verbatim today; decide
-  whether to keep, strip, or surface them (e.g. as a stop number) on the strip.
 
 ## Rendering (open)
 

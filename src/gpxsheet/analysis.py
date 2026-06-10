@@ -19,6 +19,7 @@ import warnings
 from dataclasses import replace
 
 from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters
+from .labels import point_segment_distance
 from .models import (
     POI,
     DecisionKind,
@@ -60,6 +61,11 @@ MIN_ROAD_RUN_MILES = 0.3
 # A road-name change with a heading change below this reads as "Continue onto",
 # not "Left/Right onto".
 CONTINUE_MAX_ANGLE_DEG = 25.0
+# A named GPX waypoint farther than this (perpendicular) from the route is
+# treated as off-route and dropped, rather than snapped to the nearest endpoint
+# (cf. _label_near's 1.0 mi cap). Distant waypoints would otherwise project to
+# whatever vertex is closest and stack on the start/end of a sub-route slice.
+MAX_WAYPOINT_OFFSET_MILES = 1.0
 # Below this point density the geometry is too sparse to follow roads (e.g. a
 # waypoint-only <rte> with long straight legs); OSM road-name sampling along such
 # straight lines snaps to whatever streets it crosses, so we skip enrichment.
@@ -294,6 +300,42 @@ def _label_near(route: Route, idx: int, max_miles: float = 1.0) -> tuple[str, st
     return f"{meters_to_miles(route.distances_m[idx]):.0f} mi", "interval"
 
 
+def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, float]:
+    """``(mile, cross_track_m)``: nearest point on the route polyline to a point.
+
+    Cross-track distance is computed in a local equirectangular frame centered on
+    the point (accurate for the short offsets that matter here); the mile is
+    interpolated along the nearest segment rather than snapped to a vertex, so a
+    waypoint mid-way along a long leg on a sparse route reads correctly.
+    """
+    import math
+
+    from .geo import haversine
+
+    pts = route.points
+    if len(pts) < 2:
+        d = haversine(pts[0].lat, pts[0].lon, lat, lon) if pts else float("inf")
+        return 0.0, d
+
+    coslat = math.cos(math.radians(lat))
+
+    def xy(p: GeoPoint) -> tuple[float, float]:
+        return ((p.lon - lon) * coslat * 111320.0, (p.lat - lat) * 110540.0)
+
+    best_d, best_mile = float("inf"), 0.0
+    for i in range(len(pts) - 1):
+        a, b = xy(pts[i]), xy(pts[i + 1])
+        d, (nx, ny) = point_segment_distance((0.0, 0.0), a, b)
+        if d < best_d:
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            seg2 = dx * dx + dy * dy
+            t = 0.0 if seg2 == 0 else ((nx - a[0]) * dx + (ny - a[1]) * dy) / seg2
+            d_a, d_b = route.distances_m[i], route.distances_m[i + 1]
+            best_mile = meters_to_miles(d_a + t * (d_b - d_a))
+            best_d = d
+    return round(best_mile, 1), best_d
+
+
 def _looks_like_fuel(wp_name: str | None, wp_symbol: str | None) -> bool:
     haystack = f"{wp_name or ''} {wp_symbol or ''}".lower()
     return any(h in haystack for h in _FUEL_HINTS)
@@ -310,54 +352,37 @@ def detect_pois(route: Route) -> list[POI]:
     Real rider waypoints (``<wpt>``; shaping/via points are not loaded as
     waypoints) become POI markers. Fuel waypoints are skipped -- they are already
     shown as fuel stops -- and food/rest stops are tagged so the renderer can give
-    them their own glyph. Each waypoint is projected to its nearest route vertex
-    for a mileage estimate.
+    them their own glyph. Each waypoint is projected to the nearest point on the
+    route for a mileage estimate; one farther than
+    :data:`MAX_WAYPOINT_OFFSET_MILES` (perpendicular) is treated as off-route and
+    dropped rather than snapped to the closest endpoint.
     """
-    from .geo import haversine
-
+    max_off_m = miles_to_meters(MAX_WAYPOINT_OFFSET_MILES)
     pois: list[POI] = []
     for wp in route.waypoints:
         if not wp.name or _looks_like_fuel(wp.name, wp.symbol):
             continue
-        nearest = min(
-            range(len(route.points)),
-            key=lambda i: haversine(route.points[i].lat, route.points[i].lon, wp.lat, wp.lon),
-        )
+        mile, off_m = _project_to_route(route, wp.lat, wp.lon)
+        if off_m > max_off_m:
+            continue
         kind = POIKind.FOOD if _looks_like_food(wp.name, wp.symbol) else POIKind.WAYPOINT
-        pois.append(
-            POI(
-                mile=round(meters_to_miles(route.distances_m[nearest]), 1),
-                name=wp.name,
-                lat=wp.lat,
-                lon=wp.lon,
-                kind=kind,
-            )
-        )
+        pois.append(POI(mile=mile, name=wp.name, lat=wp.lat, lon=wp.lon, kind=kind))
     pois.sort(key=lambda p: p.mile)
     return pois
 
 
 def detect_fuel_stops(route: Route) -> list[FuelStop]:
     """Find fuel stops from GPX waypoints (OSM enrichment supersedes this)."""
+    max_off_m = miles_to_meters(MAX_WAYPOINT_OFFSET_MILES)
     stops: list[FuelStop] = []
-    from .geo import haversine
-
     for wp in route.waypoints:
         if not _looks_like_fuel(wp.name, wp.symbol):
             continue
-        # Project waypoint onto route by nearest vertex for a mileage estimate.
-        nearest = min(
-            range(len(route.points)),
-            key=lambda i: haversine(route.points[i].lat, route.points[i].lon, wp.lat, wp.lon),
-        )
-        stops.append(
-            FuelStop(
-                mile=round(meters_to_miles(route.distances_m[nearest]), 1),
-                name=wp.name or "Fuel",
-                lat=wp.lat,
-                lon=wp.lon,
-            )
-        )
+        # Project onto the route; drop a waypoint that is not actually near it.
+        mile, off_m = _project_to_route(route, wp.lat, wp.lon)
+        if off_m > max_off_m:
+            continue
+        stops.append(FuelStop(mile=mile, name=wp.name or "Fuel", lat=wp.lat, lon=wp.lon))
     stops.sort(key=lambda s: s.mile)
     return stops
 

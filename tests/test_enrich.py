@@ -85,6 +85,45 @@ def test_detect_pois_classifies_and_skips_fuel():
     assert names == {"Start Overlook": POIKind.WAYPOINT, "Joe's Diner": POIKind.FOOD}
 
 
+def test_detect_pois_drops_off_route_waypoint():
+    # A named waypoint far to the side of the route is off-route and dropped,
+    # rather than snapped to the nearest endpoint (which would stack it on a slice).
+    from gpxsheet.analysis import detect_pois
+    from gpxsheet.geo import cumulative_distances
+    from gpxsheet.models import GeoPoint, Route, Waypoint
+
+    pts = [GeoPoint(37.0, i * 0.01) for i in range(6)]  # ~3.4 mi due east
+    route = Route(
+        name="w", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+        waypoints=[
+            Waypoint(37.0, 0.02, "On Route", None),  # right on the line -> kept
+            Waypoint(37.05, 0.02, "Way Off", None),  # ~3.4 mi north -> dropped
+        ],
+    )
+    names = {p.name for p in detect_pois(route)}
+    assert names == {"On Route"}
+
+
+def test_detect_fuel_stops_drops_off_route():
+    from gpxsheet.analysis import detect_fuel_stops
+    from gpxsheet.geo import cumulative_distances
+    from gpxsheet.models import GeoPoint, Route, Waypoint
+
+    pts = [GeoPoint(37.0, i * 0.01) for i in range(6)]
+    route = Route(
+        name="w", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+        waypoints=[
+            Waypoint(37.0, 0.03, "Shell", "Gas Station"),  # on route -> kept
+            Waypoint(37.05, 0.03, "Far Gas", "Gas Station"),  # off route -> dropped
+        ],
+    )
+    stops = detect_fuel_stops(route)
+    assert [s.name for s in stops] == ["Shell"]
+    assert 0.0 < stops[0].mile < route.length_miles  # sensible interpolated mile
+
+
 def test_continue_onto_residential_is_down_weighted():
     # A straight name change onto a minor residential road is penalized below the
     # sport-touring threshold; arterials and highways keep full weight.
