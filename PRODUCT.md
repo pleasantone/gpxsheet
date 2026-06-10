@@ -1006,3 +1006,39 @@ See the "Technology Stack (as built)" table above. Verified on Python 3.14: core
 = gpxpy + matplotlib + typer + osmnx 2.1 + shapely (+ geopandas/pyproj/pyogrio via
 osmnx); `[dev]` = pytest + ruff + mypy + build + twine.
 
+## Rendering backend — matplotlib vs. SVG (analysis)
+
+We evaluated whether matplotlib is the right rendering backend, given how much
+hand-written machinery the renderer carries (label de-collision, transform
+juggling, the analytic `fit_pages` estimate, font-coverage probing, hand-composed
+PDF pages). A throwaway SVG-emit spike for the `strip` layout (pure-Python SVG +
+`cairosvg`, wired behind a `render_layout(engine="svg")` hook) informed these
+conclusions. The spike was discarded; the findings are kept here.
+
+* **matplotlib is being used as a vector canvas + ad-hoc layout engine**, not as a
+  plotting library — there are no plots/axes/scales. That mismatch is the source of
+  most incidental complexity (data↔pixel round-trips, draw-then-measure after
+  `set_aspect`, the glyph-coverage fallback that exists only because matplotlib
+  doesn't do font fallback, and the hand-rolled page composition in `pdf.py`).
+* **Label de-collision is intrinsic, not a backend artifact.** Automatic map
+  labeling is heuristic in *any* backend; the spike's simpler single-pass placement
+  visibly collided where matplotlib's force-directed pass did not. Switching
+  backends does **not** make this cheaper — it must be ported and improved either
+  way. This is the renderer's real complexity.
+* **The SVG architecture is clean and slots in trivially** (`layout.py` is already
+  backend-agnostic; the `engine=` hook was ~10 lines): pure-Python emission, direct
+  coordinates (no transforms), one document → SVG/PNG/PDF, and output that is
+  unit-testable as XML. ~250 LOC covered the whole `strip`.
+* **The font/glyph win depends on the rasterizer, not on SVG itself.** `cairosvg`
+  rendered the ⚓/☕ marker glyphs as tofu (worse than matplotlib); the
+  "real glyphs for free" benefit needs **resvg** or a browser, plus a runtime
+  dependency cost (libcairo / resvg) that matters for the service container.
+
+**Decision: keep matplotlib for now.** Migrating the strip alone is not worth it —
+the label algorithm doesn't get simpler and the glyph win needs a heavier
+rasterizer. The larger payoff, if revisited, is **CSS Paged Media (e.g. WeasyPrint)
+for the portrait roadbook pagination**, where matplotlib's hand-composed pages cost
+the most; the per-lane strip could be embedded SVG. Triggers to reconsider: wanting
+reliable symbol glyphs, the label/transform code becoming a maintenance sink, or
+needing finer typographic / pagination control.
+
