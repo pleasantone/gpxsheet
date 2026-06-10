@@ -16,9 +16,9 @@ The engine is pure geometry/data (no matplotlib), so it is fully unit-testable;
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .models import Branch, DecisionKind, DecisionPoint, Route, Segment
+from .models import Branch, DecisionKind, DecisionPoint, Route, RouteSpan, Segment
 
 # Schematic sizing (arbitrary units; the renderer scales to fit). A larger floor
 # plus a gentler distance term makes segment lengths more uniform -- short
@@ -44,7 +44,17 @@ NORMAL_TURN_DEG = 30.0
 SHARP_TURN_DEG = 55.0
 # Faithful mode caps a single bend so hairpins don't fold back over the line.
 MAX_BEND_DEG = 150.0
+# Stylized turns accumulate heading; a run of same-direction turns would spiral
+# the ribbon (it stops reading left-to-right and can fold over itself). After
+# each stylized bend the heading is relaxed toward horizontal by this fraction,
+# bounding the cumulative drift while keeping every individual turn visible.
+CURL_RELAX = 0.25
 MARKER_MATCH_TOLERANCE_MILES = 0.15
+
+# A non-decision marker (fuel/reassurance/waypoint) landing on the START or END
+# node is nudged this far along the ribbon so its dot/label clears the endpoint
+# marker. Schematic units; ~half a minimum segment keeps it visually adjacent.
+END_CLEAR_DIST = MIN_SEGMENT_LEN * 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +72,14 @@ class PlacedMarker:
     roundabout_exit: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class RibbonOverlay:
+    """A stretch of the ribbon to redraw in a distinct style (unpaved / ferry)."""
+
+    kind: str  # unpaved | ferry
+    points: list[tuple[float, float]]  # polyline along the ribbon for this span
+
+
 @dataclass(slots=True)
 class StripLayout:
     """A schematic strip ready to render."""
@@ -71,6 +89,7 @@ class StripLayout:
     ribbon: list[str]  # ordered road names (the road-name ribbon)
     width: float
     height: float
+    overlays: list[RibbonOverlay] = field(default_factory=list)  # unpaved/ferry stretches
 
 
 def _compressed_length(miles: float) -> float:
@@ -97,6 +116,14 @@ def _bend_degrees(decision: DecisionPoint | None, style: str) -> float:
     else:
         stylized = CONTINUE_TURN_DEG
     return -math.copysign(stylized, angle)
+
+
+def _span_labels(span: RouteSpan) -> tuple[str, str]:
+    """(start, end) labels for a styled span, labeled like waypoints at each end."""
+    if span.kind == "ferry":
+        base = span.name or "Ferry"
+        return f"{base} — board", "Ferry — land"
+    return "Unpaved", "Unpaved end"
 
 
 def _segments_or_default(route: Route) -> list[Segment]:
@@ -142,6 +169,8 @@ def build_strip_layout(
         nodes.append((x + length * math.cos(heading), y + length * math.sin(heading)))
         if i < len(segments) - 1:  # turn at the boundary into the next segment
             heading += math.radians(_bend_degrees(_decision_at(route, seg.end_mile), turn_style))
+            if turn_style == TURN_STYLE_STYLIZED:
+                heading *= 1.0 - CURL_RELAX  # relax toward horizontal; curb spiral
 
     # 2. Map any route-mile to a point along the ribbon (linear within a segment).
     def pos_at_mile(mile: float) -> tuple[float, float]:
@@ -153,6 +182,24 @@ def build_strip_layout(
                 (x0, y0), (x1, y1) = nodes[i], nodes[i + 1]
                 return (x0 + f * (x1 - x0), y0 + f * (y1 - y0))
         return nodes[-1]
+
+    def cleared_pos(mile: float) -> tuple[float, float]:
+        """Position at ``mile``, nudged off the START/END node if it lands on it.
+
+        A fuel stop / waypoint right at mile 0 (or the route end) otherwise draws
+        its dot and label directly over the START/END marker; push it a little way
+        along the ribbon so both stay legible.
+        """
+        x, y = pos_at_mile(mile)
+        for end_x, end_y, ax, ay in (
+            (*nodes[0], *nodes[1]),  # start node, toward the next node
+            (*nodes[-1], *nodes[-2]),  # end node, toward the previous node
+        ):
+            if math.hypot(x - end_x, y - end_y) < END_CLEAR_DIST:
+                dx, dy = ax - end_x, ay - end_y
+                n = math.hypot(dx, dy) or 1.0
+                return end_x + dx / n * END_CLEAR_DIST, end_y + dy / n * END_CLEAR_DIST
+        return x, y
 
     # 3. Place markers.
     markers: list[PlacedMarker] = []
@@ -168,11 +215,31 @@ def build_strip_layout(
             )
         )
     for fstop in route.fuel_stops:
-        x, y = pos_at_mile(fstop.mile)
+        x, y = cleared_pos(fstop.mile)
         markers.append(PlacedMarker(x, y, fstop.mile, "fuel", fstop.name))
     for m in route.reassurance_markers:
-        x, y = pos_at_mile(m.mile)
+        x, y = cleared_pos(m.mile)
         markers.append(PlacedMarker(x, y, m.mile, "reassurance", m.label))
+    for poi in route.pois:
+        x, y = cleared_pos(poi.mile)
+        markers.append(PlacedMarker(x, y, poi.mile, poi.kind, poi.name))
+
+    # Styled spans (unpaved / ferry): a recolored ribbon stretch plus a labeled
+    # marker at each end (the boarding/landing or surface-change points).
+    overlays: list[RibbonOverlay] = []
+    for s in route.spans:
+        pts = [pos_at_mile(s.start_mile)]
+        for i, seg in enumerate(segments):
+            if s.start_mile < seg.end_mile < s.end_mile:
+                pts.append(nodes[i + 1])
+        pts.append(pos_at_mile(s.end_mile))
+        overlays.append(RibbonOverlay(kind=s.kind, points=pts))
+        start_label, end_label = _span_labels(s)
+        sx, sy = cleared_pos(s.start_mile)
+        ex, ey = cleared_pos(s.end_mile)
+        markers.append(PlacedMarker(sx, sy, s.start_mile, s.kind, start_label))
+        markers.append(PlacedMarker(ex, ey, s.end_mile, s.kind, end_label))
+
     if show_end:
         markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
 
@@ -188,6 +255,10 @@ def build_strip_layout(
         )
         for m in markers
     ]
+    overlays = [
+        RibbonOverlay(kind=o.kind, points=[(x - min_x, y - min_y) for x, y in o.points])
+        for o in overlays
+    ]
     width = max(xs) - min_x
     height = max(ys) - min_y
 
@@ -197,4 +268,5 @@ def build_strip_layout(
         ribbon=[seg.name for seg in segments],
         width=width,
         height=height,
+        overlays=overlays,
     )

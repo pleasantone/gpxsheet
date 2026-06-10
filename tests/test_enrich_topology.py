@@ -138,6 +138,78 @@ def test_roundabout_rings_and_exit_decision():
     assert by_name["X3 Rd"].direction == "left"  # spur bearing 270
 
 
+def _fork_route():
+    """Route heading north, then bearing right (NE) at (0, 0)."""
+    from gpxsheet.geo import cumulative_distances
+    from gpxsheet.models import GeoPoint, Route, Segment
+
+    pts = [
+        GeoPoint(-0.02, 0.0), GeoPoint(-0.01, 0.0), GeoPoint(0.0, 0.0),
+        GeoPoint(0.007, 0.007), GeoPoint(0.014, 0.014),
+    ]
+    route = Route(
+        name="fork", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+        segments=[Segment("County Road", 0.0, 5.0)],  # one name through the fork
+    )
+    return route
+
+
+def _fork_graph():
+    """Junction J (deg 3): the rider stays on County Road (arrive S, bear NE),
+    while a *different* named road (Old Mine Road) runs straight ahead -- the
+    fork the rider could mistakenly take."""
+    import networkx as nx
+
+    g = nx.MultiDiGraph()
+    for nid, (x, y) in {
+        "J": (0.0, 0.0), "S": (0.0, -0.01), "N": (0.0, 0.01), "E": (0.007, 0.007)
+    }.items():
+        g.add_node(nid, x=x, y=y)
+    g.add_edge("J", "S", name="County Road", bearing=180.0, highway="secondary")
+    g.add_edge("J", "N", name="Old Mine Road", bearing=0.0, highway="unclassified")  # not taken
+    g.add_edge("J", "E", name="County Road", bearing=45.0, highway="secondary")  # taken
+    return g
+
+
+def test_promote_nameless_fork_emits_decision():
+    from gpxsheet.enrich import _promote_fork_decisions
+
+    route = _fork_route()
+    g = _fork_graph()
+    j_idx = 2  # the junction sample
+    node_seq = ["S", "S", "J", "E", "E"]
+    sample_m = list(route.distances_m)
+    graphs = [(0, len(route.points) - 1, g)]
+    _promote_fork_decisions(route, graphs, node_seq, sample_m)
+
+    assert len(route.decision_points) == 1
+    d = route.decision_points[0]
+    assert d.instruction == "Right at the fork"
+    assert d.turn_angle > 0  # bore right
+    # the straight-ahead road the route did not take becomes a ghosted branch
+    assert any(b.direction == "straight" for b in d.branches)
+    assert abs(d.mile - route.length_miles * j_idx / 4) < 1.0
+
+
+def test_no_fork_decision_when_route_runs_straight_through():
+    from gpxsheet.enrich import _promote_fork_decisions
+    from gpxsheet.geo import cumulative_distances
+    from gpxsheet.models import GeoPoint, Route, Segment
+
+    # Same junction, but the route continues straight north past the side road.
+    pts = [GeoPoint(0.01 * i, 0.0) for i in range(-2, 3)]
+    route = Route(
+        name="thru", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+        segments=[Segment("County Road", 0.0, 5.0)],
+    )
+    g = _fork_graph()
+    node_seq = ["S", "S", "J", "N", "N"]
+    _promote_fork_decisions(route, g and [(0, 4, g)], node_seq, list(route.distances_m))
+    assert route.decision_points == []  # straight through -> not a fork
+
+
 def test_roundabout_not_traversed_returns_none():
     from gpxsheet.enrich import _roundabout_decision, _roundabout_rings
     from gpxsheet.models import GeoPoint, Route

@@ -13,34 +13,50 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Rendering / analysis polish
 
-- **Strip label de-collision** (`_place_labels_with_leaders`) is heuristic; can
-  bunch on very dense routes. Possible: leader routing, smarter side selection,
-  per-page label caps.
-- **Stylized "curl"** — same-direction turns accumulate; long routes can spiral.
-  May need gentle relaxation toward horizontal.
-- **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`
-  and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
-- **PDF: fuel stop at mile 0 overlaps the START label** — small offset needed.
-- **Reassurance-label prominence** (towns render small/gray) — revisit.
-- **OSM determinism near `MIN_ROAD_RUN_MILES`** — a ~0.3 mi run flipped a decision
-  in/out across runs; consider hysteresis.
-- **Down-weight straight "Continue onto"** name changes (residential noise);
-  needs a ground-truth set.
-- **Junction-degree detection** — *emit* decisions at nameless forks (OSM node
-  topology). Node-degree reading now exists (`gpxsheet.junctions` +
-  `enrich._junction_degree`, used for roads-not-taken); this remaining piece is
-  promoting a high-degree node with no road-name change into its own decision.
-- **Roads-not-taken / roundabout tuning** — both now implemented (ghosted branch
-  stubs + roundabout "Nth exit" glyph). Validate exit-counting and branch
-  selection against real tracks with live OSM; revisit `BRANCH_MATCH_TOL_DEG` and
-  the ring-traversal heuristics on multi-chunk routes.
-- Make sure waypoints are displayed and labeled on the strip, if they are real waypoints or non-via non-shaping points.
+Shipped (`feat/render-analysis-polish`): START/END marker offset, stylized-curl
+relaxation, prominent town labels, durable-run deadband near `MIN_ROAD_RUN_MILES`,
+residential "Continue onto" down-weighting, nameless-fork promotion, waypoint
+display + labeling, fuel/food/ferry glyphs + mileage, unpaved (brown-dashed) and
+ferry (blue-dashed) span ribbons with labeled ends, and alternating label sides
+for de-collision.
 
-- Use emoji or proper symbols to indicate fuel, ferry boarding/disembarking, and food stops. Include milage.
+Validated against real tracks with live OSM and fixed (`feat/osm-enrichment-robustness`):
+"Continue onto" down-weighting (suffix set narrowed to unambiguous cul-de-sac
+types so arterials like "…Way" survive), nameless-fork promotion (no longer
+floods switchbacks — requires a *named, differently-named* through-road), and
+roundabout exit-counting (one-way feeders no longer inflate the exit number).
+Committed offline regression fixtures cover the Mt Hamilton and Riverbank-
+roundabout cases.
 
-- When displaying unpaved segments, make the ribbon brown and dashed between the start and end of the unpaved segment. Label the beginning and end of unpaved segments similar to waypoints.
+Still open:
 
-- When displaying ferry segments, make the ribbon blue and dashed between the start and end of the ferry segment. Label the beginning and end of ferry segments similar to waypoints.
+- **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
+  `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
+- **Strip label de-collision** — alternating sides + repulsion is much better but
+  still heuristic; very dense lanes may want leader routing or per-lane caps
+  beyond the current auto-fit pagination.
+- **Waypoint projection has no off-route cutoff** — `detect_pois` (and
+  `detect_fuel_stops`) project every named waypoint to its *nearest* route vertex
+  with no max-distance check, so a waypoint that isn't actually near the route
+  still renders at whatever vertex is closest. On a sub-route slice this stacks
+  out-of-window waypoints onto the start/end vertex (seen while rendering a 6 mi
+  twixtmas clip that carried all 13 full-route waypoints at 0.0/5.9 mi).
+  Consider a proximity threshold (cf. the 1.0 mi cap in `_label_near`) so distant
+  waypoints are dropped, and de-conflict multiple waypoints landing on one mile.
+- **Rider-sequence waypoint name prefixes** — many GPX waypoints carry an authored
+  ordering prefix (twixtmas uses day×10+stop: `11 SilverCreek` … `34 Livermore`;
+  others `01 Evergreen`, `76 Bodega Bay`). These render verbatim today; decide
+  whether to keep, strip, or surface them (e.g. as a stop number) on the strip.
+
+
+## OSM enrichment robustness
+
+- **Done — `drive` → `drive_service` fallback.** `graph_from_polygon` with
+  `network_type="drive"` returned no graph nodes on some real sport-touring roads
+  (e.g. Mt Hamilton Rd), silently degrading the whole route to the geometry-only
+  baseline. Each chunk graph is now built through a fallback chain (`drive`, then
+  `drive_service`, then a wider buffer) and a per-chunk failure is non-fatal, so
+  one bad chunk no longer aborts enrichment for the entire route.
 
 
 ## Service hardening (future)

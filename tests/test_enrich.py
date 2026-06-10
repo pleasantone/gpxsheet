@@ -50,6 +50,101 @@ def test_durable_runs_drops_transient_flaps():
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
 
 
+def test_unpaved_spans_run_length_encode():
+    from gpxsheet.enrich import _unpaved_spans
+    from gpxsheet.models import SpanKind
+
+    # Samples every 100 m; a contiguous unpaved run (indices 3..6) -> one span,
+    # a single-sample blip is dropped as noise.
+    sample_m = [i * 100.0 for i in range(12)]
+    unpaved = [False, False, False, True, True, True, True, False, False, True, False, False]
+    spans = _unpaved_spans(sample_m, unpaved, spacing_m=100.0)
+    assert len(spans) == 1
+    assert spans[0].kind == SpanKind.UNPAVED
+    assert spans[0].start_mile < spans[0].end_mile
+
+
+def test_detect_pois_classifies_and_skips_fuel():
+    from gpxsheet.analysis import detect_pois
+    from gpxsheet.geo import cumulative_distances
+    from gpxsheet.models import GeoPoint, POIKind, Route, Waypoint
+
+    pts = [GeoPoint(0.0, i * 0.01) for i in range(6)]
+    route = Route(
+        name="w", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+        waypoints=[
+            Waypoint(0.0, 0.0, "Start Overlook", None),
+            Waypoint(0.0, 0.02, "Joe's Diner", "Restaurant"),
+            Waypoint(0.0, 0.04, "Shell Station", "Gas Station"),  # fuel -> skipped
+            Waypoint(0.0, 0.05, None, None),  # unnamed -> skipped
+        ],
+    )
+    pois = detect_pois(route)
+    names = {p.name: p.kind for p in pois}
+    assert names == {"Start Overlook": POIKind.WAYPOINT, "Joe's Diner": POIKind.FOOD}
+
+
+def test_continue_onto_residential_is_down_weighted():
+    # A straight name change onto a minor residential road is penalized below the
+    # sport-touring threshold; arterials and highways keep full weight.
+    from gpxsheet.enrich import _road_change_significance
+    from gpxsheet.profiles import SCORE_ROAD_NAME_CHANGE, get_profile
+
+    threshold = get_profile("sport-touring").decision_threshold
+    cul_de_sac = _road_change_significance("Toro Court", angle=2.0)
+    assert cul_de_sac < SCORE_ROAD_NAME_CHANGE
+    assert cul_de_sac < threshold  # filtered out as noise
+    # A sharp turn onto the same minor road is a real decision -> full weight.
+    assert _road_change_significance("Toro Court", angle=80.0) >= threshold
+    # A straight continue onto an arterial or a numbered highway is not penalized.
+    assert _road_change_significance("Sand Hill Road", angle=2.0) >= threshold
+    assert _road_change_significance("US-101", angle=2.0) >= threshold
+
+
+def test_durable_runs_deadband_keeps_borderline_run():
+    # A 3-sample interior run spans 200 m between its first/last sample, but the
+    # one-spacing pad credits it 300 m so a run sitting on the 250 m threshold is
+    # kept (and stays kept regardless of sampling phase), instead of flapping.
+    from gpxsheet.enrich import _durable_runs
+
+    sample_m = [i * 100.0 for i in range(11)]  # 0..1000 m
+    names = ["Main St"] * 4 + ["Side Rd"] * 3 + ["Main St"] * 4
+    road_names = [n for _, n in _durable_runs(sample_m, names, min_run_m=250.0)]
+    assert road_names == ["Main St", "Side Rd", "Main St"]
+
+
+def test_roundabout_exit_count_on_real_route(roundabout_route_file):
+    # The route goes straight through the La Loma Ave roundabout -> the 2nd exit.
+    # A one-way feeder at the ring used to inflate this to the 3rd exit.
+    from gpxsheet import load_route
+    from gpxsheet.analysis import analyze_route
+    from gpxsheet.models import DecisionKind
+
+    route = load_route(str(roundabout_route_file))
+    analyze_route(route, profile="sport-touring")
+    roundabouts = [d for d in route.decision_points if d.kind == DecisionKind.ROUNDABOUT]
+    assert len(roundabouts) == 1
+    rd = roundabouts[0]
+    assert rd.roundabout_exit == 2
+    assert rd.instruction == "Take the 2nd exit onto La Loma Avenue"
+
+
+def test_drive_service_fallback_enriches_remote_road(mthamilton_route_file):
+    # Plain network_type="drive" returns no graph nodes on this remote clip;
+    # the drive_service fallback must still resolve the real road names instead
+    # of degrading to the geometry baseline ("Leg N" segments).
+    from gpxsheet import load_route
+    from gpxsheet.analysis import analyze_route
+
+    route = load_route(str(mthamilton_route_file))
+    analyze_route(route, profile="sport-touring")
+    assert route.segments
+    assert all(not s.name.startswith("Leg ") for s in route.segments)
+    names = " ".join(s.name for s in route.segments)
+    assert "Mount Hamilton Road" in names or "San Antonio Valley Road" in names
+
+
 def test_chunk_ranges_tile_with_shared_boundaries():
     from gpxsheet.enrich import _chunk_ranges
     from gpxsheet.models import GeoPoint, Route
@@ -117,11 +212,15 @@ def _ferry_feats(geoms, names):
 
 
 def _vertical_route():
+    from gpxsheet.geo import cumulative_distances
     from gpxsheet.models import GeoPoint, Route
 
-    # Runs north along lon=0 from lat 0.0 to 0.1.
-    pts = [GeoPoint(lat, 0.0) for lat in (0.0, 0.05, 0.1)]
-    return Route(name="t", points=pts, distances_m=[0.0, 0.0, 0.0])
+    # Runs north along lon=0 from lat 0.0 to 0.1, sampled finely.
+    pts = [GeoPoint(round(i * 0.01, 3), 0.0) for i in range(11)]
+    return Route(
+        name="t", points=pts,
+        distances_m=cumulative_distances([(p.lat, p.lon) for p in pts]),
+    )
 
 
 def test_detect_ferries_ignores_passed_terminal():
@@ -135,15 +234,21 @@ def test_detect_ferries_ignores_passed_terminal():
     assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == []
 
 
-def test_detect_ferries_reports_ride_along():
+def test_detect_ferries_reports_ride_along_span():
     import shapely.geometry as sg
 
     from gpxsheet.enrich import _detect_ferries
+    from gpxsheet.models import SpanKind
 
     # A ferry the route rides along (coincides with the route corridor).
     along = sg.LineString([(0.0, 0.02), (0.0, 0.08)])
     feats = _ferry_feats([along], ["River Ferry"])
-    assert _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0) == ["River Ferry"]
+    spans = _detect_ferries(_vertical_route(), _FakeOx(feats), sg, buffer_m=50.0)
+    assert len(spans) == 1
+    s = spans[0]
+    assert s.kind == SpanKind.FERRY
+    assert s.name == "River Ferry"
+    assert s.end_mile > s.start_mile  # covers a real mile range, not a point
 
 
 def test_enrich_route_against_cached_osm(enrich_route_file):

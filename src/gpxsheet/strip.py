@@ -26,7 +26,18 @@ _MARKER_STYLE = {
     "decision": (colors.DECISION, "o", 6),
     "roundabout": (colors.DECISION, "o", 6),  # drawn as a ring glyph (see draw_strip)
     "fuel": (colors.FUEL, "D", 6),
+    "food": (colors.FOOD, "P", 6),
+    "waypoint": (colors.WAYPOINT, "^", 5),
+    "ferry": (colors.FERRY_RIBBON, "v", 6),
+    "unpaved": (colors.UNPAVED_RIBBON, "v", 6),
     "reassurance": (colors.REASSURANCE, "|", 4),
+}
+
+# Styled ribbon overlays (unpaved / ferry): (color, linestyle) drawn over the
+# base route line for that stretch.
+_OVERLAY_STYLE = {
+    "unpaved": (colors.UNPAVED_RIBBON, (0, (4, 3))),
+    "ferry": (colors.FERRY_RIBBON, (0, (1, 2))),
 }
 
 # Ghosted "road not taken" stubs at a junction.
@@ -88,6 +99,7 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
     ys = [p[1] for p in layout.path]
     _draw_branch_stubs(ax, layout)  # ghosted, behind the route line
     ax.plot(xs, ys, color=colors.ROUTE_LINE, linewidth=4, solid_capstyle="round", zorder=2)
+    _draw_overlays(ax, layout)  # recolor unpaved/ferry stretches over the base line
 
     for m in layout.markers:
         if m.kind == "roundabout":  # open ring + centre dot
@@ -115,6 +127,18 @@ def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> Non
             0.5, -0.02, "  ›  ".join(layout.ribbon), transform=ax.transAxes,
             ha="center", va="top", fontsize=8, color=colors.TEXT_LABEL,
         )
+
+
+def _draw_overlays(ax, layout: StripLayout) -> None:
+    """Redraw unpaved/ferry stretches in their own colour + dash over the ribbon."""
+    for ov in layout.overlays:
+        if len(ov.points) < 2:
+            continue
+        color, dash = _OVERLAY_STYLE.get(ov.kind, (colors.ROUTE_LINE, (0, (4, 3))))
+        oxs = [p[0] for p in ov.points]
+        oys = [p[1] for p in ov.points]
+        ax.plot(oxs, oys, color=color, linewidth=4, linestyle=dash,
+                solid_capstyle="round", zorder=3)
 
 
 def _draw_branch_stubs(ax, layout: StripLayout) -> None:
@@ -148,13 +172,49 @@ def _draw_branch_stubs(ax, layout: StripLayout) -> None:
                     ms=3, mew=1.0, zorder=1)
 
 
+# Preferred symbol glyphs per marker kind, most-expressive first. Many of these
+# (the fuel pump, ferry, fork-and-knife) are absent from the default DejaVu Sans
+# and would render as a tofu box, so each kind falls back through covered glyphs
+# and finally to no glyph (the label's word carries the meaning). Resolved
+# against the *active* font, so a richer system font shows the nicer symbol.
+_GLYPH_CANDIDATES = {
+    "fuel": (0x26FD,),  # ⛽ fuel pump
+    "food": (0x1F374, 0x2615),  # 🍴 fork+knife -> ☕ hot beverage
+    "ferry": (0x26F4, 0x2693),  # ⛴ ferry -> ⚓ anchor
+}
+
+
+@functools.lru_cache(maxsize=256)
+def _font_covers(codepoint: int) -> bool:
+    """Whether the active default font has a glyph for ``codepoint``."""
+    from matplotlib.font_manager import FontProperties, findfont, get_font
+
+    return bool(get_font(findfont(FontProperties())).get_char_index(codepoint))
+
+
+@functools.lru_cache(maxsize=8)
+def _kind_glyph(kind: str) -> str:
+    """A trailing-spaced symbol prefix for ``kind`` (or "" if none is renderable)."""
+    for cp in _GLYPH_CANDIDATES.get(kind, ()):
+        if _font_covers(cp):
+            return chr(cp) + " "
+    return ""
+
+
 def _marker_label(m) -> str:
     if m.kind in ("decision", "roundabout"):
         # Wrap "<mile> <turn> onto / <road>" so labels are narrower (taller).
         text = f"{m.mile:.1f}  {m.label}"
         return text.replace(" onto ", " onto\n", 1)
     if m.kind == "fuel":
-        return "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
+        base = "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
+        return f"{_kind_glyph('fuel')}{base}  ({m.mile:.1f} mi)"
+    if m.kind == "food":
+        return f"{_kind_glyph('food')}{m.label}  ({m.mile:.1f} mi)"
+    if m.kind == "ferry":
+        return f"{_kind_glyph('ferry')}{m.label}  ({m.mile:.1f} mi)"
+    if m.kind in ("waypoint", "unpaved"):
+        return f"{m.label}  ({m.mile:.1f} mi)"
     if m.kind == "reassurance":
         # Generic mileage markers ("15 mi") get a tick but no text; only named
         # places (towns/landmarks) are worth the label clutter.
@@ -195,9 +255,16 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     for m in markers:
         color, _, _ = _MARKER_STYLE.get(m.kind, (colors.MARKER_FALLBACK, "o", 5))
         weight = "bold" if m.kind in ("decision", "roundabout") else "normal"
+        style = "normal"
+        size = 7
+        if m.kind == "reassurance":
+            # Named towns/landmarks earn a darker, italic, slightly larger label
+            # so they stand out from the muted interval ticks (which carry no
+            # text); the tick dot itself stays grey.
+            color, style, size = colors.REASSURANCE_TOWN, "italic", 7.5
         t = ax.text(
-            m.x, m.y, _marker_label(m), ha="center", va="center", fontsize=7,
-            color=color, fontweight=weight, clip_on=False, zorder=10,
+            m.x, m.y, _marker_label(m), ha="center", va="center", fontsize=size,
+            color=color, fontweight=weight, fontstyle=style, clip_on=False, zorder=10,
         )
         texts.append(t)
 
@@ -215,18 +282,20 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     segs = list(zip(nodes_px, nodes_px[1:], strict=False))
     sizes = [(e.width, e.height) for e in (t.get_window_extent(r) for t in texts)]
 
-    cxs = sum(px for px, _ in nodes_px) / len(nodes_px)
-    cys = sum(py for _, py in nodes_px) / len(nodes_px)
+    def side_normal(i, above):
+        """Unit normal off the route at marker i, on the chosen side (above/below).
 
-    def outward_normal(i):
-        """Unit normal at marker i, pointing away from the route centroid."""
+        Perpendicular to the nearest ribbon segment so labels sit square to the
+        line; the ``above`` flag selects the upper or lower side. ``markers`` is
+        mile-sorted, so alternating the side spreads dense labels into two rows
+        instead of bunching them all above the line.
+        """
         mx, my = markers_px[i]
-        # tangent from the nearest path segment
         best = min(segs, key=lambda s: _point_seg_dist((mx, my), s[0], s[1])[0])
         tx, ty = best[1][0] - best[0][0], best[1][1] - best[0][1]
         nlen = math.hypot(tx, ty) or 1.0
         nx, ny = -ty / nlen, tx / nlen
-        if (mx - cxs) * nx + (my - cys) * ny < 0:  # point away from centroid
+        if (ny >= 0) != above:  # orient to the requested side of the ribbon
             nx, ny = -nx, -ny
         return nx, ny
 
@@ -234,7 +303,7 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     normals = []
     for i in range(len(markers)):
         mx, my = markers_px[i]
-        nx, ny = outward_normal(i)
+        nx, ny = side_normal(i, above=(i % 2 == 0))  # alternate rows along the route
         normals.append((nx, ny))
         off = _OFFSET + sizes[i][1] * 0.5
         centers.append([mx + nx * off, my + ny * off])
