@@ -114,6 +114,22 @@ def test_durable_runs_deadband_keeps_borderline_run():
     assert road_names == ["Main St", "Side Rd", "Main St"]
 
 
+def test_roundabout_exit_count_on_real_route(roundabout_route_file):
+    # The route goes straight through the La Loma Ave roundabout -> the 2nd exit.
+    # A one-way feeder at the ring used to inflate this to the 3rd exit.
+    from gpxsheet import load_route
+    from gpxsheet.analysis import analyze_route
+    from gpxsheet.models import DecisionKind
+
+    route = load_route(str(roundabout_route_file))
+    analyze_route(route, profile="sport-touring")
+    roundabouts = [d for d in route.decision_points if d.kind == DecisionKind.ROUNDABOUT]
+    assert len(roundabouts) == 1
+    rd = roundabouts[0]
+    assert rd.roundabout_exit == 2
+    assert rd.instruction == "Take the 2nd exit onto La Loma Avenue"
+
+
 def test_drive_service_fallback_enriches_remote_road(mthamilton_route_file):
     # Plain network_type="drive" returns no graph nodes on this remote clip;
     # the drive_service fallback must still resolve the real road names instead

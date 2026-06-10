@@ -584,15 +584,15 @@ def _roundabout_rings(graph) -> list[list]:
 
 
 def _ring_exit_flags(graph, ring: list) -> list[bool]:
-    """Per ring node, whether it has a spur leaving the circle (an exit)."""
+    """Per ring node, whether it has an *exit* spur (a road leaving the circle).
+
+    Only outgoing spurs count: an edge leaving the ring is an exit you can take,
+    while a road that only feeds *into* the roundabout (incoming-only spur) is an
+    entrance, not an exit. Counting entrances would inflate the "take the Nth
+    exit" number (observed live: a one-way feeder made a 2nd exit read as 3rd).
+    """
     ringset = set(ring)
-    flags = []
-    for nid in ring:
-        spur = any(v not in ringset for v in graph.successors(nid)) or any(
-            u not in ringset for u in graph.predecessors(nid)
-        )
-        flags.append(spur)
-    return flags
+    return [any(v not in ringset for v in graph.successors(nid)) for nid in ring]
 
 
 def _ordinal(n: int) -> str:

@@ -80,6 +80,17 @@ def enrich_route_file() -> Path:
 
 
 @pytest.fixture
+def roundabout_route_file() -> Path:
+    """A real clip through a La Loma Ave roundabout (Riverbank, CA).
+
+    Regression fixture for roundabout exit-counting: the route goes straight
+    through, which is the 2nd exit. A one-way feeder at the ring previously made
+    it read as the 3rd exit (see _ring_exit_flags).
+    """
+    return FIXTURES_DIR / "roundabout_route.gpx"
+
+
+@pytest.fixture
 def mthamilton_route_file() -> Path:
     """A remote Mt Hamilton clip whose roads the strict "drive" filter drops.
 
