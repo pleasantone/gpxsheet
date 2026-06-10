@@ -494,6 +494,37 @@ def _outgoing_branches(graph, node) -> list[tuple[str | None, float]]:
     return out
 
 
+# Highway classes that are not a navigation choice when the route stays on the
+# main road: a driveway / track / path branching off is not a fork the rider can
+# mistakenly take. Used to gate nameless-fork promotion so a twisty road with
+# service-road stubs at every switchback isn't flooded with false "forks".
+_MINOR_HIGHWAYS = frozenset(
+    {
+        "service", "track", "path", "footway", "cycleway", "bridleway", "steps",
+        "pedestrian", "construction", "raceway", "busway", "corridor",
+    }
+)
+
+
+def _named_road_branches(graph, node) -> list[tuple[str, float]]:
+    """(name, bearing) for each *named, drivable* edge leaving ``node``.
+
+    Minor service/track/path edges and unnamed stubs are excluded, so only roads
+    a rider could genuinely take are considered when judging whether a junction
+    is a real fork.
+    """
+    out: list[tuple[str, float]] = []
+    for _, _v, data in graph.out_edges(node, data=True):
+        b = data.get("bearing")
+        if b is None:
+            continue
+        name = _clean_str(_first(data.get("name")))
+        highway = _first(data.get("highway"))
+        if name and highway not in _MINOR_HIGHWAYS:
+            out.append((name, float(b)))
+    return out
+
+
 def _route_bearings_at(route: Route, mile: float) -> tuple[float, float]:
     """(arrival, departure) compass bearings of the track through ``mile``."""
     center = miles_to_meters(mile)
@@ -674,9 +705,10 @@ def _promote_fork_decisions(route, graphs, node_seq, sample_m) -> None:
     name through the junction, so :func:`_decisions_from_runs` never flags it --
     yet if the route turns off an obvious straight-ahead road there, the rider
     needs to be told. Promote such a node to a decision when the route turns by
-    at least :data:`PROMOTE_FORK_MIN_ANGLE_DEG` and a straight-ahead road is left
-    untaken; the branches render as ghosted stubs. Deliberately conservative so
-    side streets the route passes straight through are not flagged.
+    at least :data:`PROMOTE_FORK_MIN_ANGLE_DEG` and a *named, non-minor* road is
+    left going straight ahead; the branches render as ghosted stubs. Deliberately
+    conservative -- service-road / driveway stubs (common at switchbacks) and
+    side streets ridden straight through are not flagged.
     """
     existing = [d.mile for d in route.decision_points]
     added: list[DecisionPoint] = []
@@ -696,9 +728,14 @@ def _promote_fork_decisions(route, graphs, node_seq, sample_m) -> None:
         if abs(angle) < PROMOTE_FORK_MIN_ANGLE_DEG:
             continue  # rode basically straight through -> a side street, not a fork
         arrival, taken = _route_bearings_at(route, mile)
-        branches = branches_not_taken(arrival, taken, _outgoing_branches(graph, node))
+        # Drop the road the rider stays on (same name): at a switchback the far
+        # limb of the same road runs "straight ahead", which is a bend, not a fork.
+        taken_name = _road_after(route, mile)
+        branches = branches_not_taken(
+            arrival, taken, _named_road_branches(graph, node), taken_name=taken_name
+        )
         if not any(b.direction == "straight" for b in branches):
-            continue  # no obvious through-road was left -> just a bend, not a fork
+            continue  # no *differently named* through-road was left -> not a fork
         lat, lon = coord_at_meters(route, miles_to_meters(mile))
         added.append(
             DecisionPoint(
