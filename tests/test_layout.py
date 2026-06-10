@@ -119,6 +119,23 @@ def test_layout_handles_route_without_segments():
     assert layout.ribbon == ["Bare"]
 
 
+def test_fuel_at_mile_zero_is_nudged_off_start():
+    # A fuel stop at mile 0 must not draw on top of the START marker.
+    route = Route(
+        name="Z",
+        points=[GeoPoint(0, 0), GeoPoint(0, 1)],
+        distances_m=[0.0, 20 * 1609.344],
+        segments=[Segment("A Rd", 0.0, 20.0)],
+        fuel_stops=[FuelStop(0.0, "Shell", 0, 0)],
+    )
+    layout = build_strip_layout(route)
+    start = next(m for m in layout.markers if m.kind == "start")
+    fuel = next(m for m in layout.markers if m.kind == "fuel")
+    assert (fuel.x, fuel.y) != (start.x, start.y)
+    assert abs(fuel.x - start.x) >= 1.0  # pushed clearly along the ribbon
+    assert fuel.mile == 0.0  # label still reads the true mileage
+
+
 def test_branches_and_roundabout_carry_into_markers():
     route = Route(
         name="Topo",

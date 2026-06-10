@@ -46,6 +46,11 @@ SHARP_TURN_DEG = 55.0
 MAX_BEND_DEG = 150.0
 MARKER_MATCH_TOLERANCE_MILES = 0.15
 
+# A non-decision marker (fuel/reassurance/waypoint) landing on the START or END
+# node is nudged this far along the ribbon so its dot/label clears the endpoint
+# marker. Schematic units; ~half a minimum segment keeps it visually adjacent.
+END_CLEAR_DIST = MIN_SEGMENT_LEN * 0.5
+
 
 @dataclass(frozen=True, slots=True)
 class PlacedMarker:
@@ -154,6 +159,24 @@ def build_strip_layout(
                 return (x0 + f * (x1 - x0), y0 + f * (y1 - y0))
         return nodes[-1]
 
+    def cleared_pos(mile: float) -> tuple[float, float]:
+        """Position at ``mile``, nudged off the START/END node if it lands on it.
+
+        A fuel stop / waypoint right at mile 0 (or the route end) otherwise draws
+        its dot and label directly over the START/END marker; push it a little way
+        along the ribbon so both stay legible.
+        """
+        x, y = pos_at_mile(mile)
+        for end_x, end_y, ax, ay in (
+            (*nodes[0], *nodes[1]),  # start node, toward the next node
+            (*nodes[-1], *nodes[-2]),  # end node, toward the previous node
+        ):
+            if math.hypot(x - end_x, y - end_y) < END_CLEAR_DIST:
+                dx, dy = ax - end_x, ay - end_y
+                n = math.hypot(dx, dy) or 1.0
+                return end_x + dx / n * END_CLEAR_DIST, end_y + dy / n * END_CLEAR_DIST
+        return x, y
+
     # 3. Place markers.
     markers: list[PlacedMarker] = []
     if show_start:
@@ -168,10 +191,10 @@ def build_strip_layout(
             )
         )
     for fstop in route.fuel_stops:
-        x, y = pos_at_mile(fstop.mile)
+        x, y = cleared_pos(fstop.mile)
         markers.append(PlacedMarker(x, y, fstop.mile, "fuel", fstop.name))
     for m in route.reassurance_markers:
-        x, y = pos_at_mile(m.mile)
+        x, y = cleared_pos(m.mile)
         markers.append(PlacedMarker(x, y, m.mile, "reassurance", m.label))
     if show_end:
         markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
