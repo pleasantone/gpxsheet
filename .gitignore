@@ -37,8 +37,6 @@ htmlcov/
 # osmnx Overpass response cache
 cache/
 
-graphify-out/
-
 # MkDocs build output + generated OpenAPI schema
 site/
 docs/openapi.json
