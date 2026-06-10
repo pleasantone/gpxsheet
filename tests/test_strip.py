@@ -11,6 +11,23 @@ runner = CliRunner()
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
+def test_marker_labels_carry_mileage_and_glyph():
+    from types import SimpleNamespace
+
+    from gpxsheet.strip import _kind_glyph, _marker_label
+
+    fuel = _marker_label(SimpleNamespace(kind="fuel", mile=12.3, label="Shell"))
+    assert "Fuel: Shell" in fuel and "(12.3 mi)" in fuel
+    food = _marker_label(SimpleNamespace(kind="food", mile=8.0, label="Joe's Diner"))
+    assert "Joe's Diner" in food and "(8.0 mi)" in food
+    wp = _marker_label(SimpleNamespace(kind="waypoint", mile=5.5, label="Vista"))
+    assert wp == "Vista  (5.5 mi)"
+    # Glyph prefixes are either empty or a single symbol + space; never a tofu box.
+    for kind in ("fuel", "food", "ferry"):
+        g = _kind_glyph(kind)
+        assert g == "" or (len(g) == 2 and g.endswith(" "))
+
+
 def test_render_strip_writes_valid_png(l_route_file, tmp_path):
     import gpxsheet
 

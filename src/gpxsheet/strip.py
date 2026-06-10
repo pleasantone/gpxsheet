@@ -150,15 +150,47 @@ def _draw_branch_stubs(ax, layout: StripLayout) -> None:
                     ms=3, mew=1.0, zorder=1)
 
 
+# Preferred symbol glyphs per marker kind, most-expressive first. Many of these
+# (the fuel pump, ferry, fork-and-knife) are absent from the default DejaVu Sans
+# and would render as a tofu box, so each kind falls back through covered glyphs
+# and finally to no glyph (the label's word carries the meaning). Resolved
+# against the *active* font, so a richer system font shows the nicer symbol.
+_GLYPH_CANDIDATES = {
+    "fuel": (0x26FD,),  # ⛽ fuel pump
+    "food": (0x1F374, 0x2615),  # 🍴 fork+knife -> ☕ hot beverage
+    "ferry": (0x26F4, 0x2693),  # ⛴ ferry -> ⚓ anchor
+}
+
+
+@functools.lru_cache(maxsize=256)
+def _font_covers(codepoint: int) -> bool:
+    """Whether the active default font has a glyph for ``codepoint``."""
+    from matplotlib.font_manager import FontProperties, findfont, get_font
+
+    return bool(get_font(findfont(FontProperties())).get_char_index(codepoint))
+
+
+@functools.lru_cache(maxsize=8)
+def _kind_glyph(kind: str) -> str:
+    """A trailing-spaced symbol prefix for ``kind`` (or "" if none is renderable)."""
+    for cp in _GLYPH_CANDIDATES.get(kind, ()):
+        if _font_covers(cp):
+            return chr(cp) + " "
+    return ""
+
+
 def _marker_label(m) -> str:
     if m.kind in ("decision", "roundabout"):
         # Wrap "<mile> <turn> onto / <road>" so labels are narrower (taller).
         text = f"{m.mile:.1f}  {m.label}"
         return text.replace(" onto ", " onto\n", 1)
     if m.kind == "fuel":
-        return "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
-    if m.kind in ("food", "waypoint"):
-        return m.label
+        base = "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
+        return f"{_kind_glyph('fuel')}{base}  ({m.mile:.1f} mi)"
+    if m.kind == "food":
+        return f"{_kind_glyph('food')}{m.label}  ({m.mile:.1f} mi)"
+    if m.kind == "waypoint":
+        return f"{m.label}  ({m.mile:.1f} mi)"
     if m.kind == "reassurance":
         # Generic mileage markers ("15 mi") get a tick but no text; only named
         # places (towns/landmarks) are worth the label clutter.
