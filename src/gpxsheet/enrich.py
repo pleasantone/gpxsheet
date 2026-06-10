@@ -230,7 +230,17 @@ def _durable_runs(sample_m, names, min_run_m: float) -> list[tuple[float, str]]:
     A run shorter than ``min_run_m`` is discarded as nearest-edge snapping at a
     junction (unless it's the first/last run); the surrounding road then joins
     up. Returns ``(start_mile, name)`` for each surviving road in order.
+
+    A run's measured extent is the span between its first and last sample, which
+    undercounts the true on-road length by up to one sample spacing depending on
+    where the samples fall relative to the junctions. That phase jitter makes a
+    run sitting right on ``min_run_m`` flip in and out across runs of the live
+    query. We pad each run's extent by one sample spacing (half at each end) so
+    the keep/drop decision has a deterministic deadband and a borderline run is
+    classified consistently.
     """
+    spacing = (sample_m[1] - sample_m[0]) if len(sample_m) >= 2 else 0.0
+
     # Forward-fill gaps (None) with the previous known name.
     filled: list[str | None] = []
     prev: str | None = None
@@ -252,7 +262,7 @@ def _durable_runs(sample_m, names, min_run_m: float) -> list[tuple[float, str]]:
         if run[1] is None:
             continue
         is_edge = i == 0 or i == len(runs) - 1
-        if (run[2] - run[0]) >= min_run_m or is_edge:
+        if (run[2] - run[0] + spacing) >= min_run_m or is_edge:
             if kept and kept[-1][1] == run[1]:
                 kept[-1][2] = run[2]
             else:

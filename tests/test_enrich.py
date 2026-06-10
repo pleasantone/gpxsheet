@@ -50,6 +50,18 @@ def test_durable_runs_drops_transient_flaps():
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
 
 
+def test_durable_runs_deadband_keeps_borderline_run():
+    # A 3-sample interior run spans 200 m between its first/last sample, but the
+    # one-spacing pad credits it 300 m so a run sitting on the 250 m threshold is
+    # kept (and stays kept regardless of sampling phase), instead of flapping.
+    from gpxsheet.enrich import _durable_runs
+
+    sample_m = [i * 100.0 for i in range(11)]  # 0..1000 m
+    names = ["Main St"] * 4 + ["Side Rd"] * 3 + ["Main St"] * 4
+    road_names = [n for _, n in _durable_runs(sample_m, names, min_run_m=250.0)]
+    assert road_names == ["Main St", "Side Rd", "Main St"]
+
+
 def test_chunk_ranges_tile_with_shared_boundaries():
     from gpxsheet.enrich import _chunk_ranges
     from gpxsheet.models import GeoPoint, Route
