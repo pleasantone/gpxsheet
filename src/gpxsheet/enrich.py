@@ -26,6 +26,7 @@ from .analysis import (
     CONTINUE_MAX_ANGLE_DEG,
     MIN_ROAD_RUN_MILES,
     MIN_SEGMENT_MILES,
+    _significance_for_turn,
     _turn_word,
     coord_at_meters,
     merge_close_decisions,
@@ -354,6 +355,13 @@ def _decisions_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[De
 ROUNDABOUT_JUNCTION_TAGS = frozenset({"roundabout", "circular"})
 _BEARING_WINDOW_M = 30.0  # geometry sampled either side of a decision for headings
 
+# Promoting a nameless fork into a decision: the route must clearly turn off an
+# obvious through-road at a real junction. Gated tightly (a meaningful turn AND a
+# straight-ahead road the route does not take) so ordinary side streets the route
+# rides straight past are not flagged.
+PROMOTE_FORK_MIN_ANGLE_DEG = 30.0
+FORK_DEDUP_MILES = 0.2
+
 
 def _first(value):
     """First element of an OSM list-valued tag, else the value (or None)."""
@@ -566,6 +574,59 @@ def _apply_junction_topology(route, graphs, node_seq, sample_m, ox) -> None:
         branches = _branches_for(graph, route, d, ox) if graph is not None else ()
         out.append(replace(d, branches=branches) if branches else d)
     route.decision_points = out
+    # 3. Nameless forks: a high-degree node where the route leaves a through-road
+    #    with no road-name change to flag it.
+    _promote_fork_decisions(route, graphs, node_seq, sample_m)
+
+
+def _promote_fork_decisions(route, graphs, node_seq, sample_m) -> None:
+    """Add decisions at nameless forks the route turns off (no name change).
+
+    A high-degree OSM node carries no road-name change when the road keeps its
+    name through the junction, so :func:`_decisions_from_runs` never flags it --
+    yet if the route turns off an obvious straight-ahead road there, the rider
+    needs to be told. Promote such a node to a decision when the route turns by
+    at least :data:`PROMOTE_FORK_MIN_ANGLE_DEG` and a straight-ahead road is left
+    untaken; the branches render as ghosted stubs. Deliberately conservative so
+    side streets the route passes straight through are not flagged.
+    """
+    existing = [d.mile for d in route.decision_points]
+    added: list[DecisionPoint] = []
+    seen: set = set()
+    for k, node in enumerate(node_seq):
+        if node is None or node in seen:
+            continue
+        mile = meters_to_miles(sample_m[k])
+        if any(abs(mile - em) <= FORK_DEDUP_MILES for em in existing):
+            continue
+        if any(abs(mile - a.mile) <= FORK_DEDUP_MILES for a in added):
+            continue
+        graph = _graph_for_mile(graphs, route, mile)
+        if graph is None or node not in graph or _junction_degree(graph, node) < 3:
+            continue
+        angle = turn_angle_at_mile(route, mile)
+        if abs(angle) < PROMOTE_FORK_MIN_ANGLE_DEG:
+            continue  # rode basically straight through -> a side street, not a fork
+        arrival, taken = _route_bearings_at(route, mile)
+        branches = branches_not_taken(arrival, taken, _outgoing_branches(graph, node))
+        if not any(b.direction == "straight" for b in branches):
+            continue  # no obvious through-road was left -> just a bend, not a fork
+        lat, lon = coord_at_meters(route, miles_to_meters(mile))
+        added.append(
+            DecisionPoint(
+                mile=round(mile, 1),
+                instruction=f"{_turn_word(angle)} at the fork",
+                significance=_significance_for_turn(angle),
+                lat=lat,
+                lon=lon,
+                kind=DecisionKind.CRITICAL_TURN,
+                turn_angle=round(angle, 1),
+                branches=branches,
+            )
+        )
+        seen.add(node)
+    if added:
+        route.decision_points = sorted([*route.decision_points, *added], key=lambda d: d.mile)
 
 
 def _clean_str(value) -> str | None:
