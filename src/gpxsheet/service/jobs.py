@@ -21,15 +21,21 @@ from dataclasses import asdict, dataclass
 from typing import Protocol, cast
 
 import dramatiq
+from pydantic import BaseModel
 
 from . import settings
-from .models import RenderParams, ReportParams
+from .models import RenderParams, ReportParams, TableParams
 from .render import run_job
 from .storage import Storage
 
 # Each endpoint sets an internal op so the worker can rebuild the right params
 # model from the serialized dict (op is not part of the client-facing API).
-_PARAMS_BY_OP = {"render": RenderParams, "analyze": ReportParams, "validate": ReportParams}
+_PARAMS_BY_OP: dict[str, type[BaseModel]] = {
+    "render": RenderParams,
+    "analyze": ReportParams,
+    "validate": ReportParams,
+    "table": TableParams,
+}
 
 log = logging.getLogger(__name__)
 
@@ -161,7 +167,7 @@ class RedisJobStore:
 
 
 def process_job(
-    store: JobStore, storage: Storage, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams
+    store: JobStore, storage: Storage, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel
 ) -> None:
     """Run the job, store its artifact, and record the outcome on the job."""
     store.update(job_id, status="running")
@@ -186,7 +192,7 @@ def process_job(
 
 
 class TaskRunner(Protocol):
-    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams) -> None: ...
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel) -> None: ...
 
 
 class EagerRunner:
@@ -196,14 +202,14 @@ class EagerRunner:
         self._store = store
         self._storage = storage
 
-    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams) -> None:
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel) -> None:
         process_job(self._store, self._storage, job_id, op, gpx_bytes, params)
 
 
 class DramatiqRunner:
     """Enqueues the render onto Dramatiq/Redis for a worker to pick up."""
 
-    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: ReportParams) -> None:
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel) -> None:
         render_actor.send(job_id, op, base64.b64encode(gpx_bytes).decode(), params.model_dump())
 
 

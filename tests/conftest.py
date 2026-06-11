@@ -80,6 +80,12 @@ def enrich_route_file() -> Path:
 
 
 @pytest.fixture
+def table_route_file() -> Path:
+    """A small ``<rte>`` with named points + symbols, for GPXtable route tables."""
+    return FIXTURES_DIR / "table_route.gpx"
+
+
+@pytest.fixture
 def roundabout_route_file() -> Path:
     """A real clip through a La Loma Ave roundabout (Riverbank, CA).
 

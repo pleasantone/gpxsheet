@@ -60,8 +60,32 @@ class RenderParams(ReportParams):
     show_branches: bool = defaults.SHOW_BRANCHES
 
 
+class TableParams(BaseModel):
+    """Params for ``/v1/table`` (a GPXtable-backed route table).
+
+    Independent of :class:`ReportParams` — table output skips the analyze/OSM
+    pipeline entirely, so none of the profile/fuel knobs apply. ``departure`` is a
+    natural-language or ISO time string parsed server-side; ``speed`` of 0 = auto.
+    """
+
+    format: str = Field("html", pattern="^(html|markdown)$")
+    departure: str | None = None
+    speed: float = Field(0.0, ge=0)
+    units: str = Field("imperial", pattern="^(imperial|metric)$")
+    coordinates: bool = False
+    ignore_times: bool = False
+    timezone: str | None = None
+
+
 class ReportForm(ReportParams):
     """Multipart body for the report endpoints: the GPX upload plus the params."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    gpx: UploadFile
+
+
+class TableForm(TableParams):
+    """Multipart body for ``/v1/table``: the GPX upload plus the params."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     gpx: UploadFile

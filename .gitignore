@@ -48,3 +48,4 @@ src/gpxsheet/service/static/
 frontend/node_modules/
 frontend/test-results/
 frontend/playwright-report/
+/test-results/

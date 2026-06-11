@@ -12,30 +12,44 @@ import re
 import tempfile
 from pathlib import Path
 
-from .models import RenderParams, ReportParams
+from pydantic import BaseModel
 
-_CONTENT_TYPES = {"pdf": "application/pdf", "png": "image/png", "json": "application/json"}
+from .models import RenderParams, ReportParams, TableParams
+
+_CONTENT_TYPES = {
+    "pdf": "application/pdf",
+    "png": "image/png",
+    "json": "application/json",
+    "html": "text/html",
+    "markdown": "text/markdown",
+}
 
 # A 4-tuple: (artifact bytes, HTTP content type, storage extension, download name).
 JobResult = tuple[bytes, str, str, str]
 
 
-def run_job(op: str, gpx_bytes: bytes, params: ReportParams) -> JobResult:
+def run_job(op: str, gpx_bytes: bytes, params: BaseModel) -> JobResult:
     """Run an operation and return ``(data, content_type, extension, download_name)``.
 
     ``op`` is ``"render"`` (PDF/PNG map; ``params`` is a :class:`RenderParams`),
-    ``"analyze"`` or ``"validate"`` (JSON report; ``params`` is a
+    ``"table"`` (HTML/markdown route table; ``params`` is a :class:`TableParams`),
+    or ``"analyze"`` / ``"validate"`` (JSON report; ``params`` is a
     :class:`ReportParams`).
     """
     if op == "analyze":
+        assert isinstance(params, ReportParams)
         payload, name = _analyze_dict(gpx_bytes, params)
         return _json_result(payload, name)
     if op == "validate":
+        assert isinstance(params, ReportParams)
         payload, name = _validate_dict(gpx_bytes, params)
         return _json_result(payload, name)
     if op == "render":
         assert isinstance(params, RenderParams)
         return _render_result(gpx_bytes, params)
+    if op == "table":
+        assert isinstance(params, TableParams)
+        return _table_result(gpx_bytes, params)
     raise ValueError(f"unknown job op {op!r}")
 
 
@@ -76,6 +90,29 @@ def _render_result(gpx_bytes: bytes, params: RenderParams) -> JobResult:
             show_branches=params.show_branches,
         )
         return out_path.read_bytes(), _CONTENT_TYPES[ext], ext, _safe_filename(route.name, ext)
+
+
+def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
+    """A GPXtable route table as HTML or markdown (no OSM pipeline involved)."""
+    from gpxsheet import table
+
+    depart_at, tz = table.parse_departure(params.departure, params.timezone)
+    gpx = table.parse_gpx(gpx_bytes)
+    md = table.build_table_markdown(
+        gpx,
+        imperial=(params.units == "imperial"),
+        speed=params.speed,
+        depart_at=depart_at,
+        ignore_times=params.ignore_times,
+        display_coordinates=params.coordinates,
+        tz=tz,
+    )
+    if params.format == "html":
+        data, ext = table.markdown_to_html(md).encode(), "html"
+    else:
+        data, ext = md.encode(), "md"
+    content_type = _CONTENT_TYPES["html" if params.format == "html" else "markdown"]
+    return data, content_type, ext, _safe_filename(table.route_title(gpx), ext)
 
 
 def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):

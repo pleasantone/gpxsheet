@@ -197,6 +197,19 @@ def test_security_headers_present(tmp_path):
     assert "Strict-Transport-Security" not in h  # off unless enabled
 
 
+def test_spa_csp_allows_inline_styles_but_api_stays_strict(tmp_path):
+    """The SPA (non-API) CSP permits inline *styles* so the inline-rendered Table
+    view can keep GPXtable's cell alignment; API routes stay locked to
+    default-src 'none' with no inline allowance."""
+    client = _client(tmp_path)
+    spa_csp = client.get("/some-spa-route").headers["Content-Security-Policy"]
+    assert "default-src 'self'" in spa_csp
+    assert "style-src 'self' 'unsafe-inline'" in spa_csp
+    api_csp = client.get("/healthz").headers["Content-Security-Policy"]
+    assert "default-src 'none'" in api_csp
+    assert "unsafe-inline" not in api_csp
+
+
 def test_hsts_when_enabled(tmp_path):
     client = _client(tmp_path, enable_hsts=True)
     assert "max-age=" in client.get("/healthz").headers["Strict-Transport-Security"]

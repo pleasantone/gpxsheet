@@ -92,6 +92,30 @@ def test_generate_default_output_for_strip(l_route_file, tmp_path, monkeypatch):
     assert (tmp_path / "route_strip.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
+def test_table_command_writes_html(table_route_file, tmp_path):
+    out = tmp_path / "t.html"
+    result = runner.invoke(
+        app, ["table", str(table_route_file), "-o", str(out), "--departure", "9:00 AM"]
+    )
+    assert result.exit_code == 0, result.output
+    assert '<table class="gpxtable">' in out.read_text()
+
+
+def test_table_command_markdown_inferred_from_md_extension(table_route_file, tmp_path):
+    out = tmp_path / "t.md"
+    result = runner.invoke(app, ["table", str(table_route_file), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "## Route: Table Test Route" in out.read_text()
+
+
+def test_table_command_bad_timezone_errors(table_route_file, tmp_path):
+    result = runner.invoke(
+        app, ["table", str(table_route_file), "-o", str(tmp_path / "t.html"),
+              "--timezone", "Mars/Olympus_Mons"]
+    )
+    assert result.exit_code != 0
+
+
 def test_validate_command_ok(l_route_file):
     # No fuel-range; the offshore route yields no OSM data -> no warnings -> exit 0.
     result = runner.invoke(app, ["validate", str(l_route_file)])

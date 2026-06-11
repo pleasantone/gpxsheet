@@ -158,6 +158,37 @@ def test_validate_job(client, l_route_file):
     assert all({"level", "code", "message"} <= f.keys() for f in data["findings"])
 
 
+@pytest.mark.parametrize(
+    "fmt,content_type,ext,needle",
+    [
+        ("html", "text/html", "html", b'<table class="gpxtable">'),
+        ("markdown", "text/markdown", "md", b"## Route:"),
+    ],
+)
+def test_table_job(client, table_route_file, fmt, content_type, ext, needle):
+    r = _post(client, "/v1/table", table_route_file, format=fmt, departure="9:00 AM")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "done"
+    assert body["content_type"] == content_type
+    res = client.get(f"/v1/jobs/{body['id']}/result")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith(content_type)
+    assert res.headers["content-disposition"] == f'attachment; filename="Table Test Route.{ext}"'
+    assert needle in res.content
+
+
+def test_table_invalid_format_rejected(client, l_route_file):
+    assert _post(client, "/v1/table", l_route_file, format="pdf").status_code == 422
+
+
+def test_table_bad_gpx_errors_job(client):
+    bad = b'<gpx version="1.1"><trk><trkseg></trk></gpx>'  # mismatched tag
+    r = client.post("/v1/table", files={"gpx": ("bad.gpx", bad, "application/gpx+xml")})
+    assert r.status_code == 200  # eager job completes, as an error
+    assert r.json()["status"] == "error"
+
+
 def test_result_caching_headers(client, l_route_file):
     # Results are immutable: ETag + immutable Cache-Control, and a conditional
     # re-fetch returns 304.
