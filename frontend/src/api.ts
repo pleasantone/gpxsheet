@@ -14,13 +14,19 @@ export function setApiKey(key: string): void {
   }
 }
 
+function firstPartyToken(): string | null {
+  // Server-signed token injected into this page as a <meta> tag (when the
+  // deployment gates the API). A meta tag is used rather than an inline script so
+  // it isn't blocked by the page's default-src 'self' CSP.
+  return document.querySelector('meta[name="gpxsheet-fp"]')?.getAttribute("content") ?? null;
+}
+
 function authHeaders(): HeadersInit {
   const headers: Record<string, string> = {};
   const key = getApiKey();
   if (key) headers["X-API-Key"] = key;
-  // Server-signed first-party token injected into this page (when the deployment
-  // gates the API). Lets the bundled SPA call the API without a user-entered key.
-  const fp = window.__GPXSHEET_FP__;
+  // Lets the bundled SPA call the API without a user-entered key.
+  const fp = firstPartyToken();
   if (fp) headers["X-First-Party"] = fp;
   return headers;
 }

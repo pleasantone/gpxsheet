@@ -70,9 +70,10 @@ app work without one**. Enabled with:
   to share trust across replicas).
 
 How it works: when enabled, the backend serves `index.html` with a **server-signed,
-expiring first-party token** injected into the page (`window.__GPXSHEET_FP__`). The
-SPA sends it back as the `X-First-Party` header, and the backend accepts a valid
-token in lieu of an API key. Everyone else must present a `GPXSHEET_API_KEYS` key
+expiring first-party token** injected as a `<meta name="gpxsheet-fp">` tag (a meta
+tag, not an inline script, so the page's `default-src 'self'` CSP doesn't block it).
+The SPA reads it and sends it back as the `X-First-Party` header, and the backend
+accepts a valid token in lieu of an API key. Everyone else must present a `GPXSHEET_API_KEYS` key
 (`X-API-Key` or `Authorization: Bearer`). A token is delivered via the rendered
 page (not a bare API endpoint), so obtaining one requires loading the app, and it
 cannot be forged without the server secret.

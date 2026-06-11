@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import secrets
 import time
 from collections import defaultdict
@@ -122,7 +121,9 @@ def _bearer_token(authorization: str | None) -> str | None:
 
 
 _FP_TTL_SECONDS = 12 * 3600
-_FP_GLOBAL = "__GPXSHEET_FP__"  # window global the server injects into the SPA
+# Delivered as a <meta> tag (not an inline <script>): the SPA's CSP is
+# default-src 'self' with no 'unsafe-inline', so an inline script would be blocked.
+_FP_META = "gpxsheet-fp"
 
 
 def _issue_fp_token(secret: bytes, ttl: int = _FP_TTL_SECONDS) -> str:
@@ -421,8 +422,8 @@ def create_app(
 
             @app.get("/", include_in_schema=False)
             def index() -> HTMLResponse:
-                token = _issue_fp_token(fp_secret)
-                tag = f"<script>window.{_FP_GLOBAL}={json.dumps(token)}</script>"
+                token = _issue_fp_token(fp_secret)  # token chars are [0-9a-f.] — attr-safe
+                tag = f'<meta name="{_FP_META}" content="{token}">'
                 html = _index_html.replace("</head>", f"{tag}</head>", 1)
                 return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
