@@ -35,7 +35,9 @@ when a route is too sparse to sample or the Overpass query fails.
 ## Render
 
 `layout` (`portrait` · `landscape` · `preview` · `strip`) and `format` (`pdf` ·
-`png`) are independent; portrait PDF is the default.
+`png`) are independent; portrait PDF is the default. `format=None` (the default)
+infers the format from the output filename extension (`.png` → `"png"`, anything
+else → `"pdf"`).
 
 ::: gpxsheet.render
 

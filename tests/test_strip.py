@@ -95,7 +95,9 @@ def test_render_strip_writes_valid_png(l_route_file, tmp_path):
 
 def test_strip_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli_strip.png"
-    result = runner.invoke(app, ["strip", str(l_route_file), "-o", str(out)])
+    result = runner.invoke(
+        app, ["generate", "--layout", "strip", str(l_route_file), "-o", str(out)]
+    )
     assert result.exit_code == 0, result.output
     assert out.exists()
     assert out.read_bytes()[:8] == PNG_MAGIC

@@ -57,6 +57,20 @@ def test_validate_returns_report(l_route_file):
     assert any(f.level == "warning" for f in report.findings)
 
 
+def test_render_infers_png_format_from_extension(l_route_file, tmp_path):
+    out = tmp_path / "route.png"
+    result = gpxsheet.render(str(l_route_file), str(out), layout="preview")  # no format arg
+    assert Path(result) == out
+    assert out.read_bytes()[:8] == PNG_MAGIC
+
+
+def test_render_infers_pdf_format_from_extension(l_route_file, tmp_path):
+    out = tmp_path / "route.pdf"
+    result = gpxsheet.render(str(l_route_file), str(out))  # no format arg
+    assert Path(result) == out
+    assert out.read_bytes()[:4] == PDF_MAGIC
+
+
 def test_render_defaults_to_auto_fit():
     import inspect
 

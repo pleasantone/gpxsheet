@@ -67,10 +67,10 @@ def test_single_page_when_few_decisions():
     assert paginate(route, max_decisions=5) == [(0.0, 40.0)]
 
 
-def test_slice_route_no_rebase_keeps_absolute_miles():
+def test_slice_route_keeps_absolute_miles():
     route = _route(n_decisions=8, length=200.0)
-    page = slice_route(route, 40.0, 90.0, rebase=False)
-    # absolute miles preserved (portrait lanes need this for correct labels)
+    page = slice_route(route, 40.0, 90.0)
+    # absolute miles always preserved
     assert all(40.0 < d.mile <= 90.0 + 1e-9 for d in page.decision_points)
     assert page.length_miles == pytest.approx(90.0)  # absolute end, not the 50 mi span
     assert page.segments[0].start_mile == 40.0
@@ -98,14 +98,14 @@ def test_slice_poi_on_exact_page_boundary():
     assert len(page_start.pois) == 1
 
 
-def test_slice_route_rebases_and_filters():
+def test_slice_route_filters_to_span():
     route = _route(n_decisions=8, length=200.0)  # decisions at 22.2, 44.4, ...
     page = slice_route(route, 40.0, 90.0)
-    # all decisions fall inside (40, 90], rebased to start at 0
-    assert page.length_miles == 50.0
-    assert all(0 < d.mile <= 50.0 + 1e-6 for d in page.decision_points)
+    # all decisions fall inside (40, 90] with absolute miles preserved
+    assert page.length_miles == pytest.approx(90.0)
+    assert all(40.0 < d.mile <= 90.0 + 1e-6 for d in page.decision_points)
     expected = [d for d in route.decision_points if 40.0 < d.mile <= 90.0 + 1e-9]
     assert len(page.decision_points) == len(expected)
-    # segment clipped to the page span
-    assert page.segments[0].start_mile == 0.0
-    assert page.segments[0].end_mile == 50.0
+    # segment clipped to the page span (absolute coordinates)
+    assert page.segments[0].start_mile == 40.0
+    assert page.segments[0].end_mile == 90.0

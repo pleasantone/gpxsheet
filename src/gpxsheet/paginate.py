@@ -5,7 +5,7 @@ split by mileage -- breaks fall only on decision points, so a page never cuts a
 navigation moment in half and a long decision-free stretch stays on one page
 (the strip compresses it; the progress bar conveys absolute distance). Each page
 is returned as a ``(start_mile, end_mile)`` span; :func:`slice_route`
-materializes the sub-route for one span (mile-rebased to 0).
+materializes the sub-route for one span (absolute miles).
 
 :func:`plan_pages` is the single entry point for the dual-mode contract: 0 →
 auto-fit (greedy analytic fit, :func:`fit_pages`); positive → fixed decision cap
@@ -49,8 +49,8 @@ def paginate(
     return pages
 
 
-def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) -> Route:
-    """Materialize the sub-route for ``[start, end]``.
+def slice_route(route: Route, start: float, end: float) -> Route:
+    """Materialize the sub-route for ``[start, end]`` with absolute miles.
 
     Decisions are taken as those in ``(start, end]`` (the breaking decision
     belongs to the page that ends on it); fuel/reassurance/POIs use inclusive-start
@@ -59,13 +59,11 @@ def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) 
     the *reason* a page break falls there, so it belongs to the page ending at 40.0,
     not the page starting at 40.0. A fuel stop at mile 40.0 should appear on
     whichever page the rider will read at that mile.
-    With ``rebase=True`` (the single-strip landscape page) miles are shifted so the
-    slice begins at 0; with ``rebase=False`` (portrait lanes) absolute miles are
-    preserved so each lane's labels read correctly. Only the span length is needed
-    from ``points``.
+    Absolute miles are always preserved so strip labels read correctly across all
+    layouts. Only the span length is needed from ``points``.
     """
     eps = 1e-9
-    off = start if rebase else 0.0
+    off = 0.0
 
     segments = []
     for s in route.segments:
@@ -126,12 +124,6 @@ def slice_route(route: Route, start: float, end: float, *, rebase: bool = True) 
 # two rows (above/below the ribbon). Best-effort and conservative (it breaks the
 # lane early rather than risk an overlap). Markers may sit on the line; only the
 # dots are allowed to touch the route.
-
-# Internal fixed-cap fallback: when pdf renderers are called directly with no
-# decisions_per_lane (i.e. non-public direct calls), break every this-many
-# decisions. Distinct from the public auto-fit default (DECISIONS_PER_LANE = 0);
-# see defaults.py and CLAUDE.md.
-FIXED_DECISIONS_PER_LANE = 4
 
 _FIT_LABEL_PAD_IN = 0.06  # min horizontal whitespace between adjacent label boxes
 _FIT_MARKER_GAP_IN = 0.10  # min spacing between adjacent marker dots
@@ -227,7 +219,7 @@ def fit_pages(
         accepted = i  # at least one decision per lane, even if it "doesn't fit"
         for k in range(i, n):
             end = length if k == n - 1 else miles[k]
-            sub = slice_route(route, start, end, rebase=False)
+            sub = slice_route(route, start, end)
             layout = build_strip_layout(
                 sub, turn_style=turn_style,
                 show_start=(show_start and start <= eps), show_end=(end >= length - eps),

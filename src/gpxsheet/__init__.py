@@ -37,7 +37,7 @@ def render(
     profile: str = defaults.DEFAULT_PROFILE,
     fuel_range: float | None = None,
     layout: str = defaults.DEFAULT_LAYOUT,
-    format: str = defaults.DEFAULT_FORMAT,
+    format: str | None = None,
     turn_style: str = defaults.TURN_STYLE,
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
@@ -56,8 +56,10 @@ def render(
             ``"landscape"`` (one big strip per page), ``"preview"`` (the whole
             route as one continuous image), or ``"strip"`` (a single schematic
             strip).
-        format: ``"pdf"`` or ``"png"``. Paginated layouts (``portrait`` /
-            ``landscape``) become a multi-page PDF or one tall stacked PNG.
+        format: ``"pdf"`` or ``"png"``, or ``None`` to infer from ``output_file``'s
+            extension (``.png`` → ``"png"``, anything else → ``"pdf"``).
+            Paginated layouts (``portrait`` / ``landscape``) become a multi-page
+            PDF or one tall stacked PNG.
         turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
         paper: Page size for paginated PDF layouts, ``"letter"`` or ``"a4"``.
         lanes_per_page: ``portrait`` only -- strip lanes per page.
@@ -73,6 +75,9 @@ def render(
     """
     from .pdf import render_layout
 
+    if format is None:
+        ext = str(output_file).lower() if output_file is not None else ""
+        format = "png" if ext.endswith(".png") else "pdf"
     if output_file is None:
         output_file = f"route.{format}"
     route = analyze(gpx_file, profile=profile, fuel_range=fuel_range)

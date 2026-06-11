@@ -18,7 +18,8 @@ Planned work is in [TODO.md](TODO.md).
 .venv/bin/pytest -q         # all should pass; deterministic + offline (cached OSM)
 GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cache
 .venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
-.venv/bin/gpxsheet generate <gpx> --landscape            # one strip/page
+.venv/bin/gpxsheet generate <gpx> --layout landscape     # one strip/page
+.venv/bin/gpxsheet generate <gpx> --layout strip -o strip.png   # single strip PNG
 ```
 
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
@@ -59,10 +60,9 @@ Non-obvious structural facts (module purpose is derivable from filenames/docstri
 - **`analyze_route` is three steps:** `_geometry_baseline` → `_osm_enrich_pass`
   (replaces decisions+segments; falls back to geometry-only w/ warning+log if
   `looks_sparse` or Overpass fails) → `_apply_profile` (threshold, fuel, reassurance).
-- **`decisions_per_lane=0`** is the public default for `render()`, CLI, and web —
-  means auto-fit via `paginate.plan_pages()`. Positive value → fixed cap.
-  Internal `pdf.py` fallback is `FIXED_DECISIONS_PER_LANE=4`. All public
-  render-knob defaults live in `defaults.py`.
+- **`decisions_per_lane=0`** is the universal default for `render()`, CLI, web,
+  and all `pdf.py` renderer functions — means auto-fit via `paginate.plan_pages()`.
+  Positive value → fixed cap. All render-knob defaults live in `defaults.py`.
 - **`enrich.py` imports `turn_word`/`significance_for_turn` from `analysis.py`** —
   an intentional cross-module dependency; don't inline copies.
 - **`_apply_junction_topology` is best-effort** (`log.exception` on failure) —

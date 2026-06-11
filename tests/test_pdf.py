@@ -86,7 +86,7 @@ def test_portrait_pdf_multilane(tmp_path):
         segments=[Segment("Road", 0, 210)],
     )
     out = tmp_path / "portrait.pdf"
-    render_pdf(route, out, orientation="portrait")
+    render_pdf(route, out, orientation="portrait", decisions_per_lane=4)
     data = out.read_bytes()
     assert data[:4] == PDF_MAGIC
     assert data.count(b"/Type /Page") - data.count(b"/Type /Pages") == 2
@@ -182,7 +182,9 @@ def test_render_preview_is_single_growing_image(tmp_path):
 
 def test_preview_cli_command(l_route_file, tmp_path):
     out = tmp_path / "cli_preview.png"
-    result = runner.invoke(app, ["preview", str(l_route_file), "-o", str(out)])
+    result = runner.invoke(
+        app, ["generate", "--layout", "preview", str(l_route_file), "-o", str(out)]
+    )
     assert result.exit_code == 0, result.output
     assert out.read_bytes()[:8] == PNG_MAGIC
 
