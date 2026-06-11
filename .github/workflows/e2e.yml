@@ -47,15 +47,16 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       - run: cd frontend && npx playwright install-deps chromium
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-      - name: Cache osmnx Overpass responses
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/osmnx
-          key: osmnx-${{ hashFiles('examples/sample_route.gpx') }}
-          restore-keys: osmnx-
       - name: Build frontend
         run: cd frontend && npm run build
       - name: Start API (simple mode, serves built SPA)
+        # GPXSHEET_DISABLE_OSM forces geometry-only analysis: the smoke test
+        # exercises the SPA -> API -> render pipeline, not OSM accuracy, and the
+        # sample route is offshore (geometry-only is its intended path). Without
+        # it the synchronous EagerRunner blocks on a live Overpass call whose
+        # latency is unbounded, intermittently exceeding the test timeout.
+        env:
+          GPXSHEET_DISABLE_OSM: "1"
         run: python -m uvicorn gpxsheet.service.asgi:app --port 8000 > /tmp/api.log 2>&1 &
       - name: Wait for API
         run: cd frontend && npx wait-on http-get://127.0.0.1:8000/healthz --timeout 30000

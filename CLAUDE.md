@@ -126,7 +126,12 @@ Non-obvious structural facts (module purpose is derivable from filenames/docstri
 ## Test data
 
 `gpxsamples/*.gpx` (git submodule) — real California/PNW moto routes.
-`examples/sample_route.gpx` is synthetic & offshore (no OSM → geometry-only fallback).
+`examples/sample_route.gpx` is synthetic & offshore: it's dense enough that
+`looks_sparse` is False, so enrichment *does* query Overpass for its bbox (a live
+round-trip), gets no results, and falls back to geometry-only — i.e. offshore
+avoids OSM *results*, not the network call. To force geometry-only with no network
+(air-gapped, rate-limited, or deterministic CI), set `GPXSHEET_DISABLE_OSM=1`
+(honored in `analysis._osm_enrich_pass`; the e2e smoke test sets it).
 For iteration prefer synthetic routes.
 
 Non-obvious fixture relationships:

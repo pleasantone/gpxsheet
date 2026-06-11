@@ -246,6 +246,25 @@ def test_analyze_falls_back_when_osm_query_fails(l_route_file, monkeypatch):
     assert all(s.name.startswith("Leg ") for s in route.segments)
 
 
+def test_disable_osm_env_skips_enrichment_without_network(l_route_file, monkeypatch):
+    """GPXSHEET_DISABLE_OSM forces geometry-only on a dense (non-sparse) route,
+    with no Overpass call — the opt-out used by air-gapped deploys and CI smoke."""
+    import pytest
+
+    import gpxsheet
+    import gpxsheet.enrich as enrich
+
+    def boom(*args, **kwargs):
+        raise AssertionError("enrich_route must not be called when OSM is disabled")
+
+    monkeypatch.setattr(enrich, "enrich_route", boom)
+    monkeypatch.setenv("GPXSHEET_DISABLE_OSM", "1")
+    with pytest.warns(UserWarning, match="OSM enrichment disabled"):
+        route = gpxsheet.analyze(str(l_route_file))
+    # Geometry-only baseline: segments are unnamed "Leg N", not OSM road names.
+    assert all(s.name.startswith("Leg ") for s in route.segments)
+
+
 def test_analyze_report_renders(l_route_file):
     from gpxsheet.report import format_analysis
 

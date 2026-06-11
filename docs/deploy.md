@@ -148,8 +148,11 @@ open http://localhost:8000/           # SPA loads (not Swagger) => static baked 
 ```
 
 Upload `examples/sample_route.gpx` through the UI and confirm a PDF renders. (That
-route is offshore/synthetic, so it exercises the OSM-failure → geometry-only
-fallback without any network dependency.)
+route is offshore/synthetic: OSM enrichment queries Overpass for its bbox, gets no
+results, and falls back to geometry-only. To skip the Overpass round-trip entirely
+— e.g. air-gapped, rate-limited, or for a fast offline check — set
+`GPXSHEET_DISABLE_OSM=1`, which forces geometry-only analysis with no network call.
+The CI smoke test uses this.)
 
 ## Other hosts
 
