@@ -24,6 +24,29 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
+### Claude Code on the web / remote sandbox
+
+No project-local `.venv` here — the repo is cloned fresh into an ephemeral
+container and deps aren't installed yet. Set up and run against the ambient
+interpreter instead of `.venv/bin/...`:
+
+```bash
+pip install -e ".[dev,service]"   # install BOTH extras (see why below)
+ruff check .
+python3 -m mypy src tests docs    # module form: see the mypy note below
+python3 -m pytest -q
+```
+
+- **Install `,service` too, not just `[dev]`:** mypy type-checks `src/gpxsheet/
+  service/` (which imports pydantic/fastapi) and `pyproject.toml` enables the
+  `pydantic.mypy` plugin — without the service deps mypy aborts with
+  "Error importing plugin 'pydantic.mypy'" before checking anything.
+- **Run mypy/pytest as `python3 -m …`:** a different `mypy` may sit earlier on
+  `PATH` (installed for another interpreter, without our pydantic plugin); the
+  module form pins the run to the interpreter the project is installed into.
+- Sandbox Python may be 3.11 (vs 3.14 locally); the code installs and the suite
+  passes on both. Commit + push before the container is reclaimed.
+
 ## Architecture (src/gpxsheet/)
 
 - `geo.py` — haversine, bearings, cumulative distance (pure).
