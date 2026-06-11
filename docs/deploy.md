@@ -18,6 +18,12 @@ Simple mode needs no Redis, MinIO, or worker process — ideal for a single free
 container. Renders happen in the request and the client downloads the result
 immediately, so the ephemeral `/tmp` store is sufficient.
 
+osmnx caches Overpass responses to `./cache` by default, which fails when the
+container runs as a non-root user with a non-writable working dir (enrichment then
+silently degrades to geometry-only). The image sets `GPXSHEET_OSM_CACHE_DIR=/tmp/
+gpxsheet-osm-cache` so the cache lands somewhere writable; point it elsewhere if you
+mount a persistent volume.
+
 ## Hugging Face Space (reference deployment)
 
 The free CPU tier (2 vCPU / 16 GB RAM) handles the geo stack

@@ -15,7 +15,8 @@ RUN npm run build
 FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
-    GPXSHEET_RESULTS_DIR=/tmp/gpxsheet-results
+    GPXSHEET_RESULTS_DIR=/tmp/gpxsheet-results \
+    GPXSHEET_OSM_CACHE_DIR=/tmp/gpxsheet-osm-cache
 
 WORKDIR /app
 

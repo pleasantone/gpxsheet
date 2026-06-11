@@ -20,6 +20,7 @@ decisions. Road/fuel queries hit the live Overpass API (via osmnx).
 from __future__ import annotations
 
 import logging
+import os
 import re
 from dataclasses import replace
 from typing import NamedTuple
@@ -55,6 +56,20 @@ from .profiles import (
 log = logging.getLogger(__name__)
 
 _DEG_PER_M = 1.0 / METERS_PER_DEG_LAT  # degrees per meter for geographic buffering
+
+
+def _configure_osm_cache(ox) -> None:
+    """Point osmnx's HTTP cache at GPXSHEET_OSM_CACHE_DIR when set.
+
+    osmnx defaults its cache to ``./cache`` (relative to the CWD). In containers
+    that run as a non-root user with a non-writable working dir, that write fails
+    and enrichment silently degrades to geometry-only. Setting this env var to a
+    writable path (e.g. /tmp/...) fixes it. No-op when unset, so local use and the
+    test cache wiring (conftest sets ``cache_folder`` directly) are unaffected.
+    """
+    cache_dir = os.getenv("GPXSHEET_OSM_CACHE_DIR")
+    if cache_dir:
+        ox.settings.cache_folder = cache_dir
 
 
 class _Run(NamedTuple):
@@ -190,6 +205,8 @@ def enrich_route(
     """
     import osmnx as ox
     import shapely.geometry as sg
+
+    _configure_osm_cache(ox)
 
     total_m = route.length_m
     n = max(2, int(total_m / sample_spacing_m) + 1)
