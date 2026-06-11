@@ -45,8 +45,8 @@ class RenderParams(ReportParams):
     lanes_per_page: int = Field(4, ge=1)  # portrait only
     # portrait / landscape / preview; default 0 = auto-fit as many as fit per lane
     decisions_per_lane: int = Field(0, ge=0)
-    # ghosted "roads not taken" stubs at junctions; on by default
-    show_branches: bool = True
+    # ghosted "roads not taken" stubs at junctions; off by default
+    show_branches: bool = False
 
 
 class ReportForm(ReportParams):

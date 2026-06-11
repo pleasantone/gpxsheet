@@ -42,7 +42,7 @@ def render(
     paper: str = "letter",
     lanes_per_page: int = 4,
     decisions_per_lane: int | None = None,
-    show_branches: bool = True,
+    show_branches: bool = False,
 ) -> str:
     """Render a GPX route to a tank-bag navigation map.
 

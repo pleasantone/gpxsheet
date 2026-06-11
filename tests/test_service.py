@@ -24,8 +24,8 @@ def test_render_params_default_auto_fit():
     assert RenderParams().decisions_per_lane == 0  # default = auto-fit
 
 
-def test_render_params_show_branches_default_on():
-    assert RenderParams().show_branches is True  # roads-not-taken stubs on by default
+def test_render_params_show_branches_default_off():
+    assert RenderParams().show_branches is False  # roads-not-taken stubs off by default
 
 
 def _make_client(tmp_path, **kwargs):

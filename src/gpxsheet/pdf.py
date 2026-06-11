@@ -55,7 +55,7 @@ def iter_page_figures(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    show_branches: bool = False,
 ):
     """Yield one matplotlib ``Figure`` per route-aware page (caller closes them).
 
@@ -128,7 +128,7 @@ def render_pdf(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    show_branches: bool = False,
 ) -> Path:
     """Render an already-analyzed ``route`` to a multi-page PDF.
 
@@ -163,7 +163,7 @@ def render_pages_png(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    show_branches: bool = False,
     dpi: int | None = None,
 ) -> Path:
     """Render a paginated layout to a single tall PNG: every page stacked top to
@@ -200,7 +200,7 @@ def render_pages_png(
 
 def _compose_page(
     fig, route, start, end, page_no, page_count, total, turn_style,
-    page_w_in, page_h_in, show_branches=True,
+    page_w_in, page_h_in, show_branches=False,
 ) -> None:
     """Lay out a single page (header, map strip) into ``fig``.
 
@@ -274,7 +274,7 @@ def _draw_header(
 
 def _compose_portrait_page(
     fig, route, lanes, page_no, page_count, total, turn_style, lanes_per_page,
-    show_branches=True,
+    show_branches=False,
 ) -> None:
     """Stack several route lanes (strips) down a portrait page, clearly separated."""
     _draw_header(fig, route.name, page_no, page_count, lanes[0][0], total, name_max=38)
@@ -297,7 +297,7 @@ def _compose_portrait_page(
 
 
 def _draw_lane(
-    fig, route, start, end, rect, *, show_start, show_end, turn_style, show_branches=True
+    fig, route, start, end, rect, *, show_start, show_end, turn_style, show_branches=False
 ) -> None:
     """Draw one route lane (a framed strip covering [start, end]) into ``rect``."""
     from matplotlib.patches import Rectangle
@@ -370,7 +370,7 @@ def render_preview(
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    show_branches: bool = False,
 ) -> Path:
     """Render the whole route as a single image of stacked strip lanes.
 
@@ -450,7 +450,7 @@ def render_layout(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    show_branches: bool = False,
 ) -> Path:
     """Render an already-analyzed ``route`` to ``output_path`` in any layout/format.
 

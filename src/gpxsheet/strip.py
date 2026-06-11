@@ -51,7 +51,7 @@ def render_route_strip(
     *,
     layout: StripLayout | None = None,
     turn_style: str = TURN_STYLE_STYLIZED,
-    show_branches: bool = True,
+    show_branches: bool = False,
     title: str | None = None,
     dpi: int = 150,
 ) -> Path:
@@ -85,7 +85,7 @@ def render_route_strip(
 
 
 def draw_strip(
-    fig, ax, layout: StripLayout, *, draw_ribbon: bool = True, show_branches: bool = True
+    fig, ax, layout: StripLayout, *, draw_ribbon: bool = True, show_branches: bool = False
 ) -> None:
     """Draw a schematic strip (path, markers, collision-placed labels) into ``ax``.
 
@@ -262,27 +262,65 @@ def _kind_glyph(kind: str) -> str:
     return ""
 
 
+# Map GPX <sym> strings (lowercase) to preferred Unicode codepoints.
+# Covers common Garmin/GaiaGPS symbols; anything not listed falls back to ★.
+# Symbols known to carry no useful visual meaning get no glyph at all.
+_WAYPOINT_SYMBOL_GLYPHS: dict[str, tuple[int, ...]] = {
+    "summit": (0x25B2,),          # ▲
+    "scenic area": (0x2605,),     # ★
+    "scenic": (0x2605,),          # ★
+    "campground": (0x26FA,),      # ⛺
+    "flag, blue": (0x25B6,),      # ▶ (blue flag → directional marker)
+    "flag, green": (0x25B6,),     # ▶
+    "flag, red": (0x25B6,),       # ▶
+    "circle, green": (0x25CF,),   # ●
+    "circle, red": (0x25CF,),     # ●
+    "circle, blue": (0x25CF,),    # ●
+}
+# Generic symbols that add no visual meaning — suppress the glyph.
+_WAYPOINT_SYMBOL_NO_GLYPH = {"waypoint", "flag, white", ""}
+
+
+def _waypoint_glyph(symbol: str | None) -> str:
+    """Trailing-spaced glyph for a GPX waypoint symbol, or "" if none applies."""
+    if not symbol:
+        return ""
+    key = symbol.lower().strip()
+    if key in _WAYPOINT_SYMBOL_NO_GLYPH:
+        return ""
+    candidates = _WAYPOINT_SYMBOL_GLYPHS.get(key, (0x2605,))  # default ★
+    for cp in candidates:
+        if _font_covers(cp):
+            return chr(cp) + " "
+    return ""
+
+
+def _mil(m) -> str:
+    """Formatted mileage prefix: ``(12.3) ``."""
+    return f"({m.mile:.1f}) "
+
+
 def _marker_label(m) -> str:
     if m.kind in ("decision", "roundabout"):
-        # Wrap "<mile> <turn> onto / <road>" so labels are narrower (taller).
-        text = f"{m.mile:.1f}  {m.label}"
+        # Wrap so labels are narrower (taller).
+        text = f"{_mil(m)}{m.label}"
         return text.replace(" onto ", " onto\n", 1)
     if m.kind == "fuel":
-        base = "Fuel" if m.label.strip().lower() == "fuel" else f"Fuel: {m.label}"
-        return f"{_kind_glyph('fuel')}{base}  ({m.mile:.1f} mi)"
+        return f"{_mil(m)}{_kind_glyph('fuel')}{m.label}"
     if m.kind == "food":
-        return f"{_kind_glyph('food')}{m.label}  ({m.mile:.1f} mi)"
+        return f"{_mil(m)}{_kind_glyph('food')}{m.label}"
     if m.kind == "ferry":
-        return f"{_kind_glyph('ferry')}{m.label}  ({m.mile:.1f} mi)"
-    if m.kind in ("waypoint", "unpaved"):
-        return f"{m.label}  ({m.mile:.1f} mi)"
+        return f"{_mil(m)}{_kind_glyph('ferry')}{m.label}"
+    if m.kind == "waypoint":
+        return f"{_mil(m)}{_waypoint_glyph(getattr(m, 'symbol', None))}{m.label}"
+    if m.kind == "unpaved":
+        return f"{_mil(m)}{m.label}"
     if m.kind == "reassurance":
-        # Generic mileage markers ("15 mi") get a tick but no text; only named
-        # places (towns/landmarks) are worth the label clutter.
+        # Generic interval ticks ("15 mi") get no text; named towns get mileage.
         stripped = m.label.removesuffix(" mi").strip()
-        return "" if stripped.isdigit() else m.label
+        return "" if stripped.isdigit() else f"{_mil(m)}{m.label}"
     if m.kind in ("start", "end"):
-        return m.label
+        return f"{_mil(m)}{m.label}"
     return ""
 
 
@@ -299,7 +337,7 @@ def _place_labels_with_leaders(fig, ax, path_nodes, markers, obstacles=()) -> No
     texts = []
     for m in markers:
         color, _, _ = _MARKER_STYLE.get(m.kind, (colors.MARKER_FALLBACK, "o", 5))
-        weight = "bold" if m.kind in ("decision", "roundabout") else "normal"
+        weight = "bold" if m.kind in ("decision", "roundabout", "waypoint") else "normal"
         style = "normal"
         size: float = 7
         if m.kind == "reassurance":

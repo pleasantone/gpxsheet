@@ -802,10 +802,18 @@ def _add_fuel(route, ox, chunks, fuel_buffer_m: float) -> None:
             name = _clean_str(row.get("name")) or _clean_str(row.get("brand")) or "Fuel"
             osm_stops.append(FuelStop(nearest_mile(pt.y, pt.x), str(name), pt.y, pt.x))
 
+    # GPX waypoints take priority: suppress OSM stations within fuel_buffer_m of
+    # any rider waypoint (the waypoint is already shown as a dedicated POI marker).
+    waypoint_coords = [(wp.lat, wp.lon) for wp in route.waypoints if wp.name]
+
     osm_stops.sort(key=lambda s: s.mile)
     merged = list(route.fuel_stops)
     for stop in osm_stops:
-        if not any(abs(stop.mile - e.mile) < 0.3 for e in merged):
-            merged.append(stop)
+        if any(abs(stop.mile - e.mile) < 0.3 for e in merged):
+            continue
+        if any(haversine(stop.lat, stop.lon, wlat, wlon) <= fuel_buffer_m
+               for wlat, wlon in waypoint_coords):
+            continue  # rider already marked this area; waypoint takes priority
+        merged.append(stop)
     merged.sort(key=lambda s: s.mile)
     route.fuel_stops = merged

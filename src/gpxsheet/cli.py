@@ -48,8 +48,8 @@ def generate(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
     branches: bool = typer.Option(
-        True, "--branches/--no-branches",
-        help="Draw ghosted 'roads not taken' stubs at junctions (default on).",
+        False, "--branches/--no-branches",
+        help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
     landscape: bool = typer.Option(
         False, "--landscape",
@@ -125,8 +125,8 @@ def strip(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
     branches: bool = typer.Option(
-        True, "--branches/--no-branches",
-        help="Draw ghosted 'roads not taken' stubs at junctions (default on).",
+        False, "--branches/--no-branches",
+        help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
 ) -> None:
     """Render the schematic map strip to a PNG."""
@@ -159,8 +159,8 @@ def preview(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
     branches: bool = typer.Option(
-        True, "--branches/--no-branches",
-        help="Draw ghosted 'roads not taken' stubs at junctions (default on).",
+        False, "--branches/--no-branches",
+        help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
     lane_decisions: int = typer.Option(
         0, "--lane-decisions", min=0, help="Max decisions per strip lane; default 0 = auto-fit."

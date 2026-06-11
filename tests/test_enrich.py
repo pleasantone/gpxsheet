@@ -64,7 +64,9 @@ def test_unpaved_spans_run_length_encode():
     assert spans[0].start_mile < spans[0].end_mile
 
 
-def test_detect_pois_classifies_and_skips_fuel():
+def test_detect_pois_includes_all_named_waypoints():
+    # All named waypoints become POIs regardless of fuel/food hints; only unnamed
+    # waypoints are dropped.
     from gpxsheet.analysis import detect_pois
     from gpxsheet.geo import cumulative_distances
     from gpxsheet.models import GeoPoint, POIKind, Route, Waypoint
@@ -76,13 +78,17 @@ def test_detect_pois_classifies_and_skips_fuel():
         waypoints=[
             Waypoint(0.0, 0.0, "Start Overlook", None),
             Waypoint(0.0, 0.02, "Joe's Diner", "Restaurant"),
-            Waypoint(0.0, 0.04, "Shell Station", "Gas Station"),  # fuel -> skipped
-            Waypoint(0.0, 0.05, None, None),  # unnamed -> skipped
+            Waypoint(0.0, 0.04, "Shell Station", "Gas Station"),  # fuel hint: now included
+            Waypoint(0.0, 0.05, None, None),  # unnamed -> still skipped
         ],
     )
     pois = detect_pois(route)
     names = {p.name: p.kind for p in pois}
-    assert names == {"Start Overlook": POIKind.WAYPOINT, "Joe's Diner": POIKind.FOOD}
+    assert names == {
+        "Start Overlook": POIKind.WAYPOINT,
+        "Joe's Diner": POIKind.FOOD,
+        "Shell Station": POIKind.WAYPOINT,
+    }
 
 
 def test_detect_pois_drops_off_route_waypoint():
