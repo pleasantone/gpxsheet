@@ -1,6 +1,6 @@
 """PDF generation.
 
-Composes the tank-bag document: a landscape or portrait pages
+Composes the tank-bag document: landscape or portrait pages
 (see :mod:`gpxsheet.paginate`), with a header and a schematic map strip
 (Map Zone).
 Built with matplotlib (vector PDF via ``PdfPages``), reusing
@@ -14,14 +14,8 @@ from pathlib import Path
 from . import colors, defaults
 from .layout import TURN_STYLE_STYLIZED, build_strip_layout
 from .models import Route
-from .paginate import paginate, slice_route
-from .strip import _use_bundled_fonts, draw_strip, fit_pages
-
-# Internal fixed-cap fallback: when a pdf renderer is called directly with no
-# decisions_per_lane, break a page every this-many decisions. Distinct from the
-# public auto-fit default (defaults.DECISIONS_PER_LANE = 0); see CLAUDE.md.
-FIXED_DECISIONS_PER_LANE = 4
-
+from .paginate import plan_pages, slice_route
+from .strip import _use_bundled_fonts, draw_strip
 
 # Physical page sizes in inches, given as portrait (width, height). Landscape
 # swaps the two. The layout math below works in figure fractions, so only the
@@ -37,7 +31,7 @@ PAGE_SIZES = {
 # strip the same way the renderer will.
 def _portrait_lane_box_in(paper: str, lanes_per_page: int) -> tuple[float, float]:
     pw, ph = PAGE_SIZES[paper.lower()]
-    lane_h = (0.93 - 0.03) / max(1, lanes_per_page)  # figure fraction per lane
+    lane_h = (0.87 - 0.03) / max(1, lanes_per_page)  # figure fraction per lane
     return 0.90 * pw, (lane_h - 0.016) * 0.751 * ph
 
 
@@ -53,7 +47,7 @@ def iter_page_figures(
     orientation: str = "landscape",
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
-    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    decisions_per_lane: int = 0,
     show_branches: bool = defaults.SHOW_BRANCHES,
 ):
     """Yield one matplotlib ``Figure`` per route-aware page (caller closes them).
@@ -62,8 +56,8 @@ def iter_page_figures(
     stacked image). ``orientation`` is ``"landscape"`` (one strip per page, big
     map) or ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page).
     A positive ``decisions_per_lane`` breaks pages every that-many decisions;
-    ``0`` or ``None`` auto-fits as many decisions per page as fit (see
-    :func:`gpxsheet.strip.fit_pages`). ``show_branches`` toggles the ghosted
+    ``0`` auto-fits as many decisions per page as fit (see
+    :func:`gpxsheet.paginate.plan_pages`). ``show_branches`` toggles the ghosted
     "roads not taken" stubs (off by default).
     """
     if orientation not in ("landscape", "portrait"):
@@ -73,8 +67,6 @@ def iter_page_figures(
         raise ValueError(f"paper must be one of {sorted(PAGE_SIZES)}, got {paper!r}")
     page_w_in, page_h_in = PAGE_SIZES[paper]  # portrait (width, height) inches
     lanes_per_page = max(1, lanes_per_page)
-    auto = not decisions_per_lane  # 0 or None -> auto-fit
-    cap = max(1, decisions_per_lane) if decisions_per_lane else 1  # fixed-cap value
     import matplotlib
 
     matplotlib.use("Agg")
@@ -84,13 +76,11 @@ def iter_page_figures(
 
     total = route.length_miles
     if orientation == "portrait":
-        if auto:
-            bw, bh = _portrait_lane_box_in(paper, lanes_per_page)
-            lanes = fit_pages(
-                route, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
-            )
-        else:
-            lanes = paginate(route, max_decisions=cap)
+        bw, bh = _portrait_lane_box_in(paper, lanes_per_page)
+        lanes = plan_pages(
+            route, decisions_per_lane,
+            box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True,
+        )
         page_groups = [
             lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
         ]
@@ -102,13 +92,11 @@ def iter_page_figures(
             )
             yield fig
     else:
-        if auto:
-            bw, bh = _landscape_box_in(paper)
-            pages = fit_pages(
-                route, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
-            )
-        else:
-            pages = paginate(route, max_decisions=cap)
+        bw, bh = _landscape_box_in(paper)
+        pages = plan_pages(
+            route, decisions_per_lane,
+            box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True,
+        )
         for i, (start, end) in enumerate(pages, start=1):
             fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
             _compose_page(
@@ -126,7 +114,7 @@ def render_pdf(
     orientation: str = "landscape",
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
-    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    decisions_per_lane: int = 0,
     show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> Path:
     """Render an already-analyzed ``route`` to a multi-page PDF.
@@ -161,7 +149,7 @@ def render_pages_png(
     orientation: str = "landscape",
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
-    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    decisions_per_lane: int = 0,
     show_branches: bool = defaults.SHOW_BRANCHES,
     dpi: int | None = None,
 ) -> Path:
@@ -277,9 +265,10 @@ def _compose_portrait_page(
 ) -> None:
     """Stack several route lanes (strips) down a portrait page, clearly separated."""
     _draw_header(fig, route.name, page_no, page_count, lanes[0][0], total, name_max=38)
+    _draw_progress(fig, lanes[0][0], lanes[-1][1], total)
 
     eps = 1e-6
-    top, bottom, gap = 0.93, 0.03, 0.016
+    top, bottom, gap = 0.87, 0.03, 0.016
     # Fixed lane height (sized for a full page) so lanes look consistent across
     # pages; partial pages are top-aligned (empty space falls at the bottom).
     lane_h = (top - bottom) / lanes_per_page
@@ -303,7 +292,7 @@ def _draw_lane(
     from matplotlib.patches import Rectangle
 
     x, y, w, h = rect
-    page = slice_route(route, start, end, rebase=False)  # keep absolute miles
+    page = slice_route(route, start, end)
     layout = build_strip_layout(
         page, turn_style=turn_style, show_start=show_start, show_end=show_end
     )
@@ -369,7 +358,7 @@ def render_preview(
     output_path: str | Path,
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
-    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    decisions_per_lane: int = 0,
     show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> Path:
     """Render the whole route as a single image of stacked strip lanes.
@@ -379,8 +368,6 @@ def render_preview(
     into one tall figure that grows with the route -- a scrollable on-screen
     overview. The image format follows ``output_path``'s extension.
     """
-    auto = not decisions_per_lane  # 0 or None -> auto-fit
-    cap = max(1, decisions_per_lane) if decisions_per_lane else 1  # fixed-cap value
     import matplotlib
 
     matplotlib.use("Agg")
@@ -389,15 +376,13 @@ def render_preview(
     _use_bundled_fonts()  # reproducible text/glyphs regardless of system fonts
     output_path = Path(output_path)
     total = route.length_miles
-    if auto:
-        # Preview lane box: the map axes inside one stacked lane (see _draw_lane).
-        box_w = 0.90 * PREVIEW_WIDTH_IN
-        box_h = 0.751 * (PREVIEW_LANE_HEIGHT_IN * 0.82)
-        lanes = fit_pages(
-            route, box_w_in=box_w, box_h_in=box_h, turn_style=turn_style, show_start=True
-        )
-    else:
-        lanes = paginate(route, max_decisions=cap)
+    # Preview lane box: the map axes inside one stacked lane (see _draw_lane).
+    box_w = 0.90 * PREVIEW_WIDTH_IN
+    box_h = 0.751 * (PREVIEW_LANE_HEIGHT_IN * 0.82)
+    lanes = plan_pages(
+        route, decisions_per_lane, box_w_in=box_w, box_h_in=box_h,
+        turn_style=turn_style, show_start=True,
+    )
     n = max(1, len(lanes))
 
     fig_h = PREVIEW_HEADER_IN + n * PREVIEW_LANE_HEIGHT_IN
@@ -449,7 +434,7 @@ def render_layout(
     turn_style: str = TURN_STYLE_STYLIZED,
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
-    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    decisions_per_lane: int = 0,
     show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> Path:
     """Render an already-analyzed ``route`` to ``output_path`` in any layout/format.

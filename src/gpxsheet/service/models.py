@@ -11,9 +11,10 @@ from __future__ import annotations
 from enum import StrEnum
 
 from fastapi import UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .. import defaults
+from ..profiles import VALID_PROFILES
 
 
 class JobState(StrEnum):
@@ -28,8 +29,16 @@ class JobState(StrEnum):
 class ReportParams(BaseModel):
     """Params for the JSON report endpoints (``/v1/analyze``, ``/v1/validate``)."""
 
-    profile: str = "sport-touring"
+    profile: str = defaults.DEFAULT_PROFILE
     fuel_range: float | None = None
+
+    @field_validator("profile")
+    @classmethod
+    def _validate_profile(cls, v: str) -> str:
+        if v not in VALID_PROFILES:
+            valid = ", ".join(sorted(VALID_PROFILES))
+            raise ValueError(f"unknown profile {v!r}; choose one of: {valid}")
+        return v
 
 
 class RenderParams(ReportParams):
@@ -45,7 +54,7 @@ class RenderParams(ReportParams):
     turn_style: str = Field(defaults.TURN_STYLE, pattern="^(stylized|faithful)$")
     paper: str = Field(defaults.PAPER, pattern="^(letter|a4)$")  # pdf paginated layouts only
     lanes_per_page: int = Field(defaults.LANES_PER_PAGE, ge=1)  # portrait only
-    # portrait / landscape / preview; default 0 = auto-fit as many as fit per lane
+    # portrait / landscape / preview / strip; default 0 = auto-fit as many as fit per lane
     decisions_per_lane: int = Field(defaults.DECISIONS_PER_LANE, ge=0)
     # ghosted "roads not taken" stubs at junctions; off by default
     show_branches: bool = defaults.SHOW_BRANCHES

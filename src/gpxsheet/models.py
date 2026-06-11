@@ -40,7 +40,6 @@ class DecisionKind:
     """Decision-point categories from docs/product.md."""
 
     CRITICAL_TURN = "critical_turn"
-    CONFIRMATION = "confirmation"
     FUEL = "fuel"
     ROUNDABOUT = "roundabout"
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import time
 import uuid
 from dataclasses import asdict, dataclass
 from typing import Protocol, cast
@@ -69,13 +70,27 @@ class JobStore(Protocol):
 
 
 class InMemoryJobStore:
-    def __init__(self) -> None:
+    def __init__(self, ttl_seconds: int | None = None) -> None:
+        from . import settings
+
         self._jobs: dict[str, JobRecord] = {}
         self._by_key: dict[str, str] = {}
+        self._created_at: dict[str, float] = {}
+        self._ttl = ttl_seconds if ttl_seconds is not None else settings.job_ttl_seconds()
+
+    def _prune(self) -> None:
+        now = time.monotonic()
+        expired = [jid for jid, t in self._created_at.items() if now - t > self._ttl]
+        for jid in expired:
+            self._jobs.pop(jid, None)
+            self._created_at.pop(jid, None)
+        self._by_key = {k: v for k, v in self._by_key.items() if v in self._jobs}
 
     def create(self, cache_key: str | None = None, owner: str | None = None) -> str:
+        self._prune()
         job_id = uuid.uuid4().hex
         self._jobs[job_id] = JobRecord(id=job_id, owner=owner)
+        self._created_at[job_id] = time.monotonic()
         if cache_key:
             self._by_key[cache_key] = job_id
         return job_id

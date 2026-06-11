@@ -1,9 +1,10 @@
 """Tests for the route analysis engine."""
 
 import gpxsheet
-from gpxsheet.analysis import detect_decision_points
+from gpxsheet.analysis import analyze_route, detect_decision_points
 from gpxsheet.gpx import load_route
 from gpxsheet.models import DecisionKind
+from gpxsheet.profiles import Profile
 from gpxsheet.simplify import rdp
 
 
@@ -98,9 +99,13 @@ def test_analyze_end_to_end_sport_touring(l_route_file):
 
 
 def test_reassurance_markers_respect_interval(l_route_file):
-    route = gpxsheet.analyze(
-        str(l_route_file), profile="sport-touring", reassurance_interval=1.0
+    # Pass a Profile with a short interval so the 5-mile l_route gets markers.
+    prof = Profile(
+        name="test", decision_threshold=40, include_fuel=False,
+        include_reassurance=True, reassurance_interval_miles=1.0,
     )
+    route = load_route(str(l_route_file))
+    analyze_route(route, profile=prof)
     assert len(route.reassurance_markers) >= 3
     miles = [m.mile for m in route.reassurance_markers]
     assert miles == sorted(miles)
@@ -110,9 +115,12 @@ def test_reassurance_marker_not_dropped_near_end(l_route_file):
     # Regression: a route between 1x and 1.5x the interval must still get its one
     # marker. The l-route is ~5 mi; with a 4 mi interval the single marker at
     # mile 4 (~1 mi from the end) must be kept, not suppressed by an end buffer.
-    route = gpxsheet.analyze(
-        str(l_route_file), profile="sport-touring", reassurance_interval=4.0
+    prof = Profile(
+        name="test", decision_threshold=40, include_fuel=False,
+        include_reassurance=True, reassurance_interval_miles=4.0,
     )
+    route = load_route(str(l_route_file))
+    analyze_route(route, profile=prof)
     assert len(route.reassurance_markers) == 1
     assert route.reassurance_markers[0].mile == 4.0
 

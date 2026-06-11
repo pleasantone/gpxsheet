@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from .layout import TURN_STYLE_STYLIZED
 
+DEFAULT_PROFILE = "sport-touring"  # minimalist | sport-touring | rally
+DEFAULT_LAYOUT = "portrait"        # portrait | landscape | preview | strip
+DEFAULT_FORMAT = "pdf"             # pdf | png
 SHOW_BRANCHES = False  # ghosted "roads not taken" stubs off by default
 TURN_STYLE = TURN_STYLE_STYLIZED  # "stylized" vs "faithful"
 PAPER = "letter"  # vs "a4"
 LANES_PER_PAGE = 4  # portrait stacked strips per page
-# Public default = auto-fit (0/None packs each lane until labels would overlap).
-# The pdf renderers keep a separate internal fixed-cap fallback
-# (``pdf.FIXED_DECISIONS_PER_LANE``) for direct calls.
+# 0 = auto-fit (pack each lane until labels would overlap).
 DECISIONS_PER_LANE = 0

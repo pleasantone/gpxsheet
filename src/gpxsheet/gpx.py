@@ -66,7 +66,11 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
                 points.append(GeoPoint(rpt.latitude, rpt.longitude, rpt.elevation))
 
     if len(points) < 2:
-        raise ValueError(f"{path}: no usable track or route geometry (need >= 2 points)")
+        found = len(points)
+        raise ValueError(
+            f"{path}: no usable track or route geometry "
+            f"(need >= 2 points, found {found})"
+        )
 
     waypoints = [
         Waypoint(w.latitude, w.longitude, w.name, w.symbol) for w in gpx.waypoints

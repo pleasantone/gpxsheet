@@ -165,3 +165,46 @@ def test_prod_guard_passes_with_real_creds(monkeypatch):
     monkeypatch.setenv("GPXSHEET_MINIO_ACCESS_KEY", "real-access")
     monkeypatch.setenv("GPXSHEET_MINIO_SECRET_KEY", "real-secret")
     _guard_prod_secrets()  # no raise
+
+
+# --- path-traversal guard on LocalStorage -----------------------------------
+
+
+def test_local_storage_rejects_traversal_key(tmp_path):
+    from gpxsheet.service.storage import LocalStorage
+
+    s = LocalStorage(tmp_path / "results")
+    with pytest.raises(ValueError, match="escapes root"):
+        s.save("../secret.txt", b"data")
+
+
+def test_local_storage_accepts_normal_key(tmp_path):
+    from gpxsheet.service.storage import LocalStorage
+
+    s = LocalStorage(tmp_path / "results")
+    s.save("abc123.pdf", b"data")
+    assert s.load("abc123.pdf") == b"data"
+
+
+# --- InMemoryJobStore TTL / pruning -----------------------------------------
+
+
+def test_in_memory_job_store_prunes_expired_jobs():
+    import time
+
+    from gpxsheet.service.jobs import InMemoryJobStore
+
+    store = InMemoryJobStore(ttl_seconds=0)  # expire immediately
+    jid = store.create()
+    time.sleep(0.01)
+    store.create()  # triggers prune
+    assert store.get(jid) is None  # should have been pruned
+
+
+def test_in_memory_job_store_keeps_fresh_jobs():
+    from gpxsheet.service.jobs import InMemoryJobStore
+
+    store = InMemoryJobStore(ttl_seconds=3600)
+    jid = store.create()
+    store.create()  # triggers prune, but jid is not expired
+    assert store.get(jid) is not None

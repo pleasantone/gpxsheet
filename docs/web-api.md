@@ -79,6 +79,7 @@ Form fields (all optional except `gpx`):
 | `paper` | string | `letter` | `letter` or `a4` (paginated PDF layouts only) |
 | `lanes_per_page` | int ≥ 1 | `4` | strip lanes per page (`portrait` only) |
 | `decisions_per_lane` | int ≥ 0 | `0` | max decisions per page/lane (`portrait` / `landscape` / `preview`); the default **`0` = auto-fit** as many as fit each lane (pass a positive number to force a fixed cap) |
+| `show_branches` | bool | `false` | draw ghosted "roads not taken" stubs at junctions |
 
 **Layouts:**
 

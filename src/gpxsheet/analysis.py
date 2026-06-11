@@ -15,11 +15,11 @@ fuel comes from GPX waypoints that look like fuel stops.
 
 from __future__ import annotations
 
+import logging
 import warnings
 from dataclasses import replace
 
-from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters
-from .labels import point_segment_distance
+from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters, project_to_segment
 from .models import (
     POI,
     DecisionKind,
@@ -34,6 +34,8 @@ from .models import (
 )
 from .profiles import Profile, get_profile
 from .simplify import rdp
+
+log = logging.getLogger(__name__)
 
 # Cleanup tolerance: strip GPS jitter before bearing analysis.
 CLEANUP_TOLERANCE_M = 10.0
@@ -93,14 +95,14 @@ _FOOD_HINTS = (
 )
 
 
-def _turn_word(total_angle: float) -> str:
+def turn_word(total_angle: float) -> str:
     direction = "Right" if total_angle > 0 else "Left"
     if abs(total_angle) >= 100.0:
         return f"Sharp {direction.lower()}"
     return direction
 
 
-def _significance_for_turn(total_angle: float) -> int:
+def significance_for_turn(total_angle: float) -> int:
     mag = abs(total_angle)
     if mag >= 100.0:
         return 80
@@ -213,8 +215,8 @@ def detect_decision_points(points: list[GeoPoint]) -> list[DecisionPoint]:
             decisions.append(
                 DecisionPoint(
                     mile=meters_to_miles(clean_dist[apex]),
-                    instruction=_turn_word(total),
-                    significance=_significance_for_turn(total),
+                    instruction=turn_word(total),
+                    significance=significance_for_turn(total),
                     lat=clean[apex].lat,
                     lon=clean[apex].lon,
                     kind=DecisionKind.CRITICAL_TURN,
@@ -317,8 +319,6 @@ def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, floa
     interpolated along the nearest segment rather than snapped to a vertex, so a
     waypoint mid-way along a long leg on a sparse route reads correctly.
     """
-    import math
-
     from .geo import haversine
 
     pts = route.points
@@ -326,19 +326,12 @@ def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, floa
         d = haversine(pts[0].lat, pts[0].lon, lat, lon) if pts else float("inf")
         return 0.0, d
 
-    coslat = math.cos(math.radians(lat))
-
-    def xy(p: GeoPoint) -> tuple[float, float]:
-        return ((p.lon - lon) * coslat * 111320.0, (p.lat - lat) * 110540.0)
-
     best_d, best_mile = float("inf"), 0.0
     for i in range(len(pts) - 1):
-        a, b = xy(pts[i]), xy(pts[i + 1])
-        d, (nx, ny) = point_segment_distance((0.0, 0.0), a, b)
+        d, t = project_to_segment(
+            lat, lon, (pts[i].lat, pts[i].lon), (pts[i + 1].lat, pts[i + 1].lon)
+        )
         if d < best_d:
-            dx, dy = b[0] - a[0], b[1] - a[1]
-            seg2 = dx * dx + dy * dy
-            t = 0.0 if seg2 == 0 else ((nx - a[0]) * dx + (ny - a[1]) * dy) / seg2
             d_a, d_b = route.distances_m[i], route.distances_m[i + 1]
             best_mile = meters_to_miles(d_a + t * (d_b - d_a))
             best_d = d
@@ -442,12 +435,71 @@ def build_segments(route: Route) -> list[Segment]:
     return segments
 
 
+def _geometry_baseline(route: Route) -> None:
+    """Step 1: populate decisions/segments from geometry alone.
+
+    On twisty roads this over-detects (curves look like turns). OSM enrichment
+    in the next step replaces these with junction/road-name decisions when
+    available, so this is only the final answer on sparse/offline routes.
+    """
+    route.decision_points = merge_close_decisions(detect_decision_points(route.points))
+    route.fuel_stops = []  # populated by OSM enrichment; GPX fuel waypoints shown as POIs
+    route.segments = build_segments(route)
+
+
+def _osm_enrich_pass(route: Route, prof: Profile, include_hazards: bool) -> bool:
+    """Step 2: replace geometry decisions with OSM road-name decisions.
+
+    Skips sparse routes (waypoint-only <rte>) and falls back gracefully on any
+    Overpass/network failure. Returns True if OSM ran successfully.
+    """
+    from .enrich import enrich_route
+
+    if looks_sparse(route):
+        warnings.warn(
+            "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
+            "OSM enrichment, which would sample road names along straight lines "
+            "that do not follow roads. Using geometry-only analysis.",
+            stacklevel=3,
+        )
+        return False
+    try:
+        enrich_route(route, include_fuel=prof.include_fuel, include_hazards=include_hazards)
+        return True
+    except Exception as exc:  # network/Overpass/data failure -> fall back
+        log.exception("OSM enrichment failed; using geometry-only analysis")
+        warnings.warn(
+            f"OSM enrichment failed ({type(exc).__name__}: {exc}); "
+            "using geometry-only analysis.",
+            stacklevel=3,
+        )
+        return False
+
+
+def _apply_profile(
+    route: Route, prof: Profile, fuel_range: float | None, osm_ran: bool
+) -> None:
+    """Step 3: apply profile threshold and derive fuel/reassurance products."""
+    # Geometry-only fallback: GPX waypoints are the fuel source since OSM didn't run.
+    if not osm_ran and prof.include_fuel:
+        route.fuel_stops = detect_fuel_stops(route)
+
+    route.decision_points = [
+        d for d in route.decision_points if d.significance >= prof.decision_threshold
+    ]
+    route.fuel_report = analyze_fuel(route, fuel_range) if prof.include_fuel else None
+    route.pois = detect_pois(route) if prof.include_reassurance else []
+    route.reassurance_markers = (
+        generate_reassurance_markers(route, prof.reassurance_interval_miles)
+        if prof.include_reassurance else []
+    )
+
+
 def analyze_route(
     route: Route,
     *,
     profile: str | Profile = "sport-touring",
     fuel_range: float | None = None,
-    reassurance_interval: float | None = None,
     include_hazards: bool = False,
 ) -> Route:
     """Run the full analysis, populating ``route`` in place.
@@ -460,59 +512,7 @@ def analyze_route(
     :class:`Route` for convenience.
     """
     prof = profile if isinstance(profile, Profile) else get_profile(profile)
-    interval = (
-        reassurance_interval
-        if reassurance_interval is not None
-        else prof.reassurance_interval_miles
-    )
-
-    # 1. Geometry baseline: localized turns, clustered firings collapsed. On
-    #    twisty roads this over-detects (curves look like turns) -- OSM in step 2
-    #    replaces these with junction/road-name decisions when available.
-    route.decision_points = merge_close_decisions(detect_decision_points(route.points))
-    route.fuel_stops = []  # populated by OSM enrichment; GPX fuel waypoints shown as POIs
-    route.segments = build_segments(route)
-
-    # 2. OSM enrichment: replaces decisions with durable road-name changes,
-    #    segments with the named roads, and adds OSM fuel. Must run after step 1.
-    #    Sparse waypoint-only routes are skipped (road names sampled along straight
-    #    lines that don't follow roads are meaningless) and a failed Overpass query
-    #    falls back to the geometry baseline, so analysis still produces output.
-    osm_ran = False
-    if looks_sparse(route):
-        warnings.warn(
-            "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
-            "OSM enrichment, which would sample road names along straight lines "
-            "that do not follow roads. Using geometry-only analysis.",
-            stacklevel=2,
-        )
-    else:
-        from .enrich import enrich_route
-
-        try:
-            enrich_route(route, include_fuel=prof.include_fuel, include_hazards=include_hazards)
-            osm_ran = True
-        except Exception as exc:  # network/Overpass/data failure -> fall back
-            warnings.warn(
-                f"OSM enrichment failed ({type(exc).__name__}: {exc}); "
-                "using geometry-only analysis.",
-                stacklevel=2,
-            )
-
-    # In geometry-only fallback (OSM unavailable), use GPX waypoints to detect
-    # fuel stops since OSM won't provide them. When OSM ran, its data is
-    # authoritative and GPX fuel waypoints are shown as POIs instead.
-    if not osm_ran and prof.include_fuel:
-        route.fuel_stops = detect_fuel_stops(route)
-
-    # 3. Apply the profile's display threshold to whatever decisions step 1/2
-    #    produced, then derive products that depend on the final fuel stops.
-    route.decision_points = [
-        d for d in route.decision_points if d.significance >= prof.decision_threshold
-    ]
-    route.fuel_report = analyze_fuel(route, fuel_range) if prof.include_fuel else None
-    route.pois = detect_pois(route) if prof.include_reassurance else []
-    route.reassurance_markers = (
-        generate_reassurance_markers(route, interval) if prof.include_reassurance else []
-    )
+    _geometry_baseline(route)
+    osm_ran = _osm_enrich_pass(route, prof, include_hazards)
+    _apply_profile(route, prof, fuel_range, osm_ran)
     return route

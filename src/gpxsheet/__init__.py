@@ -15,34 +15,33 @@ from .validate import Finding, ValidationReport
 if TYPE_CHECKING:
     from .models import Route
 
-__version__ = "0.2.1"  # x-release-please-version
+__version__ = "0.3.0"  # x-release-please-version
 
 __all__ = [
     "__version__",
     "render",
     "analyze",
     "validate",
-    "analyze_route",
     "load_route",
     "Finding",
     "ValidationReport",
 ]
 
-DEFAULT_PROFILE = "sport-touring"
+DEFAULT_PROFILE = defaults.DEFAULT_PROFILE
 
 
 def render(
     gpx_file: str,
     output_file: str | None = None,
     *,
-    profile: str = DEFAULT_PROFILE,
+    profile: str = defaults.DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    layout: str = "portrait",
-    format: str = "pdf",
+    layout: str = defaults.DEFAULT_LAYOUT,
+    format: str | None = None,
     turn_style: str = defaults.TURN_STYLE,
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
-    decisions_per_lane: int | None = None,
+    decisions_per_lane: int = defaults.DECISIONS_PER_LANE,
     show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> str:
     """Render a GPX route to a tank-bag navigation map.
@@ -57,15 +56,17 @@ def render(
             ``"landscape"`` (one big strip per page), ``"preview"`` (the whole
             route as one continuous image), or ``"strip"`` (a single schematic
             strip).
-        format: ``"pdf"`` or ``"png"``. Paginated layouts (``portrait`` /
-            ``landscape``) become a multi-page PDF or one tall stacked PNG.
+        format: ``"pdf"`` or ``"png"``, or ``None`` to infer from ``output_file``'s
+            extension (``.png`` → ``"png"``, anything else → ``"pdf"``).
+            Paginated layouts (``portrait`` / ``landscape``) become a multi-page
+            PDF or one tall stacked PNG.
         turn_style: Strip bend style, ``"stylized"`` or ``"faithful"``.
         paper: Page size for paginated PDF layouts, ``"letter"`` or ``"a4"``.
         lanes_per_page: ``portrait`` only -- strip lanes per page.
         decisions_per_lane: max decisions per page/lane for the paginated layouts
-            (``portrait`` / ``landscape`` / ``preview``). The default (``None``;
-            also ``0``) auto-fits as many as fit each lane without overlap; pass a
-            positive number to force a fixed cap.
+            (``portrait`` / ``landscape`` / ``preview``). Default ``0`` auto-fits
+            as many decisions as fit each lane without overlap; pass a positive
+            number to force a fixed cap.
         show_branches: draw the ghosted "roads not taken" stubs at each junction
             (off by default); set True to show them.
 
@@ -74,6 +75,9 @@ def render(
     """
     from .pdf import render_layout
 
+    if format is None:
+        ext = str(output_file).lower() if output_file is not None else ""
+        format = "png" if ext.endswith(".png") else "pdf"
     if output_file is None:
         output_file = f"route.{format}"
     route = analyze(gpx_file, profile=profile, fuel_range=fuel_range)
@@ -94,9 +98,8 @@ def render(
 def analyze(
     gpx_file: str,
     *,
-    profile: str = DEFAULT_PROFILE,
+    profile: str = defaults.DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    reassurance_interval: float | None = None,
     include_hazards: bool = False,
 ) -> Route:
     """Run the route analysis engine on a GPX file.
@@ -114,7 +117,6 @@ def analyze(
         route,
         profile=profile,
         fuel_range=fuel_range,
-        reassurance_interval=reassurance_interval,
         include_hazards=include_hazards,
     )
 

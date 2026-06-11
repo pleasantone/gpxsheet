@@ -50,7 +50,11 @@ class Placement:
 
 
 def point_segment_distance(p: Point, a: Point, b: Point) -> tuple[float, Point]:
-    """(distance, nearest point) from point ``p`` to segment ``a``–``b``, in 2-D."""
+    """(distance, nearest point) from point ``p`` to segment ``a``–``b``, in 2-D.
+
+    Operates in the schematic layout coordinate space (rendered units), not
+    geographic degrees — distinct from :func:`gpxsheet.geo.project_to_segment`.
+    """
     px, py = p
     ax, ay = a
     bx, by = b

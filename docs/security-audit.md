@@ -153,6 +153,29 @@ to CI (`.github/workflows/ci.yml`) that installs the full extras and runs
 The Docker image already creates and runs as a non-root `app` user. The worker
 needs only Redis + MinIO; no extra capabilities are granted.
 
+## 11. Path-traversal guard on LocalStorage — **Fixed**
+
+`LocalStorage._path` now resolves the full path and asserts it is relative to
+the storage root before any file I/O. A key containing `..` components raises
+`ValueError`. Keys are always `{uuid4}.{ext}` on the normal code path, so this
+is defense-in-depth for any future caller. Covered by
+`tests/test_service_security.py::test_local_storage_rejects_traversal_key`.
+
+## 12. InMemoryJobStore TTL / unbounded growth — **Fixed**
+
+`InMemoryJobStore` previously grew without bound (jobs were never evicted). It
+now prunes expired records on every `create()` call, using the same
+`GPXSHEET_JOB_TTL` setting as `RedisJobStore` (default 24 h). Constructors
+accept an explicit `ttl_seconds` for tests. Covered by
+`tests/test_service_security.py::test_in_memory_job_store_prunes_expired_jobs`.
+
+## 13. Rate-limiter bucket pruning — **Fixed**
+
+`_RateLimiter._hits` previously kept expired per-identity hit lists indefinitely,
+so a high-churn API key workload could grow the dict without bound. The `check()`
+method now drops identity buckets that are fully empty after the 60-second window
+expires. This is a constant-factor change with no behavior impact on the window logic.
+
 ---
 
 ## Operator checklist (public deployment)

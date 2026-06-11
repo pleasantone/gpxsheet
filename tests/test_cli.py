@@ -60,6 +60,38 @@ def test_generate_no_branches_flag(l_route_file, tmp_path):
     assert out.exists() and out.read_bytes()[:4] == b"%PDF"
 
 
+def test_generate_landscape_layout(l_route_file, tmp_path):
+    out = tmp_path / "ls.pdf"
+    result = runner.invoke(
+        app, ["generate", str(l_route_file), "-o", str(out), "--layout", "landscape"]
+    )
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes()[:4] == b"%PDF"
+
+
+def test_generate_strip_layout(l_route_file, tmp_path):
+    out = tmp_path / "strip.png"
+    result = runner.invoke(
+        app, ["generate", str(l_route_file), "-o", str(out), "--layout", "strip"]
+    )
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_generate_format_inferred_from_png_extension(l_route_file, tmp_path):
+    out = tmp_path / "route.png"
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_generate_default_output_for_strip(l_route_file, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["generate", str(l_route_file), "--layout", "strip"])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "route_strip.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+
+
 def test_validate_command_ok(l_route_file):
     # No fuel-range; the offshore route yields no OSM data -> no warnings -> exit 0.
     result = runner.invoke(app, ["validate", str(l_route_file)])

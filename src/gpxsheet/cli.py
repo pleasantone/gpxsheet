@@ -37,7 +37,7 @@ def main(
 @app.command()
 def generate(
     gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
-    output: Path = typer.Option("route.pdf", "--output", "-o", help="Output PDF path."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Output file path."),
     profile: str = typer.Option(
         DEFAULT_PROFILE, "--profile", help="minimalist | sport-touring | rally."
     ),
@@ -51,9 +51,9 @@ def generate(
         defaults.SHOW_BRANCHES, "--branches/--no-branches",
         help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
-    landscape: bool = typer.Option(
-        False, "--landscape",
-        help="One big strip per page instead of the default portrait roadbook.",
+    layout: str = typer.Option(
+        defaults.DEFAULT_LAYOUT, "--layout",
+        help="portrait (default) | landscape | strip | preview.",
     ),
     paper: str = typer.Option(
         defaults.PAPER, "--paper", help="Page size: letter | a4."
@@ -63,25 +63,37 @@ def generate(
     ),
     lane_decisions: int = typer.Option(
         defaults.DECISIONS_PER_LANE, "--lane-decisions", min=0,
-        help="Max decisions per page (portrait lane / landscape page); default 0 = auto-fit.",
+        help="Max decisions per page/lane; default 0 = auto-fit.",
     ),
 ) -> None:
-    """Generate a tank-bag navigation PDF (portrait roadbook)."""
+    """Generate a tank-bag navigation map (portrait, landscape, strip, or preview)."""
     from . import render
 
-    out = render(
-        str(gpx_file),
-        str(output),
-        profile=profile,
-        fuel_range=fuel_range,
-        layout="landscape" if landscape else "portrait",
-        format="pdf",
-        turn_style=turns,
-        show_branches=branches,
-        paper=paper,
-        lanes_per_page=lanes,
-        decisions_per_lane=lane_decisions,
-    )
+    if output is None:
+        if layout == "strip":
+            output = Path("route_strip.png")
+        elif layout == "preview":
+            output = Path("route_preview.png")
+        else:
+            output = Path("route.pdf")
+    fmt = "png" if output.suffix.lower() == ".png" else "pdf"
+    try:
+        out = render(
+            str(gpx_file),
+            str(output),
+            profile=profile,
+            fuel_range=fuel_range,
+            layout=layout,
+            format=fmt,
+            turn_style=turns,
+            show_branches=branches,
+            paper=paper,
+            lanes_per_page=lanes,
+            decisions_per_lane=lane_decisions,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {out}")
 
 
@@ -94,98 +106,17 @@ def analyze(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    reassurance_interval: float | None = typer.Option(
-        None, "--reassurance-interval", help="Miles between reassurance markers."
-    ),
 ) -> None:
     """Produce a text route analysis (decision points, fuel, segments)."""
     from . import analyze as _analyze
     from .report import format_analysis
 
-    route = _analyze(
-        str(gpx_file),
-        profile=profile,
-        fuel_range=fuel_range,
-        reassurance_interval=reassurance_interval,
-    )
+    try:
+        route = _analyze(str(gpx_file), profile=profile, fuel_range=fuel_range)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(format_analysis(route))
-
-
-@app.command()
-def strip(
-    gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
-    output: Path = typer.Option("route_strip.png", "--output", "-o", help="Output PNG path."),
-    profile: str = typer.Option(
-        DEFAULT_PROFILE, "--profile", help="minimalist | sport-touring | rally."
-    ),
-    fuel_range: float | None = typer.Option(
-        None, "--fuel-range", help="Rider fuel range in miles."
-    ),
-    turns: str = typer.Option(
-        defaults.TURN_STYLE, "--turns", help="Bend style at turns: stylized | faithful."
-    ),
-    branches: bool = typer.Option(
-        defaults.SHOW_BRANCHES, "--branches/--no-branches",
-        help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
-    ),
-) -> None:
-    """Render the schematic map strip to a PNG."""
-    from . import render
-
-    out = render(
-        str(gpx_file),
-        str(output),
-        profile=profile,
-        fuel_range=fuel_range,
-        layout="strip",
-        format="png",
-        turn_style=turns,
-        show_branches=branches,
-    )
-    typer.echo(f"Wrote {out}")
-
-
-@app.command()
-def preview(
-    gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
-    output: Path = typer.Option("route_preview.png", "--output", "-o", help="Output image path."),
-    profile: str = typer.Option(
-        DEFAULT_PROFILE, "--profile", help="minimalist | sport-touring | rally."
-    ),
-    fuel_range: float | None = typer.Option(
-        None, "--fuel-range", help="Rider fuel range in miles."
-    ),
-    turns: str = typer.Option(
-        defaults.TURN_STYLE, "--turns", help="Bend style at turns: stylized | faithful."
-    ),
-    branches: bool = typer.Option(
-        defaults.SHOW_BRANCHES, "--branches/--no-branches",
-        help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
-    ),
-    lane_decisions: int = typer.Option(
-        defaults.DECISIONS_PER_LANE, "--lane-decisions", min=0,
-        help="Max decisions per strip lane; default 0 = auto-fit.",
-    ),
-) -> None:
-    """Render the whole route as one non-paginated image (stacked strip lanes).
-
-    An on-screen overview: the entire route as a column of strip blocks, no page
-    breaks.
-    """
-    from . import render
-
-    out = render(
-        str(gpx_file),
-        str(output),
-        profile=profile,
-        fuel_range=fuel_range,
-        layout="preview",
-        format="png",
-        turn_style=turns,
-        show_branches=branches,
-        decisions_per_lane=lane_decisions,
-    )
-    typer.echo(f"Wrote {out}")
 
 
 @app.command()
@@ -202,7 +133,11 @@ def validate(
     from . import validate as _validate
     from .validate import WARNING, format_findings
 
-    report = _validate(str(gpx_file), fuel_range=fuel_range)
+    try:
+        report = _validate(str(gpx_file), fuel_range=fuel_range)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(format_findings(report.route, report.findings))
     if any(f.level == WARNING for f in report.findings):
         raise typer.Exit(code=1)

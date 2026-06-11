@@ -29,7 +29,6 @@ class Profile:
     decision_threshold: int
     include_fuel: bool
     include_reassurance: bool
-    include_confirmation: bool
     reassurance_interval_miles: float
 
 
@@ -39,7 +38,6 @@ PROFILES: dict[str, Profile] = {
         decision_threshold=55,
         include_fuel=False,
         include_reassurance=False,
-        include_confirmation=False,
         reassurance_interval_miles=15.0,
     ),
     "sport-touring": Profile(
@@ -47,7 +45,6 @@ PROFILES: dict[str, Profile] = {
         decision_threshold=40,
         include_fuel=True,
         include_reassurance=True,
-        include_confirmation=False,
         reassurance_interval_miles=15.0,
     ),
     "rally": Profile(
@@ -55,10 +52,12 @@ PROFILES: dict[str, Profile] = {
         decision_threshold=30,
         include_fuel=True,
         include_reassurance=True,
-        include_confirmation=True,
         reassurance_interval_miles=10.0,
     ),
 }
+
+
+VALID_PROFILES: frozenset[str] = frozenset(PROFILES)
 
 
 def get_profile(name: str) -> Profile:
