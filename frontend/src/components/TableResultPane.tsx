@@ -1,6 +1,7 @@
 import DOMPurify from "dompurify";
 import { useMemo, useState } from "react";
-import { parseTableSummary } from "./TableInfo";
+import { parseTableSummary } from "../tableSummary";
+import { Spinner } from "./Spinner";
 
 interface TableResultPaneProps {
   html: string | null;
@@ -32,10 +33,7 @@ export function TableResultPane({ html, markdown, loading, error }: TableResultP
       <div className="rounded-xl border border-slate-200 bg-white min-h-40 flex items-center justify-center overflow-x-auto">
         {loading && (
           <div className="flex flex-col items-center gap-2 py-8 text-slate-400">
-            <svg className="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+            <Spinner className="w-8 h-8" />
             <span className="text-sm">Building table…</span>
           </div>
         )}

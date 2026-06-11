@@ -1,4 +1,5 @@
 import type { AnalyzeResult } from "../types";
+import { SummaryCards } from "./SummaryCards";
 
 interface RouteInfoProps {
   result: AnalyzeResult | null;
@@ -16,40 +17,27 @@ export function RouteInfo({ result, isLoading, error, fuelRange }: RouteInfoProp
     );
   }
 
-  if (isLoading || !result) {
-    return (
-      <div className="flex gap-3 animate-pulse">
-        <div className="h-16 flex-1 rounded-xl bg-slate-200" />
-        <div className="h-16 flex-1 rounded-xl bg-slate-200" />
-        <div className="h-16 flex-1 rounded-xl bg-slate-200" />
-      </div>
-    );
-  }
-
-  const cards = [
-    { label: "Distance", value: `${result.length_miles.toFixed(1)} mi` },
-    { label: "Turns", value: String(result.decision_points.length) },
-    {
-      label: "Fuel stops",
-      value: result.fuel_stops.length
-        ? String(result.fuel_stops.length)
-        : "none found",
-    },
-  ];
+  const cards = result
+    ? [
+        { label: "Distance", value: `${result.length_miles.toFixed(1)} mi` },
+        { label: "Turns", value: String(result.decision_points.length) },
+        {
+          label: "Fuel stops",
+          value: result.fuel_stops.length ? String(result.fuel_stops.length) : "none found",
+        },
+      ]
+    : [];
 
   return (
-    <div className="space-y-2">
-      <h2 data-testid="route-name" className="text-lg font-semibold text-slate-800 truncate">{result.name}</h2>
-      <div data-testid="route-stats" className="flex gap-3">
-        {cards.map((c) => (
-          <div key={c.label} className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{c.label}</p>
-            <p className="text-base font-bold text-slate-800 mt-0.5">{c.value}</p>
-          </div>
-        ))}
-      </div>
-      <FuelGapNotice gapMiles={result.longest_fuel_gap_miles} fuelRange={fuelRange} />
-    </div>
+    <SummaryCards
+      testId="route"
+      name={result?.name ?? null}
+      cards={cards}
+      loading={isLoading || !result}
+      skeletonCount={3}
+    >
+      <FuelGapNotice gapMiles={result?.longest_fuel_gap_miles ?? null} fuelRange={fuelRange} />
+    </SummaryCards>
   );
 }
 

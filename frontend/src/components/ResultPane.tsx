@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Spinner } from "./Spinner";
 
 interface ResultPaneProps {
   previewBlobUrl: string | null;
@@ -24,10 +25,7 @@ export function ResultPane({
       <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 min-h-40 flex items-center justify-center">
         {previewLoading && !imgSrc && (
           <div className="flex flex-col items-center gap-2 py-8 text-slate-400">
-            <svg className="w-8 h-8 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+            <Spinner className="w-8 h-8" />
             <span className="text-sm">Rendering preview…</span>
           </div>
         )}
@@ -84,18 +82,18 @@ function PanZoomImage({ src }: { src: string }) {
     view.current = { scale, pos };
   }, [scale, pos]);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setScale(1);
     setPos({ x: 0, y: 0 });
-  };
-  const apply = (s: number, p: Pt) => {
+  }, []);
+  const apply = useCallback((s: number, p: Pt) => {
     const ns = clampZoom(s);
     setScale(ns);
     setPos(ns === 1 ? { x: 0, y: 0 } : p); // snap to centre at 1x
-  };
+  }, []);
 
   // Reset whenever a new image is shown.
-  useEffect(reset, [src]);
+  useEffect(reset, [reset, src]);
 
   useEffect(() => {
     const el = ref.current;
@@ -162,7 +160,7 @@ function PanZoomImage({ src }: { src: string }) {
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
     };
-  }, []);
+  }, [apply]);
 
   // Mouse drag (desktop).
   const drag = useRef<Pt | null>(null);

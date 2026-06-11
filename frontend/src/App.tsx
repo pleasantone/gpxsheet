@@ -65,12 +65,12 @@ export default function App() {
   useEffect(() => {
     if (!analyzeJobDone || !analyzeJobId || analyzeJobId === analyzeJobIdRef.current) return;
     analyzeJobIdRef.current = analyzeJobId;
-    fetchResultJson(analyzeJobId)
+    fetchResultJson(analyzeJobId, analyzeStatus?.result_url)
       .then((result) =>
         setReady((prev) => (prev ? { ...prev, analyzeResult: result } : prev))
       )
       .catch(() => {});
-  }, [analyzeJobDone, analyzeJobId]);
+  }, [analyzeJobDone, analyzeJobId, analyzeStatus?.result_url]);
 
   // Blob URLs / text — derived from poll results
   const previewBlobUrl = useBlobUrl(previewBlob);
@@ -106,7 +106,6 @@ export default function App() {
     const file = ready.file;
     const id = setTimeout(() => runTable(file, tableOpts), 400);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, ready?.file, tableOpts]);
 
   function handleFile(file: File) {
@@ -315,7 +314,7 @@ function ModeTabs({
 function Header({ children }: { children?: React.ReactNode }) {
   return (
     <header className="border-b border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
-      <img src="/icon.svg" alt="" className="w-7 h-7 rounded" />
+      <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="w-7 h-7 rounded" />
       <span className="text-lg font-bold text-brand tracking-tight">GPXSheet</span>
       <span className="text-xs text-slate-400 hidden sm:block">
         GPX → your navigation buddy
