@@ -35,7 +35,10 @@ class LocalStorage:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def _path(self, key: str) -> Path:
-        return self.root / key
+        p = (self.root / key).resolve()
+        if not p.is_relative_to(self.root.resolve()):
+            raise ValueError(f"storage key escapes root: {key!r}")
+        return p
 
     def save(self, key: str, data: bytes, content_type: str = "application/pdf") -> None:
         self._path(key).write_bytes(data)

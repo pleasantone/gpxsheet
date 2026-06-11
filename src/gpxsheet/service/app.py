@@ -56,7 +56,7 @@ class _RateLimiter:
         if self.limit <= 0:
             return
         now = time.monotonic()
-        recent = [t for t in self._hits[identity] if now - t < 60.0]
+        recent = [t for t in self._hits.get(identity, []) if now - t < 60.0]
         if len(recent) >= self.limit:
             # Fixed 60s window: the oldest hit clears in (60 - its age) seconds.
             retry_after = max(1, int(60.0 - (now - recent[0])))
@@ -72,6 +72,8 @@ class _RateLimiter:
             )
         recent.append(now)
         self._hits[identity] = recent
+        # Prune identities whose window has fully expired to prevent unbounded growth.
+        self._hits = {k: v for k, v in self._hits.items() if v}
 
 
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
