@@ -35,13 +35,16 @@ jobs:
       - run: cd frontend && npm ci
       - run: cd frontend && npx playwright install chromium --with-deps
       - name: Start API (simple mode)
-        run: uvicorn gpxsheet.service.asgi:app --port 8000 &
+        run: python -m uvicorn gpxsheet.service.asgi:app --port 8000 > /tmp/api.log 2>&1 &
       - name: Start Vite dev server
-        run: cd frontend && npm run dev -- --port 5173 &
+        run: cd frontend && npm run dev -- --port 5173 --host 127.0.0.1 > /tmp/vite.log 2>&1 &
       - name: Wait for servers
-        run: cd frontend && npx wait-on http://localhost:8000/healthz http://localhost:5173 --timeout 30000
+        run: cd frontend && npx wait-on http://127.0.0.1:8000/healthz http://127.0.0.1:5173 --timeout 30000
       - name: Run smoke tests
-        run: cd frontend && BASE_URL=http://localhost:5173 npx playwright test tests/smoke.spec.ts
+        run: cd frontend && BASE_URL=http://127.0.0.1:5173 npx playwright test tests/smoke.spec.ts
+      - name: Show server logs on failure
+        if: failure()
+        run: echo "=== API ===" && cat /tmp/api.log || true; echo "=== Vite ===" && cat /tmp/vite.log || true
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
