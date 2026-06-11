@@ -25,36 +25,25 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
-### Frontend (React/Vite SPA)
+### Frontend + dev server modes
 
 The web UI lives in `frontend/` and builds to `src/gpxsheet/service/static/`
-(gitignored — must be built before the FastAPI service will serve a UI).
+(gitignored). Full breakdown: [docs/dev-workflow.md](docs/dev-workflow.md).
 
 ```bash
-make frontend           # build once: npm ci && npm run build
-make dev-api            # uvicorn on :8000 (no Redis/MinIO needed in dev mode)
-make dev-ui             # Vite dev server on :5173, proxies /v1/ to :8000
+make frontend       # build SPA: npm ci && npm run build → service/static/
+make dev-api        # simple mode: EagerRunner, no deps, :8000
+make dev-ui         # Vite dev server :5173, proxies /v1/ to :8000
+
+# Full-stack mode (real Dramatiq queue + MinIO — requires Docker):
+make infra          # Redis + MinIO in Docker (loopback ports, .env.dev creds)
+make dev-api-full   # uvicorn --reload, prod path
+make dev-worker     # Dramatiq worker
+make infra-down     # stop containers
 ```
 
-After `make frontend`, the FastAPI app serves the SPA at `/`. Without the build,
-`/` falls through to the Swagger UI at `/docs` (the `is_dir()` guard in `app.py`
-skips the static mount when `service/static/` doesn't exist).
-
-### Full-stack dev (Redis + MinIO in Docker, Python on host)
-
-For testing the real async job queue and MinIO presigned URL flow, run four terminals:
-
-```bash
-make infra          # Redis + MinIO in Docker (docker-compose.infra.yml)
-make dev-api-full   # uvicorn --reload on :8000, prod path (uses .env.dev)
-make dev-worker     # Dramatiq worker (uses .env.dev)
-make dev-ui         # Vite on :5173, proxies /v1/ to :8000
-```
-
-- `.env.dev` holds the dev-only credentials — committed, safe to use as-is.
-- MinIO console: http://localhost:9001 (devkey / devsecret1)
-- `make infra-down` stops the containers.
-- `make dev-api` (no suffix) stays as the simple EagerRunner mode — no deps needed.
+Non-obvious: `service/static/` must exist for the SPA to be served at `/`.
+Without the build, `/` falls through to Swagger at `/docs`.
 
 Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
 `git submodule update --init` to populate it.

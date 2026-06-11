@@ -45,10 +45,22 @@ pip install gpxsheet
 
 ```bash
 git clone <repo-url> gpxsheet && cd gpxsheet
+git submodule update --init          # populate gpxsamples/
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"                  # add ,service for the web service stack
+pip install -e ".[dev,service]"      # service required for mypy (pydantic plugin)
 python -m build && twine check dist/*    # build + check the distribution
 # publish (maintainer only): twine upload dist/*
+```
+
+**Dev server modes** — see [docs/dev-workflow.md](docs/dev-workflow.md) for the
+full breakdown. Short version:
+
+```bash
+# Simple (no Docker needed — EagerRunner, synchronous):
+make dev-api && make dev-ui
+
+# Full stack (real async queue, requires Docker):
+make infra && make dev-api-full && make dev-worker && make dev-ui
 ```
 
 ## Usage
