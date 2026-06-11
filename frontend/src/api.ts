@@ -2,6 +2,11 @@ import type { AnalyzeResult, JobStatus, RenderOptions, TableFormat, TableOptions
 
 const API_KEY_STORAGE = "gpxsheet-api-key";
 
+// The path the SPA is served under (vite `base`, always trailing-slashed). Using it
+// to build request URLs lets the app work when mounted under a sub-path behind a
+// reverse proxy, not only at the web root.
+const BASE = import.meta.env.BASE_URL;
+
 export function getApiKey(): string {
   return localStorage.getItem(API_KEY_STORAGE) ?? "";
 }
@@ -31,6 +36,16 @@ function authHeaders(): HeadersInit {
   return headers;
 }
 
+/** True if `url` resolves to a different origin than the page (e.g. a presigned
+ *  object-storage URL), which must be fetched without our API credentials. */
+function isExternal(url: string): boolean {
+  try {
+    return new URL(url, location.href).origin !== location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -48,84 +63,81 @@ async function checkResponse(res: Response): Promise<Response> {
   return res;
 }
 
-export async function submitAnalyze(
+/** Submit a job: the GPX file plus string form fields, returning the job status. */
+async function postJob(
+  path: string,
+  file: File,
+  fields: Record<string, string>,
+): Promise<JobStatus> {
+  const fd = new FormData();
+  fd.append("gpx", file);
+  for (const [k, v] of Object.entries(fields)) fd.append(k, v);
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers: authHeaders(), body: fd });
+  return (await checkResponse(res)).json();
+}
+
+export function submitAnalyze(
   file: File,
   profile: string,
   fuelRange: number | null,
 ): Promise<JobStatus> {
-  const fd = new FormData();
-  fd.append("gpx", file);
-  fd.append("profile", profile);
-  if (fuelRange !== null) fd.append("fuel_range", String(fuelRange));
-  const res = await fetch("/v1/analyze", {
-    method: "POST",
-    headers: authHeaders(),
-    body: fd,
+  return postJob("v1/analyze", file, {
+    profile,
+    ...(fuelRange !== null ? { fuel_range: String(fuelRange) } : {}),
   });
-  return (await checkResponse(res)).json();
 }
 
-export async function submitRender(
-  file: File,
-  opts: RenderOptions,
-): Promise<JobStatus> {
-  const fd = new FormData();
-  fd.append("gpx", file);
-  fd.append("layout", opts.layout);
-  fd.append("format", opts.format);
-  fd.append("profile", opts.profile);
-  fd.append("turn_style", opts.turn_style);
-  fd.append("paper", opts.paper);
-  fd.append("lanes_per_page", String(opts.lanes_per_page));
-  fd.append("decisions_per_lane", String(opts.decisions_per_lane));
-  fd.append("show_branches", String(opts.show_branches));
-  if (opts.fuel_range !== null) fd.append("fuel_range", String(opts.fuel_range));
-  const res = await fetch("/v1/render", {
-    method: "POST",
-    headers: authHeaders(),
-    body: fd,
+export function submitRender(file: File, opts: RenderOptions): Promise<JobStatus> {
+  return postJob("v1/render", file, {
+    layout: opts.layout,
+    format: opts.format,
+    profile: opts.profile,
+    turn_style: opts.turn_style,
+    paper: opts.paper,
+    lanes_per_page: String(opts.lanes_per_page),
+    decisions_per_lane: String(opts.decisions_per_lane),
+    show_branches: String(opts.show_branches),
+    ...(opts.fuel_range !== null ? { fuel_range: String(opts.fuel_range) } : {}),
   });
-  return (await checkResponse(res)).json();
 }
 
-export async function submitTable(
+export function submitTable(
   file: File,
   opts: TableOptions,
   format: TableFormat,
 ): Promise<JobStatus> {
-  const fd = new FormData();
-  fd.append("gpx", file);
-  fd.append("format", format);
-  fd.append("units", opts.units);
-  fd.append("speed", String(opts.speed));
-  fd.append("coordinates", String(opts.coordinates));
-  fd.append("ignore_times", String(opts.ignore_times));
-  if (opts.departure) fd.append("departure", opts.departure);
-  if (opts.timezone) fd.append("timezone", opts.timezone);
-  const res = await fetch("/v1/table", {
-    method: "POST",
-    headers: authHeaders(),
-    body: fd,
+  return postJob("v1/table", file, {
+    format,
+    units: opts.units,
+    speed: String(opts.speed),
+    coordinates: String(opts.coordinates),
+    ignore_times: String(opts.ignore_times),
+    ...(opts.departure ? { departure: opts.departure } : {}),
+    ...(opts.timezone ? { timezone: opts.timezone } : {}),
   });
-  return (await checkResponse(res)).json();
 }
 
 export async function pollJob(id: string): Promise<JobStatus> {
-  const res = await fetch(`/v1/jobs/${id}`, { headers: authHeaders() });
+  const res = await fetch(`${BASE}v1/jobs/${id}`, { headers: authHeaders() });
   return (await checkResponse(res)).json();
 }
 
-export async function fetchResultBlob(id: string): Promise<Blob> {
-  const res = await fetch(`/v1/jobs/${id}/result`, { headers: authHeaders() });
-  return (await checkResponse(res)).blob();
+/** Fetch a finished job's artifact. Prefer the job's `result_url`: when it points
+ *  at external (presigned) storage it is fetched WITHOUT our API key — sending the
+ *  key cross-origin would both leak it and fail CORS. */
+async function getResult(id: string, resultUrl?: string | null): Promise<Response> {
+  const external = !!resultUrl && isExternal(resultUrl);
+  const url = external ? resultUrl! : `${BASE}v1/jobs/${id}/result`;
+  return checkResponse(await fetch(url, external ? undefined : { headers: authHeaders() }));
 }
 
-export async function fetchResultJson(id: string): Promise<AnalyzeResult> {
-  const blob = await fetchResultBlob(id);
-  return JSON.parse(await blob.text()) as AnalyzeResult;
+export async function fetchResultBlob(id: string, resultUrl?: string | null): Promise<Blob> {
+  return (await getResult(id, resultUrl)).blob();
 }
 
-export async function fetchResultText(id: string): Promise<string> {
-  const res = await fetch(`/v1/jobs/${id}/result`, { headers: authHeaders() });
-  return (await checkResponse(res)).text();
+export async function fetchResultJson(
+  id: string,
+  resultUrl?: string | null,
+): Promise<AnalyzeResult> {
+  return JSON.parse(await (await getResult(id, resultUrl)).text()) as AnalyzeResult;
 }

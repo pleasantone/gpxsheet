@@ -1,4 +1,5 @@
 import type { JobStatus } from "../types";
+import { Spinner } from "./Spinner";
 
 interface JobProgressProps {
   label: string;
@@ -24,7 +25,7 @@ export function JobProgress({ label, isPolling, jobStatus, error }: JobProgressP
   if (isPolling || jobStatus?.status === "queued" || jobStatus?.status === "running") {
     return (
       <div className="flex items-center gap-2 text-sm text-slate-500">
-        <Spinner />
+        <Spinner className="w-4 h-4 text-brand shrink-0" />
         <span>{label}…</span>
       </div>
     );
@@ -40,21 +41,4 @@ export function JobProgress({ label, isPolling, jobStatus, error }: JobProgressP
   }
 
   return null;
-}
-
-function Spinner() {
-  return (
-    <svg
-      className="w-4 h-4 animate-spin text-brand shrink-0"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
-  );
 }

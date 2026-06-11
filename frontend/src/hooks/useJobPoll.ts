@@ -46,7 +46,7 @@ export function useJobPoll(jobId: string | null, fetchBlob = false): PollResult 
           setIsPolling(false);
           if (fetchBlob) {
             try {
-              const blob = await fetchResultBlob(jobId);
+              const blob = await fetchResultBlob(jobId, s.result_url);
               if (!cancelledRef.current) setResultBlob(blob);
             } catch (e) {
               if (!cancelledRef.current)
