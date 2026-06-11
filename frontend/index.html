@@ -2,8 +2,31 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
     <title>GPXSheet</title>
+    <meta
+      name="description"
+      content="Convert GPX routes into glanceable motorcycle tank-bag navigation PDFs."
+    />
+
+    <!-- Installable web app (home-screen / standalone). No service worker: the
+         app's core rendering is server-side, so there is nothing to run offline. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#e85d04" />
+
+    <!-- iOS home-screen app: Safari ignores the manifest icon for the glyph and
+         uses apple-touch-icon, and needs these meta tags for standalone mode. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="GPXSheet" />
   </head>
   <body>
     <div id="root"></div>
