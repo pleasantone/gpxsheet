@@ -1,0 +1,45 @@
+name: Deploy to Hugging Face Space
+
+# Mirror the repo to the Hugging Face Space on every push to main (and on demand).
+# The Space builds the Dockerfile from source; see deploy/huggingface/README.md.
+#
+# One-time setup (see docs/deploy.md):
+#   - Create a Docker Space on Hugging Face.
+#   - Add repo secret HF_TOKEN (a write-scoped HF access token).
+#   - Add repo variable HF_SPACE = "<user>/<space>" (e.g. pleasantone/gpxsheet).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-hf
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Skip if the Space isn't configured yet, so forks/unset repos don't fail.
+    if: vars.HF_SPACE != ''
+    steps:
+      - uses: actions/checkout@v6 # no submodules: not needed for the image build
+
+      - name: Push working tree to the Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE: ${{ vars.HF_SPACE }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # The Space's root README must carry the HF frontmatter.
+          cp deploy/huggingface/README.md README.md
+          # Replace history with a single flattened commit so the Space repo
+          # doesn't carry the full GitHub history.
+          rm -rf .git
+          git init -q
+          git checkout -q -b main
+          git config user.email "ci@github.actions"
+          git config user.name "GitHub Actions"
+          git add -A
+          git commit -qm "Deploy ${GITHUB_SHA}"
+          git push --force "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}.git" main

@@ -57,5 +57,7 @@ nav:
   - Web API:
       - Guide: web-api.md
       - API reference: web-api-reference.md
-  - Deployment & security: security-audit.md
+  - Deployment:
+      - Hosting: deploy.md
+      - Security audit: security-audit.md
   - Design notes: product.md
