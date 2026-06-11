@@ -33,8 +33,10 @@ The free CPU tier (2 vCPU / 16 GB RAM) handles the geo stack
 timeout, so even slow dense-urban Overpass renders complete.
 
 Deployment is automated: `.github/workflows/deploy-hf.yml` syncs `main` to the
-Space on every push (via `hf upload`), and the Space rebuilds the image from the
-repo's `Dockerfile`. The Space's root `README.md` (with the required HF
+Space (via `hf upload`) **after the CI workflow passes** on that commit, and the
+Space rebuilds the image from the repo's `Dockerfile`. (It runs via `workflow_run`
+on CI completion; a failed CI run skips the deploy. `workflow_dispatch` is a manual
+override.) The Space's root `README.md` (with the required HF
 frontmatter) comes from `deploy/huggingface/README.md`.
 
 Auth uses **Trusted Publishing (OIDC)** — there is **no `HF_TOKEN` secret** to
