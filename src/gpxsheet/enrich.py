@@ -19,6 +19,7 @@ decisions. Road/fuel queries hit the live Overpass API (via osmnx).
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import replace
 from typing import NamedTuple
@@ -27,11 +28,11 @@ from .analysis import (
     CONTINUE_MAX_ANGLE_DEG,
     MIN_ROAD_RUN_MILES,
     MIN_SEGMENT_MILES,
-    _significance_for_turn,
-    _turn_word,
     coord_at_meters,
     merge_close_decisions,
+    significance_for_turn,
     turn_angle_at_mile,
+    turn_word,
 )
 from .geo import METERS_PER_DEG_LAT, bearing, haversine, meters_to_miles, miles_to_meters
 from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
@@ -50,6 +51,8 @@ from .profiles import (
     SCORE_ROAD_NAME_CHANGE,
     SCORE_STATE_HWY_JUNCTION,
 )
+
+log = logging.getLogger(__name__)
 
 _DEG_PER_M = 1.0 / METERS_PER_DEG_LAT  # degrees per meter for geographic buffering
 
@@ -232,7 +235,7 @@ def enrich_route(
         try:  # roads-not-taken + roundabouts are best-effort; never break enrichment
             _apply_junction_topology(route, graphs, node_seq, sample_m)
         except Exception:  # noqa: BLE001 - degrade to plain turns on any topology error
-            pass
+            log.exception("junction topology pass failed; using plain turns")
 
     spacing_m = total_m / (n - 1) if n > 1 else 0.0
     route.unpaved_miles = round(meters_to_miles(sum(unpaved) * spacing_m), 1)
@@ -445,7 +448,7 @@ def _decisions_from_runs(route: Route, runs: list[_Run]) -> list[DecisionPoint]:
         if abs(angle) < CONTINUE_MAX_ANGLE_DEG:
             instruction = f"Continue onto {name}"
         else:
-            instruction = f"{_turn_word(angle)} onto {name}"
+            instruction = f"{turn_word(angle)} onto {name}"
         decisions.append(
             DecisionPoint(
                 mile=round(start_mile, 1),
@@ -770,8 +773,8 @@ def _promote_fork_decisions(route, graphs, node_seq, sample_m) -> None:
         added.append(
             DecisionPoint(
                 mile=round(mile, 1),
-                instruction=f"{_turn_word(angle)} at the fork",
-                significance=_significance_for_turn(angle),
+                instruction=f"{turn_word(angle)} at the fork",
+                significance=significance_for_turn(angle),
                 lat=lat,
                 lon=lon,
                 kind=DecisionKind.CRITICAL_TURN,

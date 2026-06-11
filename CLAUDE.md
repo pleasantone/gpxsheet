@@ -55,16 +55,18 @@ python3 -m pytest -q
 - `geo.py` — haversine, bearings, cumulative distance (pure).
 - `models.py` — Route graph dataclasses (Route, Segment, DecisionPoint, …).
 - `gpx.py` — `load_route()` (gpxpy). `simplify.py` — RDP cleanup.
-- `analysis.py` — engine: `analyze_route()` orchestrates; `detect_decision_points`,
-  `merge_close_decisions`, reassurance, fuel, `build_segments`; helpers
-  `coord_at_meters` (interpolates), `turn_angle_at_mile`, `looks_sparse`. Tuning
-  constants at top of file.
-- `enrich.py` — OSM (osmnx): durable road-name-change decisions
-  (`_durable_runs`/`_decisions_from_runs`), named segments, fuel; `_chunk_ranges`
-  chunks big routes. `_apply_junction_topology` (best-effort, try/except) reads
-  the osmnx graph (node degree, edge bearings, `junction=roundabout`) to add
-  roads-not-taken branches + roundabout "Nth exit" decisions. `profiles.py` —
-  minimalist/sport-touring/rally thresholds.
+- `analysis.py` — engine: `analyze_route()` delegates to three private steps
+  (`_geometry_baseline`, `_osm_enrich_pass`, `_apply_profile`); public helpers
+  `coord_at_meters` (interpolates), `turn_angle_at_mile`, `looks_sparse`;
+  public scoring helpers `turn_word(angle)`, `significance_for_turn(angle)`.
+  Tuning constants at top of file.
+- `enrich.py` — OSM (osmnx): durable road-name-change decisions via `_Run`
+  NamedTuple records (`_durable_runs`/`_decisions_from_runs`), named segments,
+  fuel; `_chunk_ranges` / `_GraphChunk` NamedTuple chunk big routes.
+  `_apply_junction_topology` (best-effort, `log.exception` on failure) reads
+  the osmnx graph to add roads-not-taken branches + roundabout "Nth exit"
+  decisions. Imports `turn_word`/`significance_for_turn` from `analysis`.
+  `profiles.py` — minimalist/sport-touring/rally thresholds; `VALID_PROFILES`.
 - `junctions.py` — pure topology helpers (no osmnx): `branches_not_taken`,
   `roundabout_exit_number`, `relative_angle`/`direction_word`. Graph-reading in
   enrich is tested with hand-built networkx graphs (no Overpass).
@@ -72,16 +74,15 @@ python3 -m pytest -q
   jogging ribbon + placed markers (stylized vs faithful turns; `show_start/end`).
 - `strip.py` — matplotlib renderer: `render_route_strip` → strip image;
   `draw_strip` shared with the PDF (Agg, lazy import). Draws ghosted
-  `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph.
-- `paginate.py` — `paginate` (fixed decision-cap, breaks only at decisions) +
-  `slice_route` (`rebase=True` landscape / `rebase=False` portrait lane =
-  absolute miles). `decisions_per_lane=0/None` (the **public default** — `render()`,
-  CLI, web) switches to `strip.fit_pages` (analytic greedy auto-fit: pack a lane
-  until labels would overlap, then break); a positive value forces a fixed cap.
-  Internal `pdf` renderer defaults stay at the fixed `FIXED_DECISIONS_PER_LANE=4`.
+  `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph. Transform
+  capture after `fig.canvas.draw()` (documented — finalizes data↔pixel mapping).
+- `paginate.py` — `paginate` (fixed decision-cap) + `slice_route` + `fit_pages`
+  (auto-fit: greedy, pack until labels overlap) + `plan_pages()` (dual-mode
+  entry point: `decisions_per_lane=0` → auto-fit, positive → fixed cap).
+  `decisions_per_lane=0` is the **public default** for `render()`, CLI, web.
+  Internal `pdf` renderer fallback stays at `FIXED_DECISIONS_PER_LANE=4`.
   Public render-knob defaults (`show_branches`, `turn_style`, `paper`,
-  `lanes_per_page`, `decisions_per_lane`) have a single home in `defaults.py`,
-  imported by the lib `render`, CLI, service models, and the `pdf`/`strip` renderers.
+  `lanes_per_page`, `decisions_per_lane`) live in `defaults.py`.
 - `pdf.py` — renderers `render_pdf`/`render_pages_png`/`render_preview` + the
   `render_layout(layout, fmt)` dispatcher (layout × pdf/png). Landscape (one
   strip/page, framed hug, progress bar) + portrait (stacked `_draw_lane` strips,
@@ -90,10 +91,11 @@ python3 -m pytest -q
 - `report.py` — `analyze` text. `cli.py` — typer CLI (generate/analyze/strip/
   preview/validate; `--landscape --lanes --lane-decisions`; no OSM/dpi flags),
   all wired through the library `render`/`analyze`/`validate` entry points.
+  CLI wraps all entry points in `try/except ValueError` for clean error output.
 
-`analyze_route` flow: geometry detect → merge → segments → **OSM enrich**
-(replaces decisions+segments; falls back to geometry-only w/ warning if
-`looks_sparse` / Overpass fails) → profile threshold → fuel + reassurance.
+`analyze_route` flow: `_geometry_baseline` → `_osm_enrich_pass` (replaces
+decisions+segments; falls back to geometry-only w/ warning+log if `looks_sparse`
+/ Overpass fails) → `_apply_profile` (threshold, fuel, reassurance).
 
 ## Key decisions (don't re-litigate without reason)
 
