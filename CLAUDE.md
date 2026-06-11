@@ -20,7 +20,14 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 .venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
 .venv/bin/gpxsheet generate <gpx> --layout landscape     # one strip/page
 .venv/bin/gpxsheet generate <gpx> --layout strip -o strip.png   # single strip PNG
+.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # GPXtable route table (html|md)
 ```
+
+The `table` command wraps the **GPXtable** library (`gpxtable` on PyPI, a core dep)
+to emit a markdown/HTML route table — waypoints, distances, fuel/lunch markers, ETAs.
+It is **independent of the OSM/`analyze` pipeline** (reads GPX waypoints directly, fully
+offline). Backend seam: `src/gpxsheet/table.py`; web op `"table"` → `/v1/table`
+(`TableParams`); the SPA exposes it under a **Table** tab (vs the **Sheet** tab).
 
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.

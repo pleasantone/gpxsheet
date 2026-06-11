@@ -23,13 +23,28 @@ export function DropZone({ onFile, compact = false }: DropZoneProps) {
   }
 
   if (compact) {
+    // A slim drag-and-drop bar to replace the loaded file (consistent with the
+    // full drop zone on the landing screen, rather than a plain "browse" link).
     return (
-      <button
+      <div
         data-testid="upload-different"
+        onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        className="text-sm text-brand hover:text-brand-dark underline underline-offset-2 cursor-pointer"
+        className={[
+          "flex items-center justify-center gap-2 cursor-pointer select-none",
+          "rounded-xl border-2 border-dashed px-4 py-2 text-sm transition-colors",
+          isDragging
+            ? "border-brand bg-orange-50 text-brand"
+            : "border-slate-300 text-slate-500 hover:border-brand hover:bg-slate-50",
+        ].join(" ")}
       >
-        Upload different file
+        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+            d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 7.5 12 3m0 0L7.5 7.5M12 3v13.5" />
+        </svg>
+        <span>Drop a GPX file or click to replace</span>
         <input
           ref={inputRef}
           data-testid="file-input"
@@ -38,7 +53,7 @@ export function DropZone({ onFile, compact = false }: DropZoneProps) {
           className="hidden"
           onChange={handleChange}
         />
-      </button>
+      </div>
     );
   }
 

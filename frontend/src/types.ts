@@ -63,3 +63,27 @@ export const DEFAULT_OPTIONS: RenderOptions = {
   decisions_per_lane: 0,
   show_branches: false,
 };
+
+// "sheet" = the existing PDF/PNG map renderers; "table" = the GPXtable-backed
+// route table (HTML/markdown), which bypasses the OSM analyze pipeline entirely.
+export type Mode = "sheet" | "table";
+export type TableFormat = "html" | "markdown";
+export type Units = "imperial" | "metric";
+
+export interface TableOptions {
+  departure: string | null; // value of a <input type="datetime-local">; null = no ETA
+  speed: number; // mph/kph; 0 = auto
+  units: Units;
+  coordinates: boolean;
+  ignore_times: boolean;
+  timezone: string | null;
+}
+
+export const DEFAULT_TABLE_OPTIONS: TableOptions = {
+  departure: null,
+  speed: 0,
+  units: "imperial",
+  coordinates: false,
+  ignore_times: false,
+  timezone: null,
+};

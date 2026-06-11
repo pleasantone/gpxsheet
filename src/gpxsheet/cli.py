@@ -1,7 +1,7 @@
 """Command-line interface for GPXSheet.
 
-Exposes the three output modes from docs/product.md: generate (default), ``analyze``
-and ``validate``.
+Exposes the output modes from docs/product.md: ``generate`` (default), ``analyze``,
+``validate``, and ``table`` (a GPXtable-backed route table, independent of OSM).
 """
 
 from __future__ import annotations
@@ -141,6 +141,63 @@ def validate(
     typer.echo(format_findings(report.route, report.findings))
     if any(f.level == WARNING for f in report.findings):
         raise typer.Exit(code=1)
+
+
+@app.command()
+def table(
+    gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Output file path (.html or .md)."
+    ),
+    fmt: str = typer.Option(
+        "html", "--format", help="Output format: html | markdown (inferred from -o extension)."
+    ),
+    departure: str | None = typer.Option(
+        None, "--departure", help='Departure time, e.g. "9:00 AM" or "July 4 2pm".'
+    ),
+    speed: float = typer.Option(
+        0.0, "--speed", help="Average travel speed (mph, or kph with --metric); 0 = auto."
+    ),
+    metric: bool = typer.Option(
+        False, "--metric/--imperial", help="Units: metric (km/kph) or imperial (default)."
+    ),
+    coordinates: bool = typer.Option(
+        False, "--coordinates", help="Include latitude/longitude columns."
+    ),
+    ignore_times: bool = typer.Option(
+        False, "--ignore-times", help="Ignore timestamps in the GPX track."
+    ),
+    timezone: str | None = typer.Option(
+        None, "--timezone", help="IANA timezone for displayed times, e.g. US/Pacific."
+    ),
+) -> None:
+    """Generate a route table (markdown or HTML) via GPXtable.
+
+    Independent of the OSM pipeline: works offline straight from the GPX waypoints.
+    """
+    from .table import parse_departure, render_table
+
+    if output is None:
+        output = Path("route_table.md" if fmt == "markdown" else "route_table.html")
+    suffix = output.suffix.lower()
+    out_fmt = "markdown" if suffix in (".md", ".markdown") else "html" if suffix == ".html" else fmt
+    try:
+        depart_at, tz = parse_departure(departure, timezone)
+        out = render_table(
+            gpx_file,
+            output,
+            fmt=out_fmt,
+            imperial=not metric,
+            speed=speed,
+            depart_at=depart_at,
+            ignore_times=ignore_times,
+            display_coordinates=coordinates,
+            tz=tz,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {out}")
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -14,6 +14,7 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import settings
@@ -26,7 +27,16 @@ from .jobs import (
     TaskRunner,
     prod_components,
 )
-from .models import JobState, JobStatus, RenderForm, RenderParams, ReportForm, ReportParams
+from .models import (
+    JobState,
+    JobStatus,
+    RenderForm,
+    RenderParams,
+    ReportForm,
+    ReportParams,
+    TableForm,
+    TableParams,
+)
 from .storage import LocalStorage, Storage
 
 log = logging.getLogger(__name__)
@@ -103,11 +113,14 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             ancestors = "'none'"
             response.headers.setdefault("X-Frame-Options", "DENY")
         # API routes stay locked down; SPA HTML needs script execution + blob: images.
+        # style-src allows 'unsafe-inline' so the inline-rendered Table view can keep
+        # GPXtable's `text-align` cell styles (sanitized via DOMPurify before injection);
+        # script-src/default-src stay strict, so this is style-only.
         is_api = request.url.path.startswith("/v1/") or request.url.path in ("/healthz", "/readyz")
         base = (
             "default-src 'none'"
             if is_api
-            else "default-src 'self'; img-src 'self' blob: data:"
+            else "default-src 'self'; img-src 'self' blob: data:; style-src 'self' 'unsafe-inline'"
         )
         csp = f"{base}; frame-ancestors {ancestors}"
         response.headers.setdefault("Content-Security-Policy", csp)
@@ -172,7 +185,7 @@ def _valid_fp_token(secret: bytes, token: str | None) -> bool:
     return hmac.compare_digest(sig, expected) and time.time() < exp
 
 
-def _cache_key(data: bytes, op: str, params: ReportParams, identity: str) -> str:
+def _cache_key(data: bytes, op: str, params: BaseModel, identity: str) -> str:
     # Identity is part of the key so cross-tenant requests never share a job
     # (each owner gets their own), which keeps per-job ownership consistent.
     return hashlib.sha256(
@@ -181,7 +194,7 @@ def _cache_key(data: bytes, op: str, params: ReportParams, identity: str) -> str
     ).hexdigest()
 
 
-def _to_params(form: ReportParams, model: type[ReportParams]) -> ReportParams:
+def _to_params(form: BaseModel, model: type[BaseModel]) -> BaseModel:
     """Extract the plain (queue-serializable) params from a multipart form body."""
     return model(**{k: getattr(form, k) for k in model.model_fields})
 
@@ -301,7 +314,7 @@ def create_app(
         )
 
     def submit_job(
-        op: str, gpx: UploadFile, params: ReportParams, identity: str, response: Response
+        op: str, gpx: UploadFile, params: BaseModel, identity: str, response: Response
     ) -> JobStatus:
         """Shared create-a-job path for every POST endpoint.
 
@@ -364,6 +377,18 @@ def create_app(
     ) -> JobStatus:
         """Render a map (layout x format) as a job."""
         return submit_job("render", body.gpx, _to_params(body, RenderParams), identity, response)
+
+    @app.post(
+        "/v1/table", status_code=202, response_model=JobStatus,
+        responses=_JOB_RESPONSES, dependencies=[Depends(rate_limited)],
+    )
+    def table(
+        body: Annotated[TableForm, Form()],
+        response: Response,
+        identity: str = Depends(client_identity),
+    ) -> JobStatus:
+        """Render a GPXtable route table (HTML or markdown) as a job."""
+        return submit_job("table", body.gpx, _to_params(body, TableParams), identity, response)
 
     @app.post(
         "/v1/analyze", status_code=202, response_model=JobStatus,

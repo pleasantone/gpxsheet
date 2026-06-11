@@ -33,6 +33,7 @@ classifiers = [
 # in the geopandas/networkx geo stack; shapely is used directly by enrich.py).
 dependencies = [
     "gpxpy>=1.6",
+    "gpxtable>=2.2",  # route-table output (markdown/HTML); pulls markdown2 + astral + dateutil
     "matplotlib>=3.8",
     "osmnx>=2.0",
     "shapely>=2.0",

@@ -1,4 +1,4 @@
-import type { AnalyzeResult, JobStatus, RenderOptions } from "./types";
+import type { AnalyzeResult, JobStatus, RenderOptions, TableFormat, TableOptions } from "./types";
 
 const API_KEY_STORAGE = "gpxsheet-api-key";
 
@@ -88,6 +88,28 @@ export async function submitRender(
   return (await checkResponse(res)).json();
 }
 
+export async function submitTable(
+  file: File,
+  opts: TableOptions,
+  format: TableFormat,
+): Promise<JobStatus> {
+  const fd = new FormData();
+  fd.append("gpx", file);
+  fd.append("format", format);
+  fd.append("units", opts.units);
+  fd.append("speed", String(opts.speed));
+  fd.append("coordinates", String(opts.coordinates));
+  fd.append("ignore_times", String(opts.ignore_times));
+  if (opts.departure) fd.append("departure", opts.departure);
+  if (opts.timezone) fd.append("timezone", opts.timezone);
+  const res = await fetch("/v1/table", {
+    method: "POST",
+    headers: authHeaders(),
+    body: fd,
+  });
+  return (await checkResponse(res)).json();
+}
+
 export async function pollJob(id: string): Promise<JobStatus> {
   const res = await fetch(`/v1/jobs/${id}`, { headers: authHeaders() });
   return (await checkResponse(res)).json();
@@ -101,4 +123,9 @@ export async function fetchResultBlob(id: string): Promise<Blob> {
 export async function fetchResultJson(id: string): Promise<AnalyzeResult> {
   const blob = await fetchResultBlob(id);
   return JSON.parse(await blob.text()) as AnalyzeResult;
+}
+
+export async function fetchResultText(id: string): Promise<string> {
+  const res = await fetch(`/v1/jobs/${id}/result`, { headers: authHeaders() });
+  return (await checkResponse(res)).text();
 }
