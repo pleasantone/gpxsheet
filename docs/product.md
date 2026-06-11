@@ -945,7 +945,11 @@ any failure degrades to plain turns) reads the osmnx graph to enrich decisions:
 * *Roads not taken* — at a fork/multi-way (node degree ≥ 3), the other branches
   are recorded on `DecisionPoint.branches` (name + relative angle/direction,
   excluding the road arrived on and the road taken). The strip draws each as a
-  ghosted dashed stub so the rider can see which road to ignore.
+  ghosted dashed stub so the rider can see which road to ignore. Drawing the
+  stubs is optional (on by default): `show_branches` on the library `render`,
+  `render_layout`, `draw_strip`/`render_route_strip`; `show_branches` on the web
+  `/v1/render` form; `--branches/--no-branches` on the CLI (`generate`, `strip`,
+  `preview`). Toggling it off keeps the `branches` data, just suppresses the stubs.
 * *Roundabouts* — `junction=roundabout`/`circular` ways are reconstructed into
   ordered rings; the route's entry/exit nodes give the exit number (counted from
   *outgoing* spurs only, so one-way feeder roads don't inflate it), emitted as a

@@ -132,3 +132,37 @@ def test_strip_renders_branches_and_roundabout(tmp_path):
     out = tmp_path / "topo.png"
     render_route_strip(route, out)
     assert out.read_bytes()[:8] == PNG_MAGIC
+
+
+def _branch_stub_count(layout, *, show_branches):
+    """Number of ghosted branch-stub lines draw_strip emits for ``layout``."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from gpxsheet import colors
+    from gpxsheet.strip import draw_strip
+
+    fig, ax = plt.subplots()
+    draw_strip(fig, ax, layout, show_branches=show_branches)
+    stub = colors.BRANCH_STUB
+    n = sum(line.get_color() == stub for line in ax.get_lines())
+    plt.close(fig)
+    return n
+
+
+def test_show_branches_toggles_stub_drawing():
+    from gpxsheet.layout import PlacedMarker, StripLayout
+    from gpxsheet.models import Branch
+
+    marker = PlacedMarker(
+        x=5.0, y=0.0, mile=5.0, kind="decision", label="Right onto B Rd",
+        branches=(Branch("left", -85, "Side St"),),
+    )
+    layout = StripLayout(
+        path=[(0, 0), (5, 0), (10, 0)], markers=[marker], ribbon=[], width=10.0, height=1.0
+    )
+    # On by default; the toggle suppresses the ghosted stub line entirely.
+    assert _branch_stub_count(layout, show_branches=True) == 1
+    assert _branch_stub_count(layout, show_branches=False) == 0

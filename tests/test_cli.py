@@ -52,6 +52,14 @@ def test_generate_command_writes_pdf(l_route_file, tmp_path):
     assert out.exists() and out.read_bytes()[:4] == b"%PDF"
 
 
+def test_generate_no_branches_flag(l_route_file, tmp_path):
+    # --no-branches suppresses the roads-not-taken stubs; still a valid PDF.
+    out = tmp_path / "nb.pdf"
+    result = runner.invoke(app, ["generate", str(l_route_file), "-o", str(out), "--no-branches"])
+    assert result.exit_code == 0, result.output
+    assert out.exists() and out.read_bytes()[:4] == b"%PDF"
+
+
 def test_validate_command_ok(l_route_file):
     # No fuel-range; the offshore route yields no OSM data -> no warnings -> exit 0.
     result = runner.invoke(app, ["validate", str(l_route_file)])

@@ -73,6 +73,7 @@ def _render_result(gpx_bytes: bytes, params: RenderParams) -> JobResult:
             paper=params.paper,
             lanes_per_page=params.lanes_per_page,
             decisions_per_lane=params.decisions_per_lane,
+            show_branches=params.show_branches,
         )
         return out_path.read_bytes(), _CONTENT_TYPES[ext], ext, _safe_filename(route.name, ext)
 

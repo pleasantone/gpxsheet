@@ -55,6 +55,7 @@ def iter_page_figures(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
+    show_branches: bool = True,
 ):
     """Yield one matplotlib ``Figure`` per route-aware page (caller closes them).
 
@@ -63,7 +64,8 @@ def iter_page_figures(
     map) or ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page).
     A positive ``decisions_per_lane`` breaks pages every that-many decisions;
     ``0`` or ``None`` auto-fits as many decisions per page as fit (see
-    :func:`gpxsheet.strip.fit_pages`).
+    :func:`gpxsheet.strip.fit_pages`). ``show_branches`` toggles the ghosted
+    "roads not taken" stubs (on by default).
     """
     if orientation not in ("landscape", "portrait"):
         raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
@@ -96,7 +98,8 @@ def iter_page_figures(
         for i, group in enumerate(page_groups, start=1):
             fig = plt.figure(figsize=(page_w_in, page_h_in))  # portrait
             _compose_portrait_page(
-                fig, route, group, i, len(page_groups), total, turn_style, lanes_per_page
+                fig, route, group, i, len(page_groups), total, turn_style, lanes_per_page,
+                show_branches,
             )
             yield fig
     else:
@@ -111,7 +114,7 @@ def iter_page_figures(
             fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
             _compose_page(
                 fig, route, start, end, i, len(pages), total, turn_style,
-                page_h_in, page_w_in,
+                page_h_in, page_w_in, show_branches,
             )
             yield fig
 
@@ -125,6 +128,7 @@ def render_pdf(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
+    show_branches: bool = True,
 ) -> Path:
     """Render an already-analyzed ``route`` to a multi-page PDF.
 
@@ -132,7 +136,8 @@ def render_pdf(
     ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page,
     roadbook-style). Both break a page every ``decisions_per_lane`` decisions;
     ``lanes_per_page`` is portrait-only. ``paper`` is one of :data:`PAGE_SIZES`
-    (``"letter"`` or ``"a4"``).
+    (``"letter"`` or ``"a4"``). ``show_branches`` toggles the ghosted "roads not
+    taken" stubs (on by default).
     """
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
@@ -142,6 +147,7 @@ def render_pdf(
         for fig in iter_page_figures(
             route, turn_style=turn_style, orientation=orientation, paper=paper,
             lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
+            show_branches=show_branches,
         ):
             pdf.savefig(fig, facecolor="white")
             plt.close(fig)
@@ -157,6 +163,7 @@ def render_pages_png(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
+    show_branches: bool = True,
     dpi: int | None = None,
 ) -> Path:
     """Render a paginated layout to a single tall PNG: every page stacked top to
@@ -170,6 +177,7 @@ def render_pages_png(
     for fig in iter_page_figures(
         route, turn_style=turn_style, orientation=orientation, paper=paper,
         lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
+        show_branches=show_branches,
     ):
         fig.set_dpi(dpi)
         fig.set_facecolor("white")
@@ -192,7 +200,7 @@ def render_pages_png(
 
 def _compose_page(
     fig, route, start, end, page_no, page_count, total, turn_style,
-    page_w_in, page_h_in,
+    page_w_in, page_h_in, show_branches=True,
 ) -> None:
     """Lay out a single page (header, map strip) into ``fig``.
 
@@ -238,7 +246,7 @@ def _compose_page(
         )
     )
     map_ax = fig.add_axes([panel_x + 0.01, map_y, map_w, map_h])
-    draw_strip(fig, map_ax, layout, draw_ribbon=False)
+    draw_strip(fig, map_ax, layout, draw_ribbon=False, show_branches=show_branches)
     ribbon = "  ›  ".join(layout.ribbon)
     if ribbon:
         fig.text(
@@ -265,7 +273,8 @@ def _draw_header(
 
 
 def _compose_portrait_page(
-    fig, route, lanes, page_no, page_count, total, turn_style, lanes_per_page
+    fig, route, lanes, page_no, page_count, total, turn_style, lanes_per_page,
+    show_branches=True,
 ) -> None:
     """Stack several route lanes (strips) down a portrait page, clearly separated."""
     _draw_header(fig, route.name, page_no, page_count, lanes[0][0], total, name_max=38)
@@ -283,10 +292,13 @@ def _compose_portrait_page(
             show_start=(start <= eps),
             show_end=(end >= total - eps),
             turn_style=turn_style,
+            show_branches=show_branches,
         )
 
 
-def _draw_lane(fig, route, start, end, rect, *, show_start, show_end, turn_style) -> None:
+def _draw_lane(
+    fig, route, start, end, rect, *, show_start, show_end, turn_style, show_branches=True
+) -> None:
     """Draw one route lane (a framed strip covering [start, end]) into ``rect``."""
     from matplotlib.patches import Rectangle
 
@@ -314,7 +326,7 @@ def _draw_lane(fig, route, start, end, rect, *, show_start, show_end, turn_style
     # original 0.016 / 0.040 figure-fractions at the default 4 lanes/page.
     label_h, ribbon_h = 0.071 * h, 0.178 * h
     map_ax = fig.add_axes([x + 0.01, y + ribbon_h, w - 0.02, h - label_h - ribbon_h])
-    draw_strip(fig, map_ax, layout, draw_ribbon=False)
+    draw_strip(fig, map_ax, layout, draw_ribbon=False, show_branches=show_branches)
     ribbon = "  ›  ".join(layout.ribbon)
     if ribbon:
         fig.text(
@@ -358,6 +370,7 @@ def render_preview(
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
+    show_branches: bool = True,
 ) -> Path:
     """Render the whole route as a single image of stacked strip lanes.
 
@@ -412,6 +425,7 @@ def render_preview(
             show_start=(start <= eps),
             show_end=(end >= total - eps),
             turn_style=turn_style,
+            show_branches=show_branches,
         )
 
     fig.savefig(output_path, dpi=PREVIEW_DPI, facecolor="white")
@@ -436,12 +450,14 @@ def render_layout(
     paper: str = DEFAULT_PAPER,
     lanes_per_page: int = LANES_PER_PAGE,
     decisions_per_lane: int | None = DECISIONS_PER_LANE,
+    show_branches: bool = True,
 ) -> Path:
     """Render an already-analyzed ``route`` to ``output_path`` in any layout/format.
 
     ``layout`` is one of :data:`LAYOUTS`, ``fmt`` one of :data:`FORMATS`.
     ``output_path``'s extension must match ``fmt`` (the ``preview``/``strip``
-    renderers infer their format from it).
+    renderers infer their format from it). ``show_branches`` toggles the ghosted
+    "roads not taken" stubs (on by default).
     """
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {LAYOUTS}, got {layout!r}")
@@ -454,11 +470,15 @@ def render_layout(
         return render(
             route, output_path, turn_style=turn_style, orientation=layout, paper=paper,
             lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
+            show_branches=show_branches,
         )
     if layout == "preview":
         return render_preview(
-            route, output_path, turn_style=turn_style, decisions_per_lane=decisions_per_lane
+            route, output_path, turn_style=turn_style, decisions_per_lane=decisions_per_lane,
+            show_branches=show_branches,
         )
     from .strip import render_route_strip
 
-    return render_route_strip(route, output_path, turn_style=turn_style)
+    return render_route_strip(
+        route, output_path, turn_style=turn_style, show_branches=show_branches
+    )

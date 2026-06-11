@@ -42,6 +42,7 @@ def render(
     paper: str = "letter",
     lanes_per_page: int = 4,
     decisions_per_lane: int | None = None,
+    show_branches: bool = True,
 ) -> str:
     """Render a GPX route to a tank-bag navigation map.
 
@@ -64,6 +65,8 @@ def render(
             (``portrait`` / ``landscape`` / ``preview``). The default (``None``;
             also ``0``) auto-fits as many as fit each lane without overlap; pass a
             positive number to force a fixed cap.
+        show_branches: draw the ghosted "roads not taken" stubs at each junction
+            (on by default); set False to hide them.
 
     Returns:
         The path to the written file.
@@ -82,6 +85,7 @@ def render(
         paper=paper,
         lanes_per_page=lanes_per_page,
         decisions_per_lane=decisions_per_lane,
+        show_branches=show_branches,
     )
     return str(output_file)
 

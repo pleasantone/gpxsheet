@@ -24,6 +24,10 @@ def test_render_params_default_auto_fit():
     assert RenderParams().decisions_per_lane == 0  # default = auto-fit
 
 
+def test_render_params_show_branches_default_on():
+    assert RenderParams().show_branches is True  # roads-not-taken stubs on by default
+
+
 def _make_client(tmp_path, **kwargs):
     store = InMemoryJobStore()
     storage = LocalStorage(tmp_path / "results")
@@ -113,6 +117,13 @@ def test_queued_job_returns_202_then_425(tmp_path, l_route_file):
 def test_render_auto_fit_accepted(client, l_route_file):
     # decisions_per_lane=0 (auto-fit) is accepted over the wire (ge=0).
     r = _post(client, "/v1/render", l_route_file, decisions_per_lane=0)
+    assert r.status_code == 200
+    assert r.json()["status"] == "done"
+
+
+def test_render_no_branches_accepted(client, l_route_file):
+    # show_branches is a plain form field; disabling the stubs still renders.
+    r = _post(client, "/v1/render", l_route_file, show_branches=False)
     assert r.status_code == 200
     assert r.json()["status"] == "done"
 
