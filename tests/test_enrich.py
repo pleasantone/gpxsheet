@@ -17,6 +17,22 @@ def _edges_frame():
     return pd.DataFrame({"name": names}, index=idx)
 
 
+def test_configure_osm_cache_honors_env(monkeypatch):
+    from types import SimpleNamespace
+
+    from gpxsheet.enrich import _configure_osm_cache
+
+    ox = SimpleNamespace(settings=SimpleNamespace(cache_folder="cache"))
+    # Unset -> no-op (leaves osmnx default / conftest's wiring alone).
+    monkeypatch.delenv("GPXSHEET_OSM_CACHE_DIR", raising=False)
+    _configure_osm_cache(ox)
+    assert ox.settings.cache_folder == "cache"
+    # Set -> points osmnx at the writable dir.
+    monkeypatch.setenv("GPXSHEET_OSM_CACHE_DIR", "/tmp/gpxsheet-osm-cache")
+    _configure_osm_cache(ox)
+    assert ox.settings.cache_folder == "/tmp/gpxsheet-osm-cache"
+
+
 def test_edge_name_handles_str_list_and_nan():
     from gpxsheet.enrich import _edge_name
 
