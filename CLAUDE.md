@@ -25,6 +25,21 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
+### Frontend (React/Vite SPA)
+
+The web UI lives in `frontend/` and builds to `src/gpxsheet/service/static/`
+(gitignored — must be built before the FastAPI service will serve a UI).
+
+```bash
+make frontend           # build once: npm ci && npm run build
+make dev-api            # uvicorn on :8000 (no Redis/MinIO needed in dev mode)
+make dev-ui             # Vite dev server on :5173, proxies /v1/ to :8000
+```
+
+After `make frontend`, the FastAPI app serves the SPA at `/`. Without the build,
+`/` falls through to the Swagger UI at `/docs` (the `is_dir()` guard in `app.py`
+skips the static mount when `service/static/` doesn't exist).
+
 Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
 `git submodule update --init` to populate it.
 

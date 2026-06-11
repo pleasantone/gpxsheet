@@ -217,7 +217,7 @@ def test_rate_limit(tmp_path, l_route_file):
 def test_generic_jobs_post_gone(client, l_route_file):
     # The generic POST /v1/jobs was replaced by typed endpoints.
     assert _post(client, "/v1/jobs", l_route_file).status_code in (404, 405)
-    assert _post(client, "/v1/preview", l_route_file).status_code == 404
+    assert _post(client, "/v1/preview", l_route_file).status_code in (404, 405)
 
 
 def test_json_result_roundtrip_is_valid_json(client, l_route_file):

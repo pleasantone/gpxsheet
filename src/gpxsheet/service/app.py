@@ -88,10 +88,14 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
-        # API serves JSON/PDF/PNG, never HTML it controls; lock scripting down.
-        response.headers.setdefault(
-            "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
+        # API routes stay locked down; SPA HTML needs script execution + blob: images.
+        is_api = request.url.path.startswith("/v1/") or request.url.path in ("/healthz", "/readyz")
+        csp = (
+            "default-src 'none'; frame-ancestors 'none'"
+            if is_api
+            else "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'"
         )
+        response.headers.setdefault("Content-Security-Policy", csp)
         if self._hsts:
             response.headers.setdefault(
                 "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
@@ -352,6 +356,14 @@ def create_app(
         return Response(
             content=storage.load(rec.result_key), media_type=content_type, headers=headers
         )
+
+    from pathlib import Path
+
+    from fastapi.staticfiles import StaticFiles
+
+    _static = Path(__file__).parent / "static"
+    if _static.is_dir():
+        app.mount("/", StaticFiles(directory=_static, html=True), name="static")
 
     return app
 

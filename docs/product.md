@@ -816,7 +816,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 > while implementing the spec above. The sections above are the design intent;
 > this section is the as-built reality. Last updated: Phase 1 (milestones 1–5)
 > complete, plus post-Phase-1 rendering/analysis polish and OSM-enrichment
-> robustness, released as **v0.2.0**. Planned/queued work is tracked in
+> robustness, released as **v0.2.0**; web UI added post-v0.2.0. Planned/queued
+> work is tracked in
 > [TODO.md](https://github.com/pleasantone/gpxsheet/blob/main/TODO.md).
 
 ## Milestone progress
@@ -895,6 +896,19 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   status `done` → external PDF download through the presigned URL, plus cache
   hits. Tests: dev path end-to-end via `TestClient` (incl. cache/cap/limit); the
   Redis/MinIO prod path has a gated integration test (`GPXSHEET_SERVICE_IT=1`).
+* **Web UI (post-v0.2.0): ✅ complete.** A React 19 + TypeScript + Vite 6 +
+  Tailwind v4 SPA in `frontend/` bundles into `src/gpxsheet/service/static/` and
+  is served by FastAPI at `/` via a `StaticFiles` mount (guarded by `is_dir()` so
+  the service boots cleanly without a build). UX: full-page drop zone →
+  simultaneous `/v1/analyze` + `/v1/render?layout=preview` on file drop → inline
+  strip thumbnail + route stats (distance/turns/fuel) → options panel →
+  "Generate" button → download. Job polling uses exponential backoff (500 ms →
+  4 s cap). Smart options: `paper`/`lanes_per_page` hidden for `preview`/`strip`
+  layouts; `format` locked to PNG for those layouts. Optional API key stored in
+  `localStorage`. CSP split: API routes keep `default-src 'none'`; SPA HTML gets
+  `default-src 'self'; img-src 'self' blob: data:`. Dev: `make dev-api` + `make
+  dev-ui` (Vite on :5173 proxies `/v1/` to uvicorn on :8000). Build: `make
+  frontend`; built files are gitignored (reproducible from source).
 
 `validate` (CLI, library `gpxsheet.validate`, and `/v1/validate`) reports fuel-gap,
 unpaved, and ferry findings as a `ValidationReport`; the seasonal-closure check is

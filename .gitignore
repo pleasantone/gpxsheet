@@ -40,3 +40,7 @@ cache/
 # MkDocs build output + generated OpenAPI schema
 site/
 docs/openapi.json
+
+# Frontend build output and dependencies
+src/gpxsheet/service/static/
+frontend/node_modules/

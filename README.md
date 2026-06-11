@@ -88,18 +88,42 @@ report = gpxsheet.validate("route.gpx", fuel_range=180)         # report.finding
 
 ## Web service
 
-A FastAPI service exposes the engine over REST. Every operation is a background
-job (Dramatiq + Redis) with results in object storage (MinIO): you POST to a
-typed endpoint (GPX + params as multipart form fields), then poll and fetch via
-the shared job URLs. `/v1/render` takes a `layout`
-(`portrait`/`landscape`/`preview`/`strip`) and `format` (`pdf`/`png`);
+A FastAPI service exposes the engine over REST — and ships a built-in browser UI.
+
+### Web UI
+
+Drop a GPX file onto the page, see a live strip preview and route stats (distance,
+turns, fuel stops), adjust options, and download the final PDF or PNG. No account
+needed; an optional API key field is in the settings popover.
+
+The UI is a React + Vite SPA bundled with the service. Build it once before
+starting the server:
+
+```bash
+pip install -e ".[service]"
+cd frontend && npm ci && npm run build && cd ..
+uvicorn gpxsheet.service.asgi:app
+# -> http://localhost:8000/  (UI)
+# -> http://localhost:8000/docs  (Swagger)
+```
+
+Or use `make build` (builds frontend + installs Python) and `make dev-api` /
+`make dev-ui` for a hot-reload dev workflow (Vite on :5173 proxies `/v1/` to
+uvicorn on :8000).
+
+### REST API
+
+Every operation is a background job (Dramatiq + Redis) with results in object
+storage (MinIO): POST to a typed endpoint (GPX + params as multipart form
+fields), then poll and fetch via the shared job URLs. `/v1/render` takes a
+`layout` (`portrait`/`landscape`/`preview`/`strip`) and `format` (`pdf`/`png`);
 `/v1/analyze` and `/v1/validate` return JSON reports.
 
 Self-hosted stack (API + worker + Redis + MinIO):
 
 ```bash
 docker compose up --build
-#   API   -> http://localhost:8000/docs
+#   API   -> http://localhost:8000/
 #   MinIO -> http://localhost:9001  (minioadmin / minioadmin)
 
 # render a portrait PDF (the defaults); the 202 response's Location header is the job
@@ -120,17 +144,11 @@ identical request is already done); `GET /v1/jobs/{id}` (status, incl.
 an immutable `ETag`, or 303 → presigned URL; `425` until ready, `409` if failed);
 `GET /healthz` (liveness) and `GET /readyz` (Redis/MinIO reachable). When API
 keys are configured, jobs are visible only to the key that created them.
-Single-process dev mode (in-memory, synchronous, no Redis/MinIO):
-
-```bash
-pip install -e ".[service]"
-uvicorn gpxsheet.service.asgi:app        # worker not needed in dev mode
-```
 
 Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
 `gpxsheet/service/settings.py`).
 
-**Building a UI on the API?** See the front-end integration guide:
+**Building on the API?** See the front-end integration guide:
 [docs/web-api.md](docs/web-api.md) (submit → poll → fetch flow, every endpoint,
 auth, and browser `fetch` examples). Live OpenAPI docs are served at `/docs`.
 

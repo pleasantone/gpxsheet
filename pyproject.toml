@@ -44,6 +44,7 @@ service = [
     "dramatiq[redis]>=1.16",
     "python-multipart>=0.0.9",
     "minio>=7.2",
+    "aiofiles>=23.0",
 ]
 dev = [
     "pytest>=8.0",
@@ -77,7 +78,7 @@ version = { attr = "gpxsheet.__version__" }
 where = ["src"]
 
 [tool.setuptools.package-data]
-gpxsheet = ["py.typed", "fonts/*.ttf", "fonts/OFL.txt"]
+gpxsheet = ["py.typed", "fonts/*.ttf", "fonts/OFL.txt", "service/static/**/*"]
 
 [tool.ruff]
 line-length = 100
