@@ -61,6 +61,9 @@ PROFILES: dict[str, Profile] = {
 }
 
 
+VALID_PROFILES: frozenset[str] = frozenset(PROFILES)
+
+
 def get_profile(name: str) -> Profile:
     try:
         return PROFILES[name]

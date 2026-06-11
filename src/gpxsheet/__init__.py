@@ -15,7 +15,7 @@ from .validate import Finding, ValidationReport
 if TYPE_CHECKING:
     from .models import Route
 
-__version__ = "0.2.1"  # x-release-please-version
+__version__ = "0.3.0"  # x-release-please-version
 
 __all__ = [
     "__version__",
@@ -42,7 +42,7 @@ def render(
     turn_style: str = defaults.TURN_STYLE,
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,
-    decisions_per_lane: int | None = None,
+    decisions_per_lane: int = defaults.DECISIONS_PER_LANE,
     show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> str:
     """Render a GPX route to a tank-bag navigation map.
@@ -63,9 +63,9 @@ def render(
         paper: Page size for paginated PDF layouts, ``"letter"`` or ``"a4"``.
         lanes_per_page: ``portrait`` only -- strip lanes per page.
         decisions_per_lane: max decisions per page/lane for the paginated layouts
-            (``portrait`` / ``landscape`` / ``preview``). The default (``None``;
-            also ``0``) auto-fits as many as fit each lane without overlap; pass a
-            positive number to force a fixed cap.
+            (``portrait`` / ``landscape`` / ``preview``). Default ``0`` auto-fits
+            as many decisions as fit each lane without overlap; pass a positive
+            number to force a fixed cap.
         show_branches: draw the ghosted "roads not taken" stubs at each junction
             (off by default); set True to show them.
 
@@ -94,9 +94,8 @@ def render(
 def analyze(
     gpx_file: str,
     *,
-    profile: str = DEFAULT_PROFILE,
+    profile: str = defaults.DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    reassurance_interval: float | None = None,
     include_hazards: bool = False,
 ) -> Route:
     """Run the route analysis engine on a GPX file.
@@ -114,7 +113,6 @@ def analyze(
         route,
         profile=profile,
         fuel_range=fuel_range,
-        reassurance_interval=reassurance_interval,
         include_hazards=include_hazards,
     )
 

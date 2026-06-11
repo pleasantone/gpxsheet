@@ -2,7 +2,16 @@
 
 The public Python API mirrors the [web API](web-api.md): three entry points —
 `render`, `analyze`, `validate` — that take the same names and arguments (but run
-synchronously). Import everything from the top-level `gpxsheet` package:
+synchronously). Import everything from the top-level `gpxsheet` package.
+
+**Breaking changes in v0.3.0:**
+
+- `render()`: `decisions_per_lane` is now `int = 0` (was `int | None = None`); `None`
+  is no longer a valid value — pass `0` for auto-fit.
+- `analyze()`: the `reassurance_interval` parameter has been removed; the interval
+  is now controlled entirely by the profile (`Profile.reassurance_interval_miles`).
+  To use a custom interval, construct a `Profile` and pass it to `analyze_route()`.
+- CLI: `gpxsheet analyze --reassurance-interval` flag is removed.
 
 ```python
 import gpxsheet

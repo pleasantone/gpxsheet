@@ -437,7 +437,6 @@ def analyze_route(
     *,
     profile: str | Profile = "sport-touring",
     fuel_range: float | None = None,
-    reassurance_interval: float | None = None,
     include_hazards: bool = False,
 ) -> Route:
     """Run the full analysis, populating ``route`` in place.
@@ -450,11 +449,7 @@ def analyze_route(
     :class:`Route` for convenience.
     """
     prof = profile if isinstance(profile, Profile) else get_profile(profile)
-    interval = (
-        reassurance_interval
-        if reassurance_interval is not None
-        else prof.reassurance_interval_miles
-    )
+    interval = prof.reassurance_interval_miles
 
     # 1. Geometry baseline: localized turns, clustered firings collapsed. On
     #    twisty roads this over-detects (curves look like turns) -- OSM in step 2

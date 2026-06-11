@@ -69,19 +69,23 @@ def generate(
     """Generate a tank-bag navigation PDF (portrait roadbook)."""
     from . import render
 
-    out = render(
-        str(gpx_file),
-        str(output),
-        profile=profile,
-        fuel_range=fuel_range,
-        layout="landscape" if landscape else "portrait",
-        format="pdf",
-        turn_style=turns,
-        show_branches=branches,
-        paper=paper,
-        lanes_per_page=lanes,
-        decisions_per_lane=lane_decisions,
-    )
+    try:
+        out = render(
+            str(gpx_file),
+            str(output),
+            profile=profile,
+            fuel_range=fuel_range,
+            layout="landscape" if landscape else "portrait",
+            format="pdf",
+            turn_style=turns,
+            show_branches=branches,
+            paper=paper,
+            lanes_per_page=lanes,
+            decisions_per_lane=lane_decisions,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {out}")
 
 
@@ -94,20 +98,16 @@ def analyze(
     fuel_range: float | None = typer.Option(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
-    reassurance_interval: float | None = typer.Option(
-        None, "--reassurance-interval", help="Miles between reassurance markers."
-    ),
 ) -> None:
     """Produce a text route analysis (decision points, fuel, segments)."""
     from . import analyze as _analyze
     from .report import format_analysis
 
-    route = _analyze(
-        str(gpx_file),
-        profile=profile,
-        fuel_range=fuel_range,
-        reassurance_interval=reassurance_interval,
-    )
+    try:
+        route = _analyze(str(gpx_file), profile=profile, fuel_range=fuel_range)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(format_analysis(route))
 
 
@@ -132,16 +132,20 @@ def strip(
     """Render the schematic map strip to a PNG."""
     from . import render
 
-    out = render(
-        str(gpx_file),
-        str(output),
-        profile=profile,
-        fuel_range=fuel_range,
-        layout="strip",
-        format="png",
-        turn_style=turns,
-        show_branches=branches,
-    )
+    try:
+        out = render(
+            str(gpx_file),
+            str(output),
+            profile=profile,
+            fuel_range=fuel_range,
+            layout="strip",
+            format="png",
+            turn_style=turns,
+            show_branches=branches,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {out}")
 
 
@@ -174,17 +178,21 @@ def preview(
     """
     from . import render
 
-    out = render(
-        str(gpx_file),
-        str(output),
-        profile=profile,
-        fuel_range=fuel_range,
-        layout="preview",
-        format="png",
-        turn_style=turns,
-        show_branches=branches,
-        decisions_per_lane=lane_decisions,
-    )
+    try:
+        out = render(
+            str(gpx_file),
+            str(output),
+            profile=profile,
+            fuel_range=fuel_range,
+            layout="preview",
+            format="png",
+            turn_style=turns,
+            show_branches=branches,
+            decisions_per_lane=lane_decisions,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(f"Wrote {out}")
 
 
@@ -202,7 +210,11 @@ def validate(
     from . import validate as _validate
     from .validate import WARNING, format_findings
 
-    report = _validate(str(gpx_file), fuel_range=fuel_range)
+    try:
+        report = _validate(str(gpx_file), fuel_range=fuel_range)
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(format_findings(report.route, report.findings))
     if any(f.level == WARNING for f in report.findings):
         raise typer.Exit(code=1)

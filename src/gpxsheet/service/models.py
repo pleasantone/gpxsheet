@@ -11,9 +11,10 @@ from __future__ import annotations
 from enum import StrEnum
 
 from fastapi import UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .. import defaults
+from ..profiles import VALID_PROFILES
 
 
 class JobState(StrEnum):
@@ -30,6 +31,14 @@ class ReportParams(BaseModel):
 
     profile: str = defaults.DEFAULT_PROFILE
     fuel_range: float | None = None
+
+    @field_validator("profile")
+    @classmethod
+    def _validate_profile(cls, v: str) -> str:
+        if v not in VALID_PROFILES:
+            valid = ", ".join(sorted(VALID_PROFILES))
+            raise ValueError(f"unknown profile {v!r}; choose one of: {valid}")
+        return v
 
 
 class RenderParams(ReportParams):
