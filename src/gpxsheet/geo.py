@@ -12,6 +12,13 @@ from collections.abc import Sequence
 EARTH_RADIUS_M = 6_371_008.8  # mean Earth radius (IUGG)
 METERS_PER_MILE = 1609.344
 
+# Equirectangular flat-earth constant for short-range projections and geographic
+# buffering. One canonical value avoids the 0.5 % lat/lon discrepancy between the
+# more precise 110 540 (lat) / 111 320 (lon) pair — the difference is well inside
+# GPS noise and OSM buffer tolerances. Value chosen to match the legacy enrich.py
+# buffer value (1 / 111 000) so OSM query-cache keys remain stable across refactors.
+METERS_PER_DEG_LAT: float = 111_000.0   # m per ° (equirectangular approx, ±0.5 %)
+
 
 def meters_to_miles(meters: float) -> float:
     return meters / METERS_PER_MILE
@@ -54,3 +61,29 @@ def cumulative_distances(points: Sequence[tuple[float, float]]) -> list[float]:
     for (lat1, lon1), (lat2, lon2) in zip(points, points[1:], strict=False):
         out.append(out[-1] + haversine(lat1, lon1, lat2, lon2))
     return out
+
+
+def project_to_segment(
+    lat: float,
+    lon: float,
+    a: tuple[float, float],
+    b: tuple[float, float],
+) -> tuple[float, float]:
+    """(distance_m, t) from ``(lat, lon)`` to geographic segment ``a``–``b``.
+
+    ``a`` and ``b`` are ``(lat, lon)`` pairs. Uses a local equirectangular frame
+    centered on the query point — accurate to < 0.5 % for road-scale offsets.
+    ``t ∈ [0, 1]`` is the interpolation fraction along the segment.
+    """
+    coslat = math.cos(math.radians(lat))
+    ax = (a[1] - lon) * coslat * METERS_PER_DEG_LAT
+    ay = (a[0] - lat) * METERS_PER_DEG_LAT
+    bx = (b[1] - lon) * coslat * METERS_PER_DEG_LAT
+    by = (b[0] - lat) * METERS_PER_DEG_LAT
+    dx, dy = bx - ax, by - ay
+    seg2 = dx * dx + dy * dy
+    if seg2 == 0.0:
+        return math.hypot(ax, ay), 0.0
+    t = max(0.0, min(1.0, (-ax * dx + -ay * dy) / seg2))
+    nx, ny = ax + t * dx, ay + t * dy
+    return math.hypot(nx, ny), t

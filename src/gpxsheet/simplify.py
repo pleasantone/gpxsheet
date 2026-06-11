@@ -11,33 +11,13 @@ accurate enough at the small tolerances (~10 m) used for cleanup.
 
 from __future__ import annotations
 
-import math
-
-from .geo import EARTH_RADIUS_M
+from .geo import project_to_segment
 from .models import GeoPoint
 
 
 def _perp_distance_m(p: GeoPoint, a: GeoPoint, b: GeoPoint) -> float:
-    """Perpendicular distance (m) from point p to segment a-b, equirectangular."""
-    lat0 = math.radians((a.lat + b.lat) / 2.0)
-
-    def xy(pt: GeoPoint) -> tuple[float, float]:
-        x = math.radians(pt.lon) * math.cos(lat0) * EARTH_RADIUS_M
-        y = math.radians(pt.lat) * EARTH_RADIUS_M
-        return x, y
-
-    px, py = xy(p)
-    ax, ay = xy(a)
-    bx, by = xy(b)
-
-    dx, dy = bx - ax, by - ay
-    seg_len2 = dx * dx + dy * dy
-    if seg_len2 == 0.0:
-        return math.hypot(px - ax, py - ay)
-    t = ((px - ax) * dx + (py - ay) * dy) / seg_len2
-    t = max(0.0, min(1.0, t))
-    cx, cy = ax + t * dx, ay + t * dy
-    return math.hypot(px - cx, py - cy)
+    """Perpendicular distance (m) from point p to segment a–b, equirectangular."""
+    return project_to_segment(p.lat, p.lon, (a.lat, a.lon), (b.lat, b.lon))[0]
 
 
 def rdp(points: list[GeoPoint], tolerance_m: float) -> list[GeoPoint]:

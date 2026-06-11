@@ -28,7 +28,7 @@ class JobState(StrEnum):
 class ReportParams(BaseModel):
     """Params for the JSON report endpoints (``/v1/analyze``, ``/v1/validate``)."""
 
-    profile: str = "sport-touring"
+    profile: str = defaults.DEFAULT_PROFILE
     fuel_range: float | None = None
 
 

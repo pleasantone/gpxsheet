@@ -32,7 +32,7 @@ from .analysis import (
     merge_close_decisions,
     turn_angle_at_mile,
 )
-from .geo import bearing, haversine, meters_to_miles, miles_to_meters
+from .geo import METERS_PER_DEG_LAT, bearing, haversine, meters_to_miles, miles_to_meters
 from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
 from .models import (
     Branch,
@@ -50,7 +50,7 @@ from .profiles import (
     SCORE_STATE_HWY_JUNCTION,
 )
 
-_DEG_PER_M = 1.0 / 111_000.0  # crude latitude-degrees per meter, fine for buffering
+_DEG_PER_M = 1.0 / METERS_PER_DEG_LAT  # degrees per meter for geographic buffering
 
 # Names that read as a numbered/limited-access highway (higher significance).
 _HIGHWAY_RE = re.compile(

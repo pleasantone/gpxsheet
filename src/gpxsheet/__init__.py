@@ -28,17 +28,17 @@ __all__ = [
     "ValidationReport",
 ]
 
-DEFAULT_PROFILE = "sport-touring"
+DEFAULT_PROFILE = defaults.DEFAULT_PROFILE
 
 
 def render(
     gpx_file: str,
     output_file: str | None = None,
     *,
-    profile: str = DEFAULT_PROFILE,
+    profile: str = defaults.DEFAULT_PROFILE,
     fuel_range: float | None = None,
-    layout: str = "portrait",
-    format: str = "pdf",
+    layout: str = defaults.DEFAULT_LAYOUT,
+    format: str = defaults.DEFAULT_FORMAT,
     turn_style: str = defaults.TURN_STYLE,
     paper: str = defaults.PAPER,
     lanes_per_page: int = defaults.LANES_PER_PAGE,

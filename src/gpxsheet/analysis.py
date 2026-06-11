@@ -18,8 +18,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import replace
 
-from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters
-from .labels import point_segment_distance
+from .geo import bearing, bearing_delta, meters_to_miles, miles_to_meters, project_to_segment
 from .models import (
     POI,
     DecisionKind,
@@ -317,8 +316,6 @@ def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, floa
     interpolated along the nearest segment rather than snapped to a vertex, so a
     waypoint mid-way along a long leg on a sparse route reads correctly.
     """
-    import math
-
     from .geo import haversine
 
     pts = route.points
@@ -326,19 +323,12 @@ def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, floa
         d = haversine(pts[0].lat, pts[0].lon, lat, lon) if pts else float("inf")
         return 0.0, d
 
-    coslat = math.cos(math.radians(lat))
-
-    def xy(p: GeoPoint) -> tuple[float, float]:
-        return ((p.lon - lon) * coslat * 111320.0, (p.lat - lat) * 110540.0)
-
     best_d, best_mile = float("inf"), 0.0
     for i in range(len(pts) - 1):
-        a, b = xy(pts[i]), xy(pts[i + 1])
-        d, (nx, ny) = point_segment_distance((0.0, 0.0), a, b)
+        d, t = project_to_segment(
+            lat, lon, (pts[i].lat, pts[i].lon), (pts[i + 1].lat, pts[i + 1].lon)
+        )
         if d < best_d:
-            dx, dy = b[0] - a[0], b[1] - a[1]
-            seg2 = dx * dx + dy * dy
-            t = 0.0 if seg2 == 0 else ((nx - a[0]) * dx + (ny - a[1]) * dy) / seg2
             d_a, d_b = route.distances_m[i], route.distances_m[i + 1]
             best_mile = meters_to_miles(d_a + t * (d_b - d_a))
             best_d = d
