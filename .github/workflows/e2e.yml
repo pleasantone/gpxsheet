@@ -27,7 +27,7 @@ jobs:
           submodules: true
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
       - run: pip install -e ".[service]"
@@ -80,7 +80,7 @@ jobs:
           submodules: true
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
       - uses: actions/setup-node@v4
