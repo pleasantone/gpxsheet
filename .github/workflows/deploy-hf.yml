@@ -46,15 +46,19 @@ jobs:
           set -euo pipefail
           # The Space's root README must carry the HF frontmatter.
           cp deploy/huggingface/README.md README.md
-          # Mirror the tree to the Space: upload everything, delete what's gone,
-          # skipping git internals and local-only build/dev artifacts.
+          # Upload only what the image build needs (allow-list), and --delete="*"
+          # removes anything else already on the Space. This keeps the public
+          # Space free of tests/, docs/, .env.dev, .claude/, etc.
           hf upload "$HF_SPACE" . . \
             --repo-type=space \
             --delete="*" \
-            --exclude=".git/*" \
-            --exclude=".github/*" \
-            --exclude="**/node_modules/*" \
-            --exclude=".venv/*" \
-            --exclude="site/*" \
+            --include="Dockerfile" \
+            --include=".dockerignore" \
+            --include="pyproject.toml" \
+            --include="README.md" \
+            --include="LICENSE" \
+            --include="src/*" \
+            --include="frontend/*" \
+            --exclude="frontend/tests/*" \
             --exclude="frontend/test-results/*" \
             --commit-message="Deploy ${GITHUB_SHA::7} from GitHub Actions"
