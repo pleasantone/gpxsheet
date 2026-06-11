@@ -24,20 +24,27 @@ The free CPU tier (2 vCPU / 16 GB RAM) handles the geo stack
 (matplotlib + osmnx + geopandas + shapely) comfortably and has no per-request
 timeout, so even slow dense-urban Overpass renders complete.
 
-Deployment is automated: `.github/workflows/deploy-hf.yml` mirrors `main` to the
-Space's git remote on every push, and the Space rebuilds the image from the
+Deployment is automated: `.github/workflows/deploy-hf.yml` syncs `main` to the
+Space on every push (via `hf upload`), and the Space rebuilds the image from the
 repo's `Dockerfile`. The Space's root `README.md` (with the required HF
 frontmatter) comes from `deploy/huggingface/README.md`.
+
+Auth uses **Trusted Publishing (OIDC)** — there is **no `HF_TOKEN` secret** to
+store or rotate. The job proves its identity with a GitHub OIDC token, which the
+`hf` CLI exchanges for a short-lived (1h), Space-scoped Hugging Face token.
 
 ### One-time setup
 
 1. Create a free [Hugging Face](https://huggingface.co/join) account.
 2. Create a new **Space** → SDK **Docker** → e.g. `gpxsheet`. The first deploy
    overwrites its contents, so the starter files don't matter.
-3. Create a **write**-scoped [access token](https://huggingface.co/settings/tokens).
-4. In the GitHub repo (**Settings → Secrets and variables → Actions**):
-   - add **secret** `HF_TOKEN` = the token from step 3
-   - add **variable** `HF_SPACE` = `<user>/<space>` (e.g. `pleasantone/gpxsheet`)
+3. On the Space's **Settings → Trusted Publishers**, add a **GitHub Actions**
+   publisher with these claims (all must match exactly):
+   - `repository` = `<owner>/gpxsheet` (e.g. `pleasantone/gpxsheet`)
+   - `branch` = `main`
+   - `workflow` = `deploy-hf.yml`
+4. In the GitHub repo (**Settings → Secrets and variables → Actions → Variables**),
+   add **variable** `HF_SPACE` = `<user>/<space>` (e.g. `pleasantone/gpxsheet`).
 5. Push to `main` (or run the **Deploy to Hugging Face Space** workflow manually).
    The workflow no-ops until `HF_SPACE` is set, so it's safe to merge beforehand.
 

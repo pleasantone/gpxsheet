@@ -1,11 +1,16 @@
 name: Deploy to Hugging Face Space
 
-# Mirror the repo to the Hugging Face Space on every push to main (and on demand).
+# Sync the repo to the Hugging Face Space on every push to main (and on demand).
 # The Space builds the Dockerfile from source; see deploy/huggingface/README.md.
+#
+# Auth uses HF Trusted Publishing (OIDC) — no HF_TOKEN secret to store or rotate.
+# The hf CLI detects GitHub Actions, exchanges the job's OIDC identity token for a
+# short-lived, repo-scoped HF token, and uses it for the upload.
 #
 # One-time setup (see docs/deploy.md):
 #   - Create a Docker Space on Hugging Face.
-#   - Add repo secret HF_TOKEN (a write-scoped HF access token).
+#   - On the Space's Settings -> Trusted Publishers, add a GitHub Actions publisher
+#     with claims: repository=<owner>/gpxsheet, branch=main, workflow=deploy-hf.yml
 #   - Add repo variable HF_SPACE = "<user>/<space>" (e.g. pleasantone/gpxsheet).
 on:
   push:
@@ -21,25 +26,35 @@ jobs:
     runs-on: ubuntu-latest
     # Skip if the Space isn't configured yet, so forks/unset repos don't fail.
     if: vars.HF_SPACE != ''
+    permissions:
+      id-token: write # mint the OIDC token for the trusted-publisher exchange
+      contents: read
     steps:
       - uses: actions/checkout@v6 # no submodules: not needed for the image build
 
-      - name: Push working tree to the Space
+      - name: Install the hf CLI
+        run: |
+          curl -LsSf https://hf.co/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sync working tree to the Space
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_SPACE: ${{ vars.HF_SPACE }}
-          GITHUB_SHA: ${{ github.sha }}
+          # Token minted by the exchange is scoped to this resource (the Space).
+          HF_OIDC_RESOURCE: spaces/${{ vars.HF_SPACE }}
         run: |
           set -euo pipefail
           # The Space's root README must carry the HF frontmatter.
           cp deploy/huggingface/README.md README.md
-          # Replace history with a single flattened commit so the Space repo
-          # doesn't carry the full GitHub history.
-          rm -rf .git
-          git init -q
-          git checkout -q -b main
-          git config user.email "ci@github.actions"
-          git config user.name "GitHub Actions"
-          git add -A
-          git commit -qm "Deploy ${GITHUB_SHA}"
-          git push --force "https://user:${HF_TOKEN}@huggingface.co/spaces/${HF_SPACE}.git" main
+          # Mirror the tree to the Space: upload everything, delete what's gone,
+          # skipping git internals and local-only build/dev artifacts.
+          hf upload "$HF_SPACE" . . \
+            --repo-type=space \
+            --delete="*" \
+            --exclude=".git/*" \
+            --exclude=".github/*" \
+            --exclude="**/node_modules/*" \
+            --exclude=".venv/*" \
+            --exclude="site/*" \
+            --exclude="frontend/test-results/*" \
+            --commit-message="Deploy ${GITHUB_SHA::7} from GitHub Actions"
