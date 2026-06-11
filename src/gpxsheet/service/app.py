@@ -82,22 +82,31 @@ class _RateLimiter:
 class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add baseline security response headers to every response."""
 
-    def __init__(self, app, *, hsts: bool) -> None:
+    def __init__(self, app, *, hsts: bool, frame_ancestors: list[str]) -> None:
         super().__init__(app)
         self._hsts = hsts
+        self._frame_ancestors = frame_ancestors
 
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
+        # Framing: deny by default. When an allowlist is configured (e.g. to embed
+        # in the HF Spaces iframe), drop X-Frame-Options — it can't allowlist an
+        # origin — and let CSP frame-ancestors govern.
+        if self._frame_ancestors:
+            ancestors = " ".join(self._frame_ancestors)
+        else:
+            ancestors = "'none'"
+            response.headers.setdefault("X-Frame-Options", "DENY")
         # API routes stay locked down; SPA HTML needs script execution + blob: images.
         is_api = request.url.path.startswith("/v1/") or request.url.path in ("/healthz", "/readyz")
-        csp = (
-            "default-src 'none'; frame-ancestors 'none'"
+        base = (
+            "default-src 'none'"
             if is_api
-            else "default-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'"
+            else "default-src 'self'; img-src 'self' blob: data:"
         )
+        csp = f"{base}; frame-ancestors {ancestors}"
         response.headers.setdefault("Content-Security-Policy", csp)
         if self._hsts:
             response.headers.setdefault(
@@ -173,6 +182,7 @@ def create_app(
     cors_origins: list[str] | None = None,
     trust_first_party: bool | None = None,
     session_secret: str | None = None,
+    frame_ancestors: list[str] | None = None,
     enable_hsts: bool | None = None,
 ) -> FastAPI:
     """Build the API. Pass components explicitly (tests) or let env decide."""
@@ -193,10 +203,11 @@ def create_app(
     trust_fp = trust_first_party if trust_first_party is not None else settings.trust_first_party()
     secret_str = session_secret if session_secret is not None else settings.session_secret()
     fp_secret = secret_str.encode() if secret_str else secrets.token_bytes(32)
+    frames = frame_ancestors if frame_ancestors is not None else settings.frame_ancestors()
     hsts = enable_hsts if enable_hsts is not None else settings.enable_hsts()
 
     app = FastAPI(title="GPXSheet", version="0.1.0", summary="GPX → tank-bag navigation PDFs")
-    app.add_middleware(_SecurityHeadersMiddleware, hsts=hsts)
+    app.add_middleware(_SecurityHeadersMiddleware, hsts=hsts, frame_ancestors=frames)
     if origins:
         app.add_middleware(
             CORSMiddleware,

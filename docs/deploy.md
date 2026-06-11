@@ -102,6 +102,24 @@ hf spaces secrets add <user>/<space> --secrets GPXSHEET_API_KEYS="$KEY"
 hf spaces variables add <user>/<space> --env GPXSHEET_TRUST_FIRST_PARTY=1
 ```
 
+#### Embedding (HF Spaces iframe)
+
+By default the app denies all framing (`X-Frame-Options: DENY` + CSP
+`frame-ancestors 'none'`) — good clickjacking protection for a self-hosted
+deployment. The HF Spaces page (`huggingface.co/spaces/…`) renders the app in an
+**iframe**, so the Space must allow `huggingface.co` to frame it, via
+`GPXSHEET_FRAME_ANCESTORS` (comma/space-separated origins). When set, the app drops
+`X-Frame-Options` (which can't allowlist an origin) and lets CSP govern:
+
+```bash
+hf spaces variables add <user>/<space> \
+  --env GPXSHEET_FRAME_ANCESTORS="https://huggingface.co https://*.hf.space"
+```
+
+Leaving it unset keeps the deny-all default. (Clickjacking risk is negligible here
+— the app is a stateless GPX renderer with no per-user accounts or sensitive
+actions — but the allowlist keeps framing scoped to HF.)
+
 ## Testing the image locally
 
 Build and run exactly what the Space runs:
