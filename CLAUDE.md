@@ -52,50 +52,21 @@ python3 -m pytest -q
 
 ## Architecture (src/gpxsheet/)
 
-- `geo.py` — haversine, bearings, cumulative distance (pure).
-- `models.py` — Route graph dataclasses (Route, Segment, DecisionPoint, …).
-- `gpx.py` — `load_route()` (gpxpy). `simplify.py` — RDP cleanup.
-- `analysis.py` — engine: `analyze_route()` delegates to three private steps
-  (`_geometry_baseline`, `_osm_enrich_pass`, `_apply_profile`); public helpers
-  `coord_at_meters` (interpolates), `turn_angle_at_mile`, `looks_sparse`;
-  public scoring helpers `turn_word(angle)`, `significance_for_turn(angle)`.
-  Tuning constants at top of file.
-- `enrich.py` — OSM (osmnx): durable road-name-change decisions via `_Run`
-  NamedTuple records (`_durable_runs`/`_decisions_from_runs`), named segments,
-  fuel; `_chunk_ranges` / `_GraphChunk` NamedTuple chunk big routes.
-  `_apply_junction_topology` (best-effort, `log.exception` on failure) reads
-  the osmnx graph to add roads-not-taken branches + roundabout "Nth exit"
-  decisions. Imports `turn_word`/`significance_for_turn` from `analysis`.
-  `profiles.py` — minimalist/sport-touring/rally thresholds; `VALID_PROFILES`.
-- `junctions.py` — pure topology helpers (no osmnx): `branches_not_taken`,
-  `roundabout_exit_number`, `relative_angle`/`direction_word`. Graph-reading in
-  enrich is tested with hand-built networkx graphs (no Overpass).
-- `layout.py` — pure Schematic Layout Engine: `build_strip_layout` → stylized
-  jogging ribbon + placed markers (stylized vs faithful turns; `show_start/end`).
-- `strip.py` — matplotlib renderer: `render_route_strip` → strip image;
-  `draw_strip` shared with the PDF (Agg, lazy import). Draws ghosted
-  `_draw_branch_stubs` (roads not taken) + a roundabout ring glyph. Transform
-  capture after `fig.canvas.draw()` (documented — finalizes data↔pixel mapping).
-- `paginate.py` — `paginate` (fixed decision-cap) + `slice_route` + `fit_pages`
-  (auto-fit: greedy, pack until labels overlap) + `plan_pages()` (dual-mode
-  entry point: `decisions_per_lane=0` → auto-fit, positive → fixed cap).
-  `decisions_per_lane=0` is the **public default** for `render()`, CLI, web.
-  Internal `pdf` renderer fallback stays at `FIXED_DECISIONS_PER_LANE=4`.
-  Public render-knob defaults (`show_branches`, `turn_style`, `paper`,
-  `lanes_per_page`, `decisions_per_lane`) live in `defaults.py`.
-- `pdf.py` — renderers `render_pdf`/`render_pages_png`/`render_preview` + the
-  `render_layout(layout, fmt)` dispatcher (layout × pdf/png). Landscape (one
-  strip/page, framed hug, progress bar) + portrait (stacked `_draw_lane` strips,
-  `lanes_per_page`/`decisions_per_lane`). Header = name + green mileage + page
-  counter; no cue zone.
-- `report.py` — `analyze` text. `cli.py` — typer CLI (generate/analyze/strip/
-  preview/validate; `--landscape --lanes --lane-decisions`; no OSM/dpi flags),
-  all wired through the library `render`/`analyze`/`validate` entry points.
-  CLI wraps all entry points in `try/except ValueError` for clean error output.
+Non-obvious structural facts (module purpose is derivable from filenames/docstrings):
 
-`analyze_route` flow: `_geometry_baseline` → `_osm_enrich_pass` (replaces
-decisions+segments; falls back to geometry-only w/ warning+log if `looks_sparse`
-/ Overpass fails) → `_apply_profile` (threshold, fuel, reassurance).
+- **Lazy imports are intentional** in `strip.py`, `pdf.py`, `paginate.py` —
+  keeps matplotlib out of the import path for non-rendering use.
+- **`analyze_route` is three steps:** `_geometry_baseline` → `_osm_enrich_pass`
+  (replaces decisions+segments; falls back to geometry-only w/ warning+log if
+  `looks_sparse` or Overpass fails) → `_apply_profile` (threshold, fuel, reassurance).
+- **`decisions_per_lane=0`** is the public default for `render()`, CLI, and web —
+  means auto-fit via `paginate.plan_pages()`. Positive value → fixed cap.
+  Internal `pdf.py` fallback is `FIXED_DECISIONS_PER_LANE=4`. All public
+  render-knob defaults live in `defaults.py`.
+- **`enrich.py` imports `turn_word`/`significance_for_turn` from `analysis.py`** —
+  an intentional cross-module dependency; don't inline copies.
+- **`_apply_junction_topology` is best-effort** (`log.exception` on failure) —
+  a topology error degrades to plain turns, never aborts enrichment.
 
 ## Key decisions (don't re-litigate without reason)
 
@@ -124,42 +95,15 @@ decisions+segments; falls back to geometry-only w/ warning+log if `looks_sparse`
 
 ## Test data
 
-`gpxsamples/*.gpx` (git submodule) — real California/PNW moto routes, picked to
-stress every parser/analysis quirk. `examples/sample_route.gpx` is synthetic & offshore
-(no OSM coverage → enrichment falls back to geometry-only). For iteration prefer
-synthetic Routes.
+`gpxsamples/*.gpx` (git submodule) — real California/PNW moto routes.
+`examples/sample_route.gpx` is synthetic & offshore (no OSM → geometry-only fallback).
+For iteration prefer synthetic routes.
 
-By data type (what the pipeline keys on):
-- **Dense tracks** (`<trk>`, ~30–40 pts/mi): `ich-dual-gas` ("sep02 174mi" =
-  Mt Hamilton; geometry-only floods it w/ 100+ false turns), `basecamp-tracks`,
-  `ich-north*` (24k–31k pts), `twixtmas` (583mi).
-- **Routes** (`<rte>`): `gaia` (1368pts, canonical 75mi Palo Alto·Skyline·coast —
-  reaches lat 37.77 near SF, source of the ferry-terminal false-positives),
-  `gaia2`, `onthegomap`, `basecamp-route` (23pts).
-- **Sparse routes** (`looks_sparse` / OSM-reconstruction case): `zumo1` (4pts/62mi),
-  `zumo2` (6/82), `zumo3` (12/564, + a nameless first `<rte>`) — ~1 pt per 15–45mi.
-- **Track + route in one file:** `basecamp`, `inroute`, `scenic`, `scenic2`.
-
-Sources (each app encodes GPX differently): Garmin BaseCamp (`basecamp*`), GaiaGPS
-(`gaia*`), inRoute (`inroute`), onthegomap, Scenic (`scenic*`), Garmin zūmo XT
-(`zumo*`), no-creator/processed (`ich-*`, `twixtmas`).
-
-Special cases:
-- **Multi-day = multiple tracks:** `ich-north` (D1/D2/D3, 1174mi), `ich-north-4`
-  (+D3-coast alt, 1879mi), `twixtmas` (day1/2/3).
-- **`-fixed` pairs** (`ich-north[-4]` vs `…-fixed`): fix = corrected waypoint
-  `<sym>` tags (restaurant mis-tagged `Gas Station` → `Restaurant`) + trimmed
-  track names. Relevant to fuel-detection-from-symbols.
-- **Same route, many encodings** (logical-route equivalence): `scenic` = Track +
-  Vias-as-Routepoints + Garmin-Extension; `scenic2` = Track + plain-`<rte>` +
-  Garmin Trip Extension + Garmin RoutePoint Extension.
-- **Waypoint conventions:** numbered rider sequences (`01 Evergreen`,
-  `101 Los Altos`); gas in name (`76 Bodega Bay`, `03 Tracy and Gas`) and/or
-  `<sym>Gas Station</sym>`.
-- `bad-xml.gpx` — intentionally malformed (truncated `<rte>`, mismatched tag at
-  line 599); error-handling fixture.
-
-
-## Conventions
-
-- Typer needs `B008` ignored (in pyproject). Use `zip(..., strict=...)`.
+Non-obvious fixture relationships:
+- **`zumo1/2/3`** are sparse waypoint-only routes (`looks_sparse` → geometry-only path).
+- **`ich-north` / `ich-north-4`** are multi-day (multiple `<trk>` elements).
+- **`ich-north[-4]` vs `…-fixed`**: `-fixed` corrects mis-tagged `<sym>` values
+  (restaurant tagged as `Gas Station`); relevant to fuel detection from symbols.
+- **`scenic` / `scenic2`**: same route in different GPX encodings (track + vias,
+  plain `<rte>`, Garmin Trip Extension, etc.) — logical-equivalence test cases.
+- **`bad-xml.gpx`**: intentionally malformed; error-handling fixture.
