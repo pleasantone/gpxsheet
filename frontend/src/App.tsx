@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchResultJson, submitAnalyze, submitRender, submitTable } from "./api";
 import { DropZone } from "./components/DropZone";
+import { Footer } from "./components/Footer";
 import { IntroGuide } from "./components/IntroGuide";
 import { JobProgress } from "./components/JobProgress";
 import { OptionsPanel } from "./components/OptionsPanel";
@@ -188,6 +189,7 @@ export default function App() {
             <IntroGuide />
           </div>
         </main>
+        <Footer />
       </div>
     );
   }
@@ -277,6 +279,7 @@ export default function App() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }
