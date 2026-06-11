@@ -40,6 +40,22 @@ After `make frontend`, the FastAPI app serves the SPA at `/`. Without the build,
 `/` falls through to the Swagger UI at `/docs` (the `is_dir()` guard in `app.py`
 skips the static mount when `service/static/` doesn't exist).
 
+### Full-stack dev (Redis + MinIO in Docker, Python on host)
+
+For testing the real async job queue and MinIO presigned URL flow, run four terminals:
+
+```bash
+make infra          # Redis + MinIO in Docker (docker-compose.infra.yml)
+make dev-api-full   # uvicorn --reload on :8000, prod path (uses .env.dev)
+make dev-worker     # Dramatiq worker (uses .env.dev)
+make dev-ui         # Vite on :5173, proxies /v1/ to :8000
+```
+
+- `.env.dev` holds the dev-only credentials — committed, safe to use as-is.
+- MinIO console: http://localhost:9001 (devkey / devsecret1)
+- `make infra-down` stops the containers.
+- `make dev-api` (no suffix) stays as the simple EagerRunner mode — no deps needed.
+
 Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
 `git submodule update --init` to populate it.
 
