@@ -117,49 +117,55 @@ def test_result_requires_api_key(tmp_path, l_route_file):
     assert client.get(f"/v1/jobs/{job_id}/result", headers=hdr).status_code == 200
 
 
-# --- same-origin (first-party SPA) trust, with API-key escape hatch ---------
+# --- first-party signed-token trust, with API-key escape hatch --------------
 
 
-def test_trusted_origin_allows_keyless_same_origin(tmp_path, l_route_file):
-    """With trusted origins configured, a same-origin browser request (the SPA)
-    is served without a key, while everyone else still needs one."""
+def test_fp_token_roundtrip_and_expiry():
+    from gpxsheet.service.app import _issue_fp_token, _valid_fp_token
+
+    secret = b"unit-secret"
+    assert _valid_fp_token(secret, _issue_fp_token(secret))
+    # Wrong secret, garbage, empty, and expired tokens all fail.
+    assert not _valid_fp_token(b"other", _issue_fp_token(secret))
+    assert not _valid_fp_token(secret, "not-a-token")
+    assert not _valid_fp_token(secret, None)
+    assert not _valid_fp_token(secret, _issue_fp_token(secret, ttl=-1))
+
+
+def test_first_party_token_allows_keyless_spa(tmp_path, l_route_file):
+    """With trust enabled, a valid signed first-party token is accepted in lieu of
+    an API key; everyone else still needs the key."""
+    from gpxsheet.service.app import _issue_fp_token
+
     client = _client(
         tmp_path,
         api_keys=frozenset({"s3cret"}),
-        trusted_origins=["https://app.example"],
+        trust_first_party=True,
+        session_secret="sign-me",
     )
-    # No key, no browser signal -> still rejected.
+    # No key, no token -> rejected.
     assert _post(client, "/v1/render", l_route_file).status_code == 401
-    # Browser-set Sec-Fetch-Site: same-origin -> trusted, no key needed.
+    # Valid signed token -> trusted, no key needed.
+    token = _issue_fp_token(b"sign-me")
     assert _post(
-        client, "/v1/render", l_route_file, headers={"Sec-Fetch-Site": "same-origin"}
+        client, "/v1/render", l_route_file, headers={"X-First-Party": token}
     ).status_code in (200, 202)
-
-
-def test_trusted_origin_accepts_origin_and_referer_fallback(tmp_path, l_route_file):
-    client = _client(
-        tmp_path,
-        api_keys=frozenset({"s3cret"}),
-        trusted_origins=["https://app.example"],
-    )
+    # A forged token (wrong secret) is rejected.
     assert _post(
-        client, "/v1/render", l_route_file, headers={"Origin": "https://app.example"}
-    ).status_code in (200, 202)
-    assert _post(
-        client, "/v1/render", l_route_file, headers={"Referer": "https://app.example/index.html"}
-    ).status_code in (200, 202)
-    # An untrusted origin (and no Sec-Fetch same-origin) is rejected.
-    assert _post(
-        client, "/v1/render", l_route_file, headers={"Origin": "https://evil.example"}
+        client, "/v1/render", l_route_file,
+        headers={"X-First-Party": _issue_fp_token(b"wrong")},
     ).status_code == 401
 
 
-def test_trusted_origin_disabled_by_default_still_requires_key(tmp_path, l_route_file):
-    """Self-hoster default: keys set but no trusted origins -> key always required,
-    even for a same-origin browser request."""
-    client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
+def test_first_party_disabled_by_default_still_requires_key(tmp_path, l_route_file):
+    """Self-hoster default: keys set but trust off -> a (would-be) token is ignored
+    and the key is required for everyone."""
+    from gpxsheet.service.app import _issue_fp_token
+
+    client = _client(tmp_path, api_keys=frozenset({"s3cret"}), session_secret="sign-me")
     assert _post(
-        client, "/v1/render", l_route_file, headers={"Sec-Fetch-Site": "same-origin"}
+        client, "/v1/render", l_route_file,
+        headers={"X-First-Party": _issue_fp_token(b"sign-me")},
     ).status_code == 401
 
 

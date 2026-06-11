@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
+import secrets
 import time
 from collections import defaultdict
 from typing import Annotated, Any
-from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from . import settings
@@ -110,26 +112,29 @@ def _bearer_token(authorization: str | None) -> str | None:
     return None
 
 
-def _is_trusted_browser(request: Request, trusted: list[str]) -> bool:
-    """True for a first-party browser request (the deployment's own SPA) when
-    `trusted` origins are configured. Best-effort: keys off browser-set headers a
-    page's JS cannot forge. Non-browser clients can spoof these, so the supported
-    programmatic path remains the API key."""
-    if not trusted:
+_FP_TTL_SECONDS = 12 * 3600
+_FP_GLOBAL = "__GPXSHEET_FP__"  # window global the server injects into the SPA
+
+
+def _issue_fp_token(secret: bytes, ttl: int = _FP_TTL_SECONDS) -> str:
+    """A signed, expiring first-party token: 'exp.hmac'. Issued only into the
+    served SPA page, so obtaining one requires loading the app (not a bare API
+    call). Unforgeable without the server secret."""
+    exp = str(int(time.time()) + ttl)
+    sig = hmac.new(secret, exp.encode(), hashlib.sha256).hexdigest()
+    return f"{exp}.{sig}"
+
+
+def _valid_fp_token(secret: bytes, token: str | None) -> bool:
+    if not token:
         return False
-    # Browser-set and not settable from page JS — the strongest first-party signal.
-    if request.headers.get("sec-fetch-site") == "same-origin":
-        return True
-    # Fallback for proxies that strip Sec-Fetch-*: match the Origin/Referer origin.
-    origin = request.headers.get("origin")
-    if origin and origin in trusted:
-        return True
-    referer = request.headers.get("referer")
-    if referer:
-        p = urlsplit(referer)
-        if p.scheme and p.netloc and f"{p.scheme}://{p.netloc}" in trusted:
-            return True
-    return False
+    try:
+        exp_s, sig = token.split(".", 1)
+        exp = int(exp_s)
+    except ValueError:
+        return False
+    expected = hmac.new(secret, exp_s.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, expected) and time.time() < exp
 
 
 def _cache_key(data: bytes, op: str, params: ReportParams, identity: str) -> str:
@@ -166,7 +171,8 @@ def create_app(
     rate_limit_per_minute: int | None = None,
     api_keys: frozenset[str] | None = None,
     cors_origins: list[str] | None = None,
-    trusted_origins: list[str] | None = None,
+    trust_first_party: bool | None = None,
+    session_secret: str | None = None,
     enable_hsts: bool | None = None,
 ) -> FastAPI:
     """Build the API. Pass components explicitly (tests) or let env decide."""
@@ -184,7 +190,9 @@ def create_app(
     )
     keys = api_keys if api_keys is not None else settings.api_keys()
     origins = cors_origins if cors_origins is not None else settings.cors_origins()
-    trusted = trusted_origins if trusted_origins is not None else settings.trusted_origins()
+    trust_fp = trust_first_party if trust_first_party is not None else settings.trust_first_party()
+    secret_str = session_secret if session_secret is not None else settings.session_secret()
+    fp_secret = secret_str.encode() if secret_str else secrets.token_bytes(32)
     hsts = enable_hsts if enable_hsts is not None else settings.enable_hsts()
 
     app = FastAPI(title="GPXSheet", version="0.1.0", summary="GPX → tank-bag navigation PDFs")
@@ -201,14 +209,16 @@ def create_app(
         request: Request,
         x_api_key: Annotated[str | None, Header()] = None,
         authorization: Annotated[str | None, Header()] = None,
+        x_first_party: Annotated[str | None, Header()] = None,
     ) -> str:
         """Authenticate (when keys are configured) and return a rate-limit identity."""
         presented = x_api_key or _bearer_token(authorization)
         if keys:
             if presented is not None and presented in keys:
                 return f"key:{presented}"
-            # First-party SPA (same-origin) is trusted without a key, when enabled.
-            if _is_trusted_browser(request, trusted):
+            # The bundled SPA carries a server-signed first-party token (injected
+            # into its page), accepted in lieu of a key when enabled.
+            if trust_fp and _valid_fp_token(fp_secret, x_first_party):
                 return f"ip:{request.client.host if request.client else '?'}"
             raise HTTPException(status_code=401, detail="invalid or missing API key")
         return f"ip:{request.client.host if request.client else '?'}"
@@ -391,6 +401,20 @@ def create_app(
 
     _static = Path(__file__).parent / "static"
     if _static.is_dir():
+        # When first-party trust is on, serve index.html through a handler that
+        # injects a fresh signed token, so the SPA can authenticate without a key.
+        # Registered before the catch-all mount so it wins for "/". Other routes
+        # (assets, SPA fallback) are served by StaticFiles as usual.
+        if trust_fp and keys:
+            _index_html = (_static / "index.html").read_text(encoding="utf-8")
+
+            @app.get("/", include_in_schema=False)
+            def index() -> HTMLResponse:
+                token = _issue_fp_token(fp_secret)
+                tag = f"<script>window.{_FP_GLOBAL}={json.dumps(token)}</script>"
+                html = _index_html.replace("</head>", f"{tag}</head>", 1)
+                return HTMLResponse(html, headers={"Cache-Control": "no-store"})
+
         app.mount("/", StaticFiles(directory=_static, html=True), name="static")
 
     return app

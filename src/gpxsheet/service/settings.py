@@ -47,12 +47,20 @@ def cors_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-def trusted_origins() -> list[str]:
-    """Origins whose same-origin browser requests are trusted without an API key
-    (e.g. the deployment's own bundled SPA). Comma-separated. Empty = feature off
-    (an API key is then required from everyone when keys are configured)."""
-    raw = os.getenv("GPXSHEET_TRUSTED_ORIGINS", "")
-    return [o.strip() for o in raw.split(",") if o.strip()]
+def trust_first_party() -> bool:
+    """When true (and API keys are set), the backend issues a signed, expiring
+    first-party token into the served SPA, and accepts it in lieu of an API key.
+    Lets the bundled web app work keyless while the raw API stays key-gated.
+    Off by default, so self-hosters keep the strict "key required for everyone"
+    behavior when they set GPXSHEET_API_KEYS."""
+    return os.getenv("GPXSHEET_TRUST_FIRST_PARTY", "").lower() in ("1", "true", "yes")
+
+
+def session_secret() -> str | None:
+    """HMAC secret for signing first-party tokens. Optional: if unset, a random
+    per-process secret is used (fine for a single replica; set this to share trust
+    across replicas)."""
+    return os.getenv("GPXSHEET_SESSION_SECRET") or None
 
 
 def enable_hsts() -> bool:

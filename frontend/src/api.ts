@@ -15,8 +15,14 @@ export function setApiKey(key: string): void {
 }
 
 function authHeaders(): HeadersInit {
+  const headers: Record<string, string> = {};
   const key = getApiKey();
-  return key ? { "X-API-Key": key } : {};
+  if (key) headers["X-API-Key"] = key;
+  // Server-signed first-party token injected into this page (when the deployment
+  // gates the API). Lets the bundled SPA call the API without a user-entered key.
+  const fp = window.__GPXSHEET_FP__;
+  if (fp) headers["X-First-Party"] = fp;
+  return headers;
 }
 
 export class ApiError extends Error {
