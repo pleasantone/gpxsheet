@@ -193,6 +193,7 @@ export default function App() {
 function Header({ children }: { children?: React.ReactNode }) {
   return (
     <header className="border-b border-slate-200 bg-white px-4 py-3 flex items-center gap-3">
+      <img src="/icon.svg" alt="" className="w-7 h-7 rounded" />
       <span className="text-lg font-bold text-brand tracking-tight">GPXSheet</span>
       <span className="text-xs text-slate-400 hidden sm:block">
         GPX → motorcycle navigation PDFs
