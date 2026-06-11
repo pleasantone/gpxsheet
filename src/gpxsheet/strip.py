@@ -51,10 +51,15 @@ def render_route_strip(
     *,
     layout: StripLayout | None = None,
     turn_style: str = TURN_STYLE_STYLIZED,
+    show_branches: bool = True,
     title: str | None = None,
     dpi: int = 150,
 ) -> Path:
-    """Render ``route`` as a schematic strip PNG. Returns the output path."""
+    """Render ``route`` as a schematic strip PNG. Returns the output path.
+
+    ``show_branches`` draws the ghosted "roads not taken" stubs at each junction
+    (on by default); set it False to hide them.
+    """
     import matplotlib
 
     matplotlib.use("Agg")  # headless; no display needed
@@ -69,7 +74,7 @@ def render_route_strip(
     fig_h = min(max(fig_w / aspect, 3.5), 16.0)
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
-    draw_strip(fig, ax, layout)
+    draw_strip(fig, ax, layout, show_branches=show_branches)
 
     header = title or route.name or "Route"
     fig.suptitle(header, fontsize=12, fontweight="bold", y=0.99)
@@ -79,14 +84,18 @@ def render_route_strip(
     return output_path
 
 
-def draw_strip(fig, ax, layout: StripLayout, *, draw_ribbon: bool = True) -> None:
+def draw_strip(
+    fig, ax, layout: StripLayout, *, draw_ribbon: bool = True, show_branches: bool = True
+) -> None:
     """Draw a schematic strip (path, markers, collision-placed labels) into ``ax``.
 
     Shared by the standalone PNG renderer and the per-page PDF composition.
+    ``show_branches`` toggles the ghosted "roads not taken" stubs (on by default).
     """
     xs = [p[0] for p in layout.path]
     ys = [p[1] for p in layout.path]
-    _draw_branch_stubs(ax, layout)  # ghosted, behind the route line
+    if show_branches:
+        _draw_branch_stubs(ax, layout)  # ghosted, behind the route line
     ax.plot(xs, ys, color=colors.ROUTE_LINE, linewidth=4, solid_capstyle="round", zorder=2)
     _draw_overlays(ax, layout)  # recolor unpaved/ferry stretches over the base line
 

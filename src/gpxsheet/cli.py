@@ -47,6 +47,10 @@ def generate(
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
+    branches: bool = typer.Option(
+        True, "--branches/--no-branches",
+        help="Draw ghosted 'roads not taken' stubs at junctions (default on).",
+    ),
     landscape: bool = typer.Option(
         False, "--landscape",
         help="One big strip per page instead of the default portrait roadbook.",
@@ -73,6 +77,7 @@ def generate(
         layout="landscape" if landscape else "portrait",
         format="pdf",
         turn_style=turns,
+        show_branches=branches,
         paper=paper,
         lanes_per_page=lanes,
         decisions_per_lane=lane_decisions,
@@ -119,6 +124,10 @@ def strip(
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
     ),
+    branches: bool = typer.Option(
+        True, "--branches/--no-branches",
+        help="Draw ghosted 'roads not taken' stubs at junctions (default on).",
+    ),
 ) -> None:
     """Render the schematic map strip to a PNG."""
     from . import render
@@ -131,6 +140,7 @@ def strip(
         layout="strip",
         format="png",
         turn_style=turns,
+        show_branches=branches,
     )
     typer.echo(f"Wrote {out}")
 
@@ -147,6 +157,10 @@ def preview(
     ),
     turns: str = typer.Option(
         "stylized", "--turns", help="Bend style at turns: stylized | faithful."
+    ),
+    branches: bool = typer.Option(
+        True, "--branches/--no-branches",
+        help="Draw ghosted 'roads not taken' stubs at junctions (default on).",
     ),
     lane_decisions: int = typer.Option(
         0, "--lane-decisions", min=0, help="Max decisions per strip lane; default 0 = auto-fit."
@@ -167,6 +181,7 @@ def preview(
         layout="preview",
         format="png",
         turn_style=turns,
+        show_branches=branches,
         decisions_per_lane=lane_decisions,
     )
     typer.echo(f"Wrote {out}")
