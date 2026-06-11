@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import secrets
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, Response, UploadFile
@@ -26,6 +28,8 @@ from .jobs import (
 )
 from .models import JobState, JobStatus, RenderForm, RenderParams, ReportForm, ReportParams
 from .storage import LocalStorage, Storage
+
+log = logging.getLogger(__name__)
 
 # Error responses we declare on endpoints so they show up in the OpenAPI schema.
 _UPLOAD_ERRORS: dict[int | str, dict[str, Any]] = {
@@ -112,6 +116,27 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
             )
         return response
+
+
+def _osm_cache_problem() -> str | None:
+    """If GPXSHEET_OSM_CACHE_DIR is set but not creatable/writable, return why.
+
+    Guards against the silent failure where osmnx can't write its cache and every
+    render degrades to geometry-only. Only enforced when the dir is configured, so
+    self-hosters who don't set it are unaffected.
+    """
+    cache_dir = settings.osm_cache_dir()
+    if not cache_dir:
+        return None
+    try:
+        path = Path(cache_dir)
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write-probe"
+        probe.write_bytes(b"")
+        probe.unlink()
+    except OSError as e:
+        return f"OSM cache dir {cache_dir!r} is not writable: {e}"
+    return None
 
 
 def _bearer_token(authorization: str | None) -> str | None:
@@ -206,6 +231,12 @@ def create_app(
     fp_secret = secret_str.encode() if secret_str else secrets.token_bytes(32)
     frames = frame_ancestors if frame_ancestors is not None else settings.frame_ancestors()
     hsts = enable_hsts if enable_hsts is not None else settings.enable_hsts()
+
+    # Fail loudly at startup if the OSM cache dir is misconfigured — otherwise
+    # enrichment silently degrades to geometry-only on every render.
+    cache_problem = _osm_cache_problem()
+    if cache_problem:
+        log.error("%s — OSM enrichment will degrade to geometry-only", cache_problem)
 
     app = FastAPI(title="GPXSheet", version="0.1.0", summary="GPX → tank-bag navigation PDFs")
     app.add_middleware(_SecurityHeadersMiddleware, hsts=hsts, frame_ancestors=frames)
@@ -313,9 +344,13 @@ def create_app(
 
     @app.get("/readyz", responses={503: {"description": "A backend is unreachable"}})
     def readyz() -> dict:
-        """Readiness: the job store and result storage are reachable."""
+        """Readiness: job store + result storage reachable, and (if configured) the
+        OSM cache dir is writable so enrichment won't silently degrade."""
         if not (store.ready() and storage.ready()):
             raise HTTPException(status_code=503, detail="not ready")
+        problem = _osm_cache_problem()
+        if problem:
+            raise HTTPException(status_code=503, detail=problem)
         return {"status": "ready"}
 
     @app.post(
@@ -406,8 +441,6 @@ def create_app(
         return Response(
             content=storage.load(rec.result_key), media_type=content_type, headers=headers
         )
-
-    from pathlib import Path
 
     from fastapi.staticfiles import StaticFiles
 

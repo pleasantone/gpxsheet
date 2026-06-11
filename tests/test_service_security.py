@@ -202,6 +202,24 @@ def test_hsts_when_enabled(tmp_path):
     assert "max-age=" in client.get("/healthz").headers["Strict-Transport-Security"]
 
 
+def test_readyz_ok_when_osm_cache_writable(tmp_path, monkeypatch):
+    monkeypatch.setenv("GPXSHEET_OSM_CACHE_DIR", str(tmp_path / "osm-cache"))
+    client = _client(tmp_path)
+    assert client.get("/readyz").status_code == 200
+
+
+def test_readyz_503_when_osm_cache_unwritable(tmp_path, monkeypatch):
+    """A configured-but-unwritable OSM cache dir fails readiness loudly, instead of
+    silently degrading every render to geometry-only."""
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir")  # mkdir under this path will fail
+    monkeypatch.setenv("GPXSHEET_OSM_CACHE_DIR", str(blocker / "cache"))
+    client = _client(tmp_path)
+    r = client.get("/readyz")
+    assert r.status_code == 503
+    assert "not writable" in r.json()["detail"]
+
+
 def test_frame_ancestors_allowlist_enables_embedding(tmp_path):
     """With a frame-ancestors allowlist, drop X-Frame-Options (can't allowlist an
     origin) and let CSP govern — so e.g. the HF Spaces iframe can embed the app."""
