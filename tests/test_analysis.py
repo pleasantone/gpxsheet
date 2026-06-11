@@ -102,7 +102,7 @@ def test_reassurance_markers_respect_interval(l_route_file):
     # Pass a Profile with a short interval so the 5-mile l_route gets markers.
     prof = Profile(
         name="test", decision_threshold=40, include_fuel=False,
-        include_reassurance=True, include_confirmation=False, reassurance_interval_miles=1.0,
+        include_reassurance=True, reassurance_interval_miles=1.0,
     )
     route = load_route(str(l_route_file))
     analyze_route(route, profile=prof)
@@ -117,7 +117,7 @@ def test_reassurance_marker_not_dropped_near_end(l_route_file):
     # mile 4 (~1 mi from the end) must be kept, not suppressed by an end buffer.
     prof = Profile(
         name="test", decision_threshold=40, include_fuel=False,
-        include_reassurance=True, include_confirmation=False, reassurance_interval_miles=4.0,
+        include_reassurance=True, reassurance_interval_miles=4.0,
     )
     route = load_route(str(l_route_file))
     analyze_route(route, profile=prof)

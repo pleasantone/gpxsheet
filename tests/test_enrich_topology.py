@@ -22,15 +22,6 @@ def _straight_north_route(miles: float = 1.4):
     return route
 
 
-class _FakeOx:
-    """Force _nearest_graph_node onto its haversine fallback (no scipy/CRS)."""
-
-    class distance:  # noqa: N801
-        @staticmethod
-        def nearest_nodes(*a, **k):
-            raise RuntimeError("use fallback")
-
-
 def _four_way_graph():
     import networkx as nx
 
@@ -60,7 +51,7 @@ def test_branches_at_four_way():
     # Decision at the junction; route goes straight through (S -> N).
     mid = route.length_miles / 2
     d = DecisionPoint(mile=mid, instruction="x", significance=0, lat=0.0, lon=0.0)
-    branches = _branches_for(g, route, d, _FakeOx())
+    branches = _branches_for(g, route, d)
     assert [(b.direction, b.name) for b in branches] == [
         ("left", "West Ave"),
         ("right", "East Ave"),
@@ -80,7 +71,7 @@ def test_no_branches_when_degree_two():
     g.add_edge("J", "S", name="Main St", bearing=180.0)
     route = _straight_north_route()
     d = DecisionPoint(mile=route.length_miles / 2, instruction="x", significance=0, lat=0, lon=0)
-    assert _branches_for(g, route, d, _FakeOx()) == ()  # not a fork
+    assert _branches_for(g, route, d) == ()  # not a fork
 
 
 def _roundabout_graph():
@@ -180,7 +171,8 @@ def test_promote_nameless_fork_emits_decision():
     j_idx = 2  # the junction sample
     node_seq = ["S", "S", "J", "E", "E"]
     sample_m = list(route.distances_m)
-    graphs = [(0, len(route.points) - 1, g)]
+    from gpxsheet.enrich import _GraphChunk
+    graphs = [_GraphChunk(0, len(route.points) - 1, g)]
     _promote_fork_decisions(route, graphs, node_seq, sample_m)
 
     assert len(route.decision_points) == 1
@@ -206,7 +198,8 @@ def test_no_fork_decision_when_route_runs_straight_through():
     )
     g = _fork_graph()
     node_seq = ["S", "S", "J", "N", "N"]
-    _promote_fork_decisions(route, g and [(0, 4, g)], node_seq, list(route.distances_m))
+    from gpxsheet.enrich import _GraphChunk
+    _promote_fork_decisions(route, [_GraphChunk(0, 4, g)], node_seq, list(route.distances_m))
     assert route.decision_points == []  # straight through -> not a fork
 
 

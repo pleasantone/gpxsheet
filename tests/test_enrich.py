@@ -44,7 +44,7 @@ def test_durable_runs_drops_transient_flaps():
     sample_m = [i * 100.0 for i in range(12)]  # 0..1100 m, 12 samples
     names = ["Main St"] * 5 + ["Cross St"] + ["Main St"] * 5 + ["Highway 1"]
     runs = _durable_runs(sample_m, names, min_run_m=300.0)
-    road_names = [n for _, n in runs]
+    road_names = [r.name for r in runs]
     assert "Cross St" not in road_names  # transient flap dropped
     assert road_names.count("Main St") == 1  # rejoined into one run
     assert road_names[-1] == "Highway 1"  # last run kept even though short (edge)
@@ -155,7 +155,7 @@ def test_durable_runs_deadband_keeps_borderline_run():
 
     sample_m = [i * 100.0 for i in range(11)]  # 0..1000 m
     names = ["Main St"] * 4 + ["Side Rd"] * 3 + ["Main St"] * 4
-    road_names = [n for _, n in _durable_runs(sample_m, names, min_run_m=250.0)]
+    road_names = [r.name for r in _durable_runs(sample_m, names, min_run_m=250.0)]
     assert road_names == ["Main St", "Side Rd", "Main St"]
 
 

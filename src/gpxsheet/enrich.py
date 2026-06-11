@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
+from typing import NamedTuple
 
 from .analysis import (
     CONTINUE_MAX_ANGLE_DEG,
@@ -51,6 +52,20 @@ from .profiles import (
 )
 
 _DEG_PER_M = 1.0 / METERS_PER_DEG_LAT  # degrees per meter for geographic buffering
+
+
+class _Run(NamedTuple):
+    """A durable road-name run: contiguous stretch on one named road."""
+    start_m: float
+    name: str
+    end_m: float
+
+
+class _GraphChunk(NamedTuple):
+    """An OSM graph covering route point indices [i0, i1]."""
+    i0: int
+    i1: int
+    graph: object
 
 # Names that read as a numbered/limited-access highway (higher significance).
 _HIGHWAY_RE = re.compile(
@@ -180,7 +195,7 @@ def enrich_route(
     names: list[str | None] = [None] * len(sample_m)
     unpaved: list[bool] = [False] * len(sample_m)
     node_seq: list[int | None] = [None] * len(sample_m)  # nearest OSM node per sample
-    graphs: list[tuple[int, int, object]] = []  # (i0, i1, graph) for the topology pass
+    graphs: list[_GraphChunk] = []  # (i0, i1, graph) for the topology pass
 
     chunks = _chunk_ranges(route)
     for i0, i1 in chunks:
@@ -191,7 +206,7 @@ def enrich_route(
         graph = _chunk_graph(ox, sg, sub, road_buffer_m)
         if graph is None:
             continue  # no drivable network here; other chunks still enrich
-        graphs.append((i0, i1, graph))
+        graphs.append(_GraphChunk(i0, i1, graph))
         edges_gdf = ox.graph_to_gdfs(graph, nodes=False)
         idxs = [k for k, m in enumerate(sample_m) if cs - 1e-6 <= m <= ce + 1e-6]
         if not idxs:
@@ -215,7 +230,7 @@ def enrich_route(
         route.segments = _segments_from_runs(route, runs)
         route.decision_points = _decisions_from_runs(route, runs)
         try:  # roads-not-taken + roundabouts are best-effort; never break enrichment
-            _apply_junction_topology(route, graphs, node_seq, sample_m, ox)
+            _apply_junction_topology(route, graphs, node_seq, sample_m)
         except Exception:  # noqa: BLE001 - degrade to plain turns on any topology error
             pass
 
@@ -324,12 +339,12 @@ def _chunk_ranges(
     return ranges
 
 
-def _durable_runs(sample_m, names, min_run_m: float) -> list[tuple[float, str]]:
+def _durable_runs(sample_m, names, min_run_m: float) -> list[_Run]:
     """Collapse sampled names into runs of road, dropping transient flaps.
 
     A run shorter than ``min_run_m`` is discarded as nearest-edge snapping at a
     junction (unless it's the first/last run); the surrounding road then joins
-    up. Returns ``(start_mile, name)`` for each surviving road in order.
+    up. Returns :class:`_Run` records in order.
 
     A run's measured extent is the span between its first and last sample, which
     undercounts the true on-road length by up to one sample spacing depending on
@@ -348,33 +363,34 @@ def _durable_runs(sample_m, names, min_run_m: float) -> list[tuple[float, str]]:
         prev = nm or prev
         filled.append(prev)
 
-    # Run-length encode into [start_m, name, end_m].
-    runs: list[list] = []
+    # Run-length encode into mutable [start_m, name, end_m] lists (end_m grows).
+    raw: list[list] = []
     for m, nm in zip(sample_m, filled, strict=True):
-        if runs and runs[-1][1] == nm:
-            runs[-1][2] = m
+        if raw and raw[-1][1] == nm:
+            raw[-1][2] = m
         else:
-            runs.append([m, nm, m])
+            raw.append([m, nm, m])
 
     # Drop short interior runs and None runs, then merge now-adjacent same names.
     kept: list[list] = []
-    for i, run in enumerate(runs):
+    for i, run in enumerate(raw):
         if run[1] is None:
             continue
-        is_edge = i == 0 or i == len(runs) - 1
+        is_edge = i == 0 or i == len(raw) - 1
         if (run[2] - run[0] + spacing) >= min_run_m or is_edge:
             if kept and kept[-1][1] == run[1]:
                 kept[-1][2] = run[2]
             else:
                 kept.append(run)
 
-    return [(meters_to_miles(r[0]), r[1]) for r in kept]
+    return [_Run(meters_to_miles(r[0]), r[1], meters_to_miles(r[2])) for r in kept]
 
 
-def _segments_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[Segment]:
+def _segments_from_runs(route: Route, runs: list[_Run]) -> list[Segment]:
     segments: list[Segment] = []
-    for i, (start, name) in enumerate(runs):
-        end = runs[i + 1][0] if i + 1 < len(runs) else route.length_miles
+    for i, run in enumerate(runs):
+        start, name = run.start_m, run.name
+        end = runs[i + 1].start_m if i + 1 < len(runs) else route.length_miles
         if segments and end - start < MIN_SEGMENT_MILES:
             segments[-1] = Segment(segments[-1].name, segments[-1].start_mile, round(end, 1))
             continue
@@ -419,10 +435,11 @@ def _road_change_significance(name: str, angle: float) -> int:
     return sig
 
 
-def _decisions_from_runs(route: Route, runs: list[tuple[float, str]]) -> list[DecisionPoint]:
+def _decisions_from_runs(route: Route, runs: list[_Run]) -> list[DecisionPoint]:
     """Each durable road-name change is a decision: turn direction from geometry."""
     decisions: list[DecisionPoint] = []
-    for start_mile, name in runs[1:]:  # the first road is where you start, not a decision
+    for run in runs[1:]:  # the first road is where you start, not a decision
+        start_mile, name = run.start_m, run.name
         angle = turn_angle_at_mile(route, start_mile)
         lat, lon = coord_at_meters(route, miles_to_meters(start_mile))
         if abs(angle) < CONTINUE_MAX_ANGLE_DEG:
@@ -478,9 +495,10 @@ def _closer_endpoint(graph, edge, latlon):
     return u if du <= dv else v
 
 
-def _nearest_graph_node(graph, lat: float, lon: float, ox=None):
+def _nearest_graph_node(graph, lat: float, lon: float) -> int | None:
     """Graph node nearest ``(lat, lon)`` by haversine (no sklearn dependency)."""
-    best, best_d = None, float("inf")
+    best: int | None = None
+    best_d = float("inf")
     for nid, data in graph.nodes(data=True):
         d = haversine(lat, lon, data["y"], data["x"])
         if d < best_d:
@@ -547,16 +565,16 @@ def _route_bearings_at(route: Route, mile: float) -> tuple[float, float]:
     )
 
 
-def _graph_for_mile(graphs, route: Route, mile: float):
+def _graph_for_mile(graphs: list[_GraphChunk], route: Route, mile: float):
     target = miles_to_meters(mile)
-    for i0, i1, g in graphs:
-        if route.distances_m[i0] - 1.0 <= target <= route.distances_m[i1] + 1.0:
-            return g
-    return graphs[0][2] if graphs else None
+    for chunk in graphs:
+        if route.distances_m[chunk.i0] - 1.0 <= target <= route.distances_m[chunk.i1] + 1.0:
+            return chunk.graph
+    return graphs[0].graph if graphs else None
 
 
-def _branches_for(graph, route: Route, decision: DecisionPoint, ox):
-    node = _nearest_graph_node(graph, decision.lat, decision.lon, ox)
+def _branches_for(graph, route: Route, decision: DecisionPoint):
+    node = _nearest_graph_node(graph, decision.lat, decision.lon)
     if node is None or _junction_degree(graph, node) < 3:  # not a fork
         return ()
     arrival, taken = _route_bearings_at(route, decision.mile)
@@ -567,7 +585,7 @@ def _branches_for(graph, route: Route, decision: DecisionPoint, ox):
     )
 
 
-def _roundabout_rings(graph) -> list[list]:
+def _roundabout_rings(graph) -> list[list[int]]:
     """Ordered node rings for each one-way roundabout/circular way in the graph."""
     radj: dict = {}
     nodes: set = set()
@@ -683,14 +701,16 @@ def _merge_roundabout(decisions: list[DecisionPoint], rd: DecisionPoint, tol: fl
     return sorted(kept, key=lambda d: d.mile)
 
 
-def _apply_junction_topology(route, graphs, node_seq, sample_m, ox) -> None:
+def _apply_junction_topology(
+    route: Route, graphs: list[_GraphChunk], node_seq: list[int | None], sample_m: list[float]
+) -> None:
     if not graphs:
         return
     # 1. Roundabouts: replace the plain exit decision with a ROUNDABOUT one.
     decisions = list(route.decision_points)
-    for _, _, graph in graphs:
-        for ring in _roundabout_rings(graph):
-            rd = _roundabout_decision(graph, ring, route, node_seq, sample_m)
+    for chunk in graphs:
+        for ring in _roundabout_rings(chunk.graph):
+            rd = _roundabout_decision(chunk.graph, ring, route, node_seq, sample_m)
             if rd is not None:
                 decisions = _merge_roundabout(decisions, rd)
     # 2. Roads-not-taken on every remaining plain decision.
@@ -700,7 +720,7 @@ def _apply_junction_topology(route, graphs, node_seq, sample_m, ox) -> None:
             out.append(d)
             continue
         graph = _graph_for_mile(graphs, route, d.mile)
-        branches = _branches_for(graph, route, d, ox) if graph is not None else ()
+        branches = _branches_for(graph, route, d) if graph is not None else ()
         out.append(replace(d, branches=branches) if branches else d)
     route.decision_points = out
     # 3. Nameless forks: a high-degree node where the route leaves a through-road

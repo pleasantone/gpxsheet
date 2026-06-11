@@ -22,7 +22,6 @@ __all__ = [
     "render",
     "analyze",
     "validate",
-    "analyze_route",
     "load_route",
     "Finding",
     "ValidationReport",
