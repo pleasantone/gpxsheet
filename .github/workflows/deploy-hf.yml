@@ -1,7 +1,12 @@
 name: Deploy to Hugging Face Space
 
-# Sync the repo to the Hugging Face Space on every push to main (and on demand).
+# Sync the repo to the Hugging Face Space after CI passes on main (and on demand).
 # The Space builds the Dockerfile from source; see deploy/huggingface/README.md.
+#
+# Gated on CI: this runs via workflow_run when the "CI" workflow completes on main,
+# and only deploys if that run succeeded — so the Space never rebuilds from a commit
+# whose lint/tests/typecheck/packaging failed (or is still running). workflow_dispatch
+# stays a manual escape hatch that bypasses the gate.
 #
 # Auth uses HF Trusted Publishing (OIDC) — no HF_TOKEN secret to store or rotate.
 # The hf CLI detects GitHub Actions, exchanges the job's OIDC identity token for a
@@ -13,7 +18,9 @@ name: Deploy to Hugging Face Space
 #     with claims: repository=<owner>/gpxsheet, branch=main, workflow=deploy-hf.yml
 #   - Add repo variable HF_SPACE = "<user>/<space>" (e.g. pleasantone/gpxsheet).
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -24,13 +31,22 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    # Skip if the Space isn't configured yet, so forks/unset repos don't fail.
-    if: vars.HF_SPACE != ''
+    # Skip if the Space isn't configured yet (forks/unset repos), and — for the
+    # CI-completion trigger — only proceed if that CI run succeeded. A manual
+    # workflow_dispatch has no workflow_run payload, so it deploys unconditionally.
+    if: >-
+      vars.HF_SPACE != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.conclusion == 'success')
     permissions:
       id-token: write # mint the OIDC token for the trusted-publisher exchange
       contents: read
     steps:
+      # Deploy the exact commit CI passed on: workflow_run defaults to the branch
+      # tip, which may have advanced. (Empty head_sha on dispatch -> branch ref.)
       - uses: actions/checkout@v6 # no submodules: not needed for the image build
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Install the hf CLI
         run: |
@@ -42,6 +58,8 @@ jobs:
           HF_SPACE: ${{ vars.HF_SPACE }}
           # Token minted by the exchange is scoped to this resource (the Space).
           HF_OIDC_RESOURCE: spaces/${{ vars.HF_SPACE }}
+          # The gated commit (matches the checked-out ref above).
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
         run: |
           set -euo pipefail
           # The Space's root README must carry the HF frontmatter.
@@ -61,4 +79,4 @@ jobs:
             --include="frontend/*" \
             --exclude="frontend/tests/*" \
             --exclude="frontend/test-results/*" \
-            --commit-message="Deploy ${GITHUB_SHA::7} from GitHub Actions"
+            --commit-message="Deploy ${DEPLOY_SHA::7} from GitHub Actions"
