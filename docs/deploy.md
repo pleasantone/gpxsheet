@@ -22,7 +22,9 @@ osmnx caches Overpass responses to `./cache` by default, which fails when the
 container runs as a non-root user with a non-writable working dir (enrichment then
 silently degrades to geometry-only). The image sets `GPXSHEET_OSM_CACHE_DIR=/tmp/
 gpxsheet-osm-cache` so the cache lands somewhere writable; point it elsewhere if you
-mount a persistent volume.
+mount a persistent volume. When that var is set, `/readyz` verifies the dir is
+writable (503 otherwise) and startup logs an error if not — so a misconfigured cache
+fails loudly instead of silently degrading every render to geometry-only.
 
 ## Hugging Face Space (reference deployment)
 

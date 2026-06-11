@@ -56,6 +56,12 @@ def trust_first_party() -> bool:
     return os.getenv("GPXSHEET_TRUST_FIRST_PARTY", "").lower() in ("1", "true", "yes")
 
 
+def osm_cache_dir() -> str | None:
+    """Directory osmnx writes its Overpass HTTP cache to (GPXSHEET_OSM_CACHE_DIR).
+    None = osmnx default (./cache). See enrich._configure_osm_cache."""
+    return os.getenv("GPXSHEET_OSM_CACHE_DIR") or None
+
+
 def frame_ancestors() -> list[str]:
     """CSP frame-ancestors allowlist (comma- or space-separated origins) permitting
     the app to be embedded — e.g. the Hugging Face Spaces iframe needs
