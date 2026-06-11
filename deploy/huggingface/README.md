@@ -1,8 +1,8 @@
 ---
 title: GPXSheet
 emoji: 🏍️
-colorFrom: orange
-colorTo: gray
+colorFrom: yellow
+colorTo: red
 sdk: docker
 app_port: 8000
 pinned: false
