@@ -10,7 +10,7 @@ from pathlib import Path
 
 import typer
 
-from . import DEFAULT_PROFILE, __version__
+from . import DEFAULT_PROFILE, __version__, defaults
 
 app = typer.Typer(
     add_completion=False,
@@ -45,10 +45,10 @@ def generate(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
     turns: str = typer.Option(
-        "stylized", "--turns", help="Bend style at turns: stylized | faithful."
+        defaults.TURN_STYLE, "--turns", help="Bend style at turns: stylized | faithful."
     ),
     branches: bool = typer.Option(
-        False, "--branches/--no-branches",
+        defaults.SHOW_BRANCHES, "--branches/--no-branches",
         help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
     landscape: bool = typer.Option(
@@ -56,13 +56,13 @@ def generate(
         help="One big strip per page instead of the default portrait roadbook.",
     ),
     paper: str = typer.Option(
-        "letter", "--paper", help="Page size: letter | a4."
+        defaults.PAPER, "--paper", help="Page size: letter | a4."
     ),
     lanes: int = typer.Option(
-        4, "--lanes", min=1, help="Portrait only: strip lanes per page."
+        defaults.LANES_PER_PAGE, "--lanes", min=1, help="Portrait only: strip lanes per page."
     ),
     lane_decisions: int = typer.Option(
-        0, "--lane-decisions", min=0,
+        defaults.DECISIONS_PER_LANE, "--lane-decisions", min=0,
         help="Max decisions per page (portrait lane / landscape page); default 0 = auto-fit.",
     ),
 ) -> None:
@@ -122,10 +122,10 @@ def strip(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
     turns: str = typer.Option(
-        "stylized", "--turns", help="Bend style at turns: stylized | faithful."
+        defaults.TURN_STYLE, "--turns", help="Bend style at turns: stylized | faithful."
     ),
     branches: bool = typer.Option(
-        False, "--branches/--no-branches",
+        defaults.SHOW_BRANCHES, "--branches/--no-branches",
         help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
 ) -> None:
@@ -156,14 +156,15 @@ def preview(
         None, "--fuel-range", help="Rider fuel range in miles."
     ),
     turns: str = typer.Option(
-        "stylized", "--turns", help="Bend style at turns: stylized | faithful."
+        defaults.TURN_STYLE, "--turns", help="Bend style at turns: stylized | faithful."
     ),
     branches: bool = typer.Option(
-        False, "--branches/--no-branches",
+        defaults.SHOW_BRANCHES, "--branches/--no-branches",
         help="Draw ghosted 'roads not taken' stubs at junctions (default off).",
     ),
     lane_decisions: int = typer.Option(
-        0, "--lane-decisions", min=0, help="Max decisions per strip lane; default 0 = auto-fit."
+        defaults.DECISIONS_PER_LANE, "--lane-decisions", min=0,
+        help="Max decisions per strip lane; default 0 = auto-fit.",
     ),
 ) -> None:
     """Render the whole route as one non-paginated image (stacked strip lanes).

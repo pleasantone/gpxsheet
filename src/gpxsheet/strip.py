@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 
 from . import colors
+from .defaults import SHOW_BRANCHES
 from .labels import place_labels
 from .layout import TURN_STYLE_STYLIZED, StripLayout, build_strip_layout
 from .models import Route
@@ -51,14 +52,14 @@ def render_route_strip(
     *,
     layout: StripLayout | None = None,
     turn_style: str = TURN_STYLE_STYLIZED,
-    show_branches: bool = False,
+    show_branches: bool = SHOW_BRANCHES,
     title: str | None = None,
     dpi: int = 150,
 ) -> Path:
     """Render ``route`` as a schematic strip PNG. Returns the output path.
 
     ``show_branches`` draws the ghosted "roads not taken" stubs at each junction
-    (on by default); set it False to hide them.
+    (off by default); set it True to show them.
     """
     import matplotlib
 
@@ -85,12 +86,12 @@ def render_route_strip(
 
 
 def draw_strip(
-    fig, ax, layout: StripLayout, *, draw_ribbon: bool = True, show_branches: bool = False
+    fig, ax, layout: StripLayout, *, draw_ribbon: bool = True, show_branches: bool = SHOW_BRANCHES
 ) -> None:
     """Draw a schematic strip (path, markers, collision-placed labels) into ``ax``.
 
     Shared by the standalone PNG renderer and the per-page PDF composition.
-    ``show_branches`` toggles the ghosted "roads not taken" stubs (on by default).
+    ``show_branches`` toggles the ghosted "roads not taken" stubs (off by default).
     """
     xs = [p[0] for p in layout.path]
     ys = [p[1] for p in layout.path]

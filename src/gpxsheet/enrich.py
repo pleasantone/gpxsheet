@@ -102,6 +102,13 @@ def _is_unpaved(surface: str | None, highway: str | None) -> bool:
 # past a bay ferry pier) leaves only a sliver of the long ferry way overlapping.
 FERRY_FOLLOW_FRACTION = 0.5
 
+# Fuel handling. FUEL_BUFFER_M is the route/waypoint proximity radius an OSM
+# station must fall within to count; it also suppresses an OSM station within
+# this distance of a rider waypoint (the waypoint already shows as its own POI).
+# FUEL_DEDUP_MILES collapses two stops nearer than this along the route into one.
+FUEL_BUFFER_M = 400.0
+FUEL_DEDUP_MILES = 0.3
+
 
 # A single OSM (graph/feature) query must stay tractable, so a long route is
 # processed in chunks bounded by both point count and mileage.
@@ -148,7 +155,7 @@ def enrich_route(
     route: Route,
     *,
     road_buffer_m: float = 50.0,
-    fuel_buffer_m: float = 400.0,
+    fuel_buffer_m: float = FUEL_BUFFER_M,
     sample_spacing_m: float = 60.0,
     include_fuel: bool = True,
     include_hazards: bool = False,
@@ -809,7 +816,7 @@ def _add_fuel(route, ox, chunks, fuel_buffer_m: float) -> None:
     osm_stops.sort(key=lambda s: s.mile)
     merged = list(route.fuel_stops)
     for stop in osm_stops:
-        if any(abs(stop.mile - e.mile) < 0.3 for e in merged):
+        if any(abs(stop.mile - e.mile) < FUEL_DEDUP_MILES for e in merged):
             continue
         if any(haversine(stop.lat, stop.lon, wlat, wlon) <= fuel_buffer_m
                for wlat, wlon in waypoint_coords):

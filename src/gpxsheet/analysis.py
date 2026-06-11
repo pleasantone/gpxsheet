@@ -375,7 +375,9 @@ def detect_pois(route: Route) -> list[POI]:
         if off_m > max_off_m:
             continue
         kind = POIKind.FOOD if _looks_like_food(wp.name, wp.symbol) else POIKind.WAYPOINT
-        pois.append(POI(mile=mile, name=wp.name, lat=wp.lat, lon=wp.lon, kind=kind, symbol=wp.symbol))
+        pois.append(
+            POI(mile=mile, name=wp.name, lat=wp.lat, lon=wp.lon, kind=kind, symbol=wp.symbol)
+        )
     pois.sort(key=lambda p: p.mile)
     return pois
 

@@ -209,7 +209,10 @@ def build_strip_layout(
         (p for p in route.pois if p.mile <= MARKER_MATCH_TOLERANCE_MILES), None
     )
     _end_poi = next(
-        (p for p in reversed(route.pois) if p.mile >= route.length_miles - MARKER_MATCH_TOLERANCE_MILES),
+        (
+            p for p in reversed(route.pois)
+            if p.mile >= route.length_miles - MARKER_MATCH_TOLERANCE_MILES
+        ),
         None,
     )
     _endpoint_poi_ids = {id(p) for p in (_start_poi, _end_poi) if p is not None}

@@ -75,7 +75,10 @@ python3 -m pytest -q
   absolute miles). `decisions_per_lane=0/None` (the **public default** — `render()`,
   CLI, web) switches to `strip.fit_pages` (analytic greedy auto-fit: pack a lane
   until labels would overlap, then break); a positive value forces a fixed cap.
-  Internal `pdf` renderer defaults stay at the fixed `DECISIONS_PER_LANE=4`.
+  Internal `pdf` renderer defaults stay at the fixed `FIXED_DECISIONS_PER_LANE=4`.
+  Public render-knob defaults (`show_branches`, `turn_style`, `paper`,
+  `lanes_per_page`, `decisions_per_lane`) have a single home in `defaults.py`,
+  imported by the lib `render`, CLI, service models, and the `pdf`/`strip` renderers.
 - `pdf.py` — renderers `render_pdf`/`render_pages_png`/`render_preview` + the
   `render_layout(layout, fmt)` dispatcher (layout × pdf/png). Landscape (one
   strip/page, framed hug, progress bar) + portrait (stacked `_draw_lane` strips,
