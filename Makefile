@@ -29,7 +29,7 @@ test-e2e:
 test-simple:
 	uvicorn gpxsheet.service.asgi:app --port 8000 &
 	cd frontend && npm run dev -- --port 5173 &
-	cd frontend && npx wait-on http://localhost:8000/healthz http://localhost:5173 --timeout 30000
+	cd frontend && npx wait-on http-get://localhost:8000/healthz http://localhost:5173 --timeout 30000
 	cd frontend && BASE_URL=http://localhost:5173 npx playwright test tests/smoke.spec.ts; \
 	  EXIT=$$?; kill $$(lsof -ti:8000,5173) 2>/dev/null || true; exit $$EXIT
 
@@ -37,7 +37,7 @@ test-simple:
 test-full-docker:
 	$(MAKE) frontend
 	docker compose up --build -d
-	cd frontend && npx wait-on http://localhost:8000/healthz --timeout 60000
+	cd frontend && npx wait-on http-get://localhost:8000/healthz --timeout 60000
 	cd frontend && BASE_URL=http://localhost:8000 npx playwright test; \
 	  EXIT=$$?; docker compose down; exit $$EXIT
 
