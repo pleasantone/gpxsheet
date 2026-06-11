@@ -4,6 +4,40 @@ All notable changes are documented here. From the next release onward this file
 is maintained automatically by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [0.3.0](https://github.com/pleasantone/gpxsheet/compare/v0.2.1...v0.3.0) (2026-06-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **stage3:** public-API consistency pass (v0.3.0)
+
+### Features
+
+* **stage3:** public-API consistency pass (v0.3.0) ([5649dac](https://github.com/pleasantone/gpxsheet/commit/5649dac0db0f69a16b9eb25040bb57b803725a11))
+* waypoint label improvements, defaults cleanup, CLAUDE.md update ([#21](https://github.com/pleasantone/gpxsheet/issues/21)) ([a0317fc](https://github.com/pleasantone/gpxsheet/commit/a0317fc68e2ed59d12776943bd686d25b74b8262))
+
+
+### Bug Fixes
+
+* **stage-5:** web-service hardening ([035678e](https://github.com/pleasantone/gpxsheet/commit/035678e0e8e04bf8c7ed846b411d6bdfaed76729))
+
+
+### Refactoring
+
+* remove dead off variable from slice_route; fix stale comments ([0d21fc3](https://github.com/pleasantone/gpxsheet/commit/0d21fc3aa57a677730b2a7d2442b5ef20567bd1f))
+* **stage-4:** dead code & type clarity cleanup ([f708c12](https://github.com/pleasantone/gpxsheet/commit/f708c12d9a90c03167cd3ce40272bb3a4aa593df))
+* **stage-6:** decompose long functions, log broad excepts, promote scoring ([94485ce](https://github.com/pleasantone/gpxsheet/commit/94485cec9c8855bd14cd803734442915896af32d))
+* **stage1:** centralize constants and shared geometry ([fb45470](https://github.com/pleasantone/gpxsheet/commit/fb45470e22274e7f46fb1d2fdbf35cf5fa10c66f))
+* **stage2:** unify pagination engine in paginate.py ([03bfec9](https://github.com/pleasantone/gpxsheet/commit/03bfec9397ceea66e3d65e046605254960e80904))
+* unify CLI layouts, remove rebase, add portrait progress bar ([08b8d72](https://github.com/pleasantone/gpxsheet/commit/08b8d72b4142c616a7b18690b18a383cf1fde03c))
+
+
+### Documentation
+
+* add show_branches to web-api parameter table ([6e1b509](https://github.com/pleasantone/gpxsheet/commit/6e1b50913a937605029d45624c5c58b3eada35e7))
+* note remote/web sandbox setup in CLAUDE.md ([ee6a2fe](https://github.com/pleasantone/gpxsheet/commit/ee6a2fe528ef00a325d4bb31a6b226c765baef75))
+* trim CLAUDE.md to load-bearing non-obvious facts ([0f77895](https://github.com/pleasantone/gpxsheet/commit/0f77895aad385d64009c4ed1bcc8aa47defe2f6e))
+
 ## [0.2.1](https://github.com/pleasantone/gpxsheet/compare/v0.2.0...v0.2.1) (2026-06-10)
 
 
