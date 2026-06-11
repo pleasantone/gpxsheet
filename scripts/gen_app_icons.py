@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Generate the PWA / home-screen app icons in frontend/public/.
+"""Generate the brand glyph: the PWA / home-screen app icons (PNG) plus the
+in-app vector logo (SVG), all in frontend/public/.
 
-These are placeholders: brand-orange background with a stylized white route
-polyline and two waypoint dots. Swap in real artwork by replacing the PNGs (keep
-the same filenames/sizes) — or tweak the glyph here and re-run:
+The glyph is a placeholder: brand-orange background with a stylized white route
+polyline and two waypoint dots. This is the single source for the mark — the SPA
+references the generated icon.svg for its header logo, favicon, and idle hero, so
+don't re-encode the geometry by hand elsewhere. Tweak the glyph here and re-run:
 
     .venv/bin/python scripts/gen_app_icons.py
 
 The glyph is kept inside the central ~60% so the "maskable" manifest icons crop
 safely on Android adaptive-icon launchers. iOS rounds the apple-touch-icon
-itself, so all icons are full-bleed (no transparent corners).
+itself, so all icons are full-bleed (no transparent corners). matplotlib writes
+SVG from a .svg path extension, so the same drawing code yields the vector logo.
 """
 
 from __future__ import annotations
@@ -53,6 +56,9 @@ def main() -> None:
     make_icon(PUBLIC / "icon-192.png", 192)
     make_icon(PUBLIC / "icon-512.png", 512)
     make_icon(PUBLIC / "apple-touch-icon.png", 180)
+    # Vector logo for the SPA (header, favicon, idle hero). px sets the geometry
+    # reference only; SVG output is resolution-independent.
+    make_icon(PUBLIC / "icon.svg", 512)
 
 
 if __name__ == "__main__":
