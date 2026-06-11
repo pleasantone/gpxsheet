@@ -27,8 +27,9 @@ htmlcov/
 *.pdf
 *.png
 !docs/**/*.png
-# PWA app icons are source assets the build (and PyPI wheel) depend on.
-!frontend/public/*.png
+# PWA app icons + landing-page guide images are source assets the build
+# (and PyPI wheel) depend on.
+!frontend/public/**/*.png
 
 # OS / editor
 .DS_Store

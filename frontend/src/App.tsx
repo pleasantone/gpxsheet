@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchResultJson, submitAnalyze, submitRender, submitTable } from "./api";
 import { DropZone } from "./components/DropZone";
+import { IntroGuide } from "./components/IntroGuide";
 import { JobProgress } from "./components/JobProgress";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { ResultPane } from "./components/ResultPane";
@@ -176,12 +177,15 @@ export default function App() {
     return (
       <div className="min-h-screen flex flex-col overflow-x-hidden">
         <Header />
-        <main className="flex-1 flex items-center justify-center px-4 py-12">
-          <div className="w-full max-w-lg">
-            <DropZone onFile={handleFile} />
-            {submitError && (
-              <p className="mt-3 text-sm text-red-600 text-center">{submitError}</p>
-            )}
+        <main className="flex-1 px-4 py-12">
+          <div className="mx-auto w-full max-w-4xl">
+            <div className="mx-auto max-w-lg">
+              <DropZone onFile={handleFile} />
+              {submitError && (
+                <p className="mt-3 text-sm text-red-600 text-center">{submitError}</p>
+              )}
+            </div>
+            <IntroGuide />
           </div>
         </main>
       </div>
@@ -317,7 +321,7 @@ function Header({ children }: { children?: React.ReactNode }) {
       <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" className="w-7 h-7 rounded" />
       <span className="text-lg font-bold text-brand tracking-tight">GPXSheet</span>
       <span className="text-xs text-slate-400 hidden sm:block">
-        GPX → your navigation buddy
+        GPX → quick, simple, awareness
       </span>
       <div className="ml-auto flex items-center gap-3">
         {children}
