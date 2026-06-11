@@ -57,35 +57,32 @@ export default function App() {
   const previewBlobUrl = useBlobUrl(previewBlob);
   const renderBlobUrl = useBlobUrl(renderBlob);
 
-  async function handleFile(file: File) {
+  function handleFile(file: File) {
     setSubmitError(null);
     setIsGenerating(false);
-    setReady(null);
+    // Seed ready state immediately so the UI transitions to the ready phase.
+    // analyzeJobId and previewJobId are filled in as each request completes.
+    setReady({
+      file,
+      analyzeJobId: null,
+      analyzeResult: null,
+      previewJobId: null,
+      renderJobId: null,
+      renderFilename: null,
+    });
     setPhase("ready");
 
-    try {
-      const [analyzeJob, previewJob] = await Promise.all([
-        submitAnalyze(file, opts.profile, opts.fuel_range),
-        submitRender(file, { ...opts, layout: "preview", format: "png" }),
-      ]);
+    submitAnalyze(file, opts.profile, opts.fuel_range)
+      .then((job) =>
+        setReady((prev) => (prev ? { ...prev, analyzeJobId: job.id } : prev))
+      )
+      .catch((e) => setSubmitError(e instanceof Error ? e.message : "analyze failed"));
 
-      const analyzeId =
-        analyzeJob.status === "done" ? analyzeJob.id : analyzeJob.id;
-      const previewId =
-        previewJob.status === "done" ? previewJob.id : previewJob.id;
-
-      setReady({
-        file,
-        analyzeJobId: analyzeId,
-        analyzeResult: null,
-        previewJobId: previewId,
-        renderJobId: null,
-        renderFilename: null,
-      });
-    } catch (e) {
-      setSubmitError(e instanceof Error ? e.message : "upload failed");
-      setPhase("idle");
-    }
+    submitRender(file, { ...opts, layout: "preview", format: "png" })
+      .then((job) =>
+        setReady((prev) => (prev ? { ...prev, previewJobId: job.id } : prev))
+      )
+      .catch(() => {});
   }
 
   async function handleGenerate() {
