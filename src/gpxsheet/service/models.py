@@ -54,7 +54,7 @@ class RenderParams(ReportParams):
     turn_style: str = Field(defaults.TURN_STYLE, pattern="^(stylized|faithful)$")
     paper: str = Field(defaults.PAPER, pattern="^(letter|a4)$")  # pdf paginated layouts only
     lanes_per_page: int = Field(defaults.LANES_PER_PAGE, ge=1)  # portrait only
-    # portrait / landscape / preview; default 0 = auto-fit as many as fit per lane
+    # portrait / landscape / preview / strip; default 0 = auto-fit as many as fit per lane
     decisions_per_lane: int = Field(defaults.DECISIONS_PER_LANE, ge=0)
     # ghosted "roads not taken" stubs at junctions; off by default
     show_branches: bool = defaults.SHOW_BRANCHES

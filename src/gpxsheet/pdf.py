@@ -1,6 +1,6 @@
 """PDF generation.
 
-Composes the tank-bag document: a landscape or portrait pages
+Composes the tank-bag document: landscape or portrait pages
 (see :mod:`gpxsheet.paginate`), with a header and a schematic map strip
 (Map Zone).
 Built with matplotlib (vector PDF via ``PdfPages``), reusing

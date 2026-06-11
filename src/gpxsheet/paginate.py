@@ -63,32 +63,31 @@ def slice_route(route: Route, start: float, end: float) -> Route:
     layouts. Only the span length is needed from ``points``.
     """
     eps = 1e-9
-    off = 0.0
 
     segments = []
     for s in route.segments:
         a = max(s.start_mile, start)
         b = min(s.end_mile, end)
         if b - a > 1e-6:
-            segments.append(replace(s, start_mile=a - off, end_mile=b - off))
+            segments.append(replace(s, start_mile=a, end_mile=b))
 
     decisions = [
-        replace(d, mile=d.mile - off)
+        d
         for d in route.decision_points
         if start + eps < d.mile <= end + eps
     ]
     fuel = [
-        replace(f, mile=f.mile - off)
+        f
         for f in route.fuel_stops
         if start - eps <= f.mile <= end + eps
     ]
     reassurance = [
-        replace(m, mile=m.mile - off)
+        m
         for m in route.reassurance_markers
         if start - eps <= m.mile <= end + eps
     ]
     pois = [
-        replace(p, mile=p.mile - off)
+        p
         for p in route.pois
         if start - eps <= p.mile <= end + eps
     ]
@@ -97,13 +96,13 @@ def slice_route(route: Route, start: float, end: float) -> Route:
         a = max(sp.start_mile, start)
         b = min(sp.end_mile, end)
         if b - a > 1e-6:
-            spans.append(replace(sp, start_mile=a - off, end_mile=b - off))
+            spans.append(replace(sp, start_mile=a, end_mile=b))
 
     edge_points = [route.points[0], route.points[-1]] if route.points else []
     return Route(
         name=route.name,
         points=edge_points,
-        distances_m=[0.0, miles_to_meters(end - off)],
+        distances_m=[0.0, miles_to_meters(end)],
         segments=segments,
         decision_points=decisions,
         fuel_stops=fuel,
