@@ -24,6 +24,7 @@ export function SettingsPopover() {
   return (
     <div ref={ref} className="relative">
       <button
+        data-testid="btn-settings"
         onClick={() => setOpen((o) => !o)}
         title="Settings"
         className="p-2 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
@@ -51,6 +52,7 @@ export function SettingsPopover() {
             API Key <span className="font-normal text-slate-400">(optional)</span>
           </label>
           <input
+            data-testid="input-api-key"
             type="password"
             value={key}
             onChange={(e) => { setKey(e.target.value); setSaved(false); }}

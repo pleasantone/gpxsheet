@@ -44,3 +44,5 @@ docs/openapi.json
 # Frontend build output and dependencies
 src/gpxsheet/service/static/
 frontend/node_modules/
+frontend/test-results/
+frontend/playwright-report/

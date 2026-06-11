@@ -25,12 +25,14 @@ export function DropZone({ onFile, compact = false }: DropZoneProps) {
   if (compact) {
     return (
       <button
+        data-testid="upload-different"
         onClick={() => inputRef.current?.click()}
         className="text-sm text-brand hover:text-brand-dark underline underline-offset-2 cursor-pointer"
       >
         Upload different file
         <input
           ref={inputRef}
+          data-testid="file-input"
           type="file"
           accept=".gpx,application/gpx+xml"
           className="hidden"
@@ -42,6 +44,7 @@ export function DropZone({ onFile, compact = false }: DropZoneProps) {
 
   return (
     <div
+      data-testid="drop-zone"
       onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}

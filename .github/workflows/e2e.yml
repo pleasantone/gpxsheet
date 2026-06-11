@@ -1,0 +1,80 @@
+name: E2E tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "src/gpxsheet/service/**"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "src/gpxsheet/service/**"
+  workflow_dispatch:
+    inputs:
+      comprehensive:
+        description: "Run comprehensive (full-docker) tests"
+        type: boolean
+        default: false
+
+jobs:
+  smoke:
+    name: Smoke (simple mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[service]"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx playwright install chromium --with-deps
+      - name: Start API (simple mode)
+        run: uvicorn gpxsheet.service.asgi:app --port 8000 &
+      - name: Start Vite dev server
+        run: cd frontend && npm run dev -- --port 5173 &
+      - name: Wait for servers
+        run: cd frontend && npx wait-on http://localhost:8000/healthz http://localhost:5173 --timeout 30000
+      - name: Run smoke tests
+        run: cd frontend && BASE_URL=http://localhost:5173 npx playwright test tests/smoke.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report-smoke
+          path: frontend/test-results/
+
+  comprehensive:
+    name: Comprehensive (full docker)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.comprehensive
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -e ".[dev,service]"
+      - run: cd frontend && npm ci && npx playwright install chromium --with-deps
+      - run: make frontend
+      - name: Start full stack
+        run: docker compose up --build -d
+      - name: Wait for API
+        run: cd frontend && npx wait-on http://localhost:8000/healthz --timeout 60000
+      - name: Run comprehensive tests
+        run: cd frontend && BASE_URL=http://localhost:8000 npx playwright test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-comprehensive
+          path: frontend/test-results/
+      - if: always()
+        run: docker compose down

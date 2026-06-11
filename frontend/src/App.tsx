@@ -179,6 +179,7 @@ export default function App() {
           <div className="space-y-4">
             <OptionsPanel opts={opts} onChange={setOpts} disabled={generating} />
             <button
+              data-testid="btn-generate"
               onClick={handleGenerate}
               disabled={generating || !ready}
               className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"

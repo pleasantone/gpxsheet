@@ -38,8 +38,8 @@ export function RouteInfo({ result, isLoading, error }: RouteInfoProps) {
 
   return (
     <div className="space-y-2">
-      <h2 className="text-lg font-semibold text-slate-800 truncate">{result.name}</h2>
-      <div className="flex gap-3">
+      <h2 data-testid="route-name" className="text-lg font-semibold text-slate-800 truncate">{result.name}</h2>
+      <div data-testid="route-stats" className="flex gap-3">
         {cards.map((c) => (
           <div key={c.label} className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">{c.label}</p>

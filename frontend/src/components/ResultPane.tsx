@@ -31,6 +31,7 @@ export function ResultPane({
         )}
         {imgSrc && (
           <img
+            data-testid="preview-image"
             src={imgSrc}
             alt="Route preview"
             className="w-full object-contain max-h-[60vh]"
@@ -44,6 +45,7 @@ export function ResultPane({
       {/* Download button — shown when a generate job is done */}
       {renderBlobUrl && renderFilename && (
         <a
+          data-testid="download-link"
           href={renderBlobUrl}
           download={renderFilename}
           className="flex items-center justify-center gap-2 w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark transition-colors"

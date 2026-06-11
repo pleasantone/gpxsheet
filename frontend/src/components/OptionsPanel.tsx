@@ -37,6 +37,7 @@ export function OptionsPanel({ opts, onChange, disabled }: OptionsPanelProps) {
 
       <Row label="Layout">
         <Select
+          testId="opt-layout"
           value={opts.layout}
           onChange={(v) => set("layout", v as Layout)}
           disabled={disabled}
@@ -51,6 +52,7 @@ export function OptionsPanel({ opts, onChange, disabled }: OptionsPanelProps) {
 
       <Row label="Format">
         <Select
+          testId="opt-format"
           value={opts.format}
           onChange={(v) => set("format", v as Format)}
           disabled={disabled || isFixed}
@@ -67,6 +69,7 @@ export function OptionsPanel({ opts, onChange, disabled }: OptionsPanelProps) {
       {isPaginated && (
         <Row label="Paper">
           <Select
+            testId="opt-paper"
             value={opts.paper}
             onChange={(v) => set("paper", v as Paper)}
             disabled={disabled}
@@ -81,6 +84,7 @@ export function OptionsPanel({ opts, onChange, disabled }: OptionsPanelProps) {
       {isPaginated && opts.layout === "portrait" && (
         <Row label="Lanes / page">
           <NumberInput
+            testId="opt-lanes"
             value={opts.lanes_per_page}
             min={1}
             max={8}
@@ -160,14 +164,17 @@ function Select({
   onChange,
   options,
   disabled,
+  testId,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
   disabled: boolean;
+  testId?: string;
 }) {
   return (
     <select
+      data-testid={testId}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
@@ -188,15 +195,18 @@ function NumberInput({
   max,
   onChange,
   disabled,
+  testId,
 }: {
   value: number;
   min: number;
   max: number;
   onChange: (v: number) => void;
   disabled: boolean;
+  testId?: string;
 }) {
   return (
     <input
+      data-testid={testId}
       type="number"
       min={min}
       max={max}
