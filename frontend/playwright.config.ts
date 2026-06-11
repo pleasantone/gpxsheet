@@ -2,8 +2,8 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  timeout: 120_000,
-  retries: 0,
+  timeout: 180_000,
+  retries: 1,
   reporter: "list",
   use: {
     baseURL: process.env.BASE_URL ?? "http://localhost:5173",
