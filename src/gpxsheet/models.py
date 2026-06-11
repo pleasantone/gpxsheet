@@ -111,6 +111,7 @@ class POI:
     lat: float
     lon: float
     kind: str = POIKind.WAYPOINT
+    symbol: str | None = None
 
 
 class SpanKind:

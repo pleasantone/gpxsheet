@@ -24,6 +24,9 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
+Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
+`git submodule update --init` to populate it.
+
 ### Claude Code on the web / remote sandbox
 
 No project-local `.venv` here — the repo is cloned fresh into an ephemeral
@@ -75,7 +78,10 @@ python3 -m pytest -q
   absolute miles). `decisions_per_lane=0/None` (the **public default** — `render()`,
   CLI, web) switches to `strip.fit_pages` (analytic greedy auto-fit: pack a lane
   until labels would overlap, then break); a positive value forces a fixed cap.
-  Internal `pdf` renderer defaults stay at the fixed `DECISIONS_PER_LANE=4`.
+  Internal `pdf` renderer defaults stay at the fixed `FIXED_DECISIONS_PER_LANE=4`.
+  Public render-knob defaults (`show_branches`, `turn_style`, `paper`,
+  `lanes_per_page`, `decisions_per_lane`) have a single home in `defaults.py`,
+  imported by the lib `render`, CLI, service models, and the `pdf`/`strip` renderers.
 - `pdf.py` — renderers `render_pdf`/`render_pages_png`/`render_preview` + the
   `render_layout(layout, fmt)` dispatcher (layout × pdf/png). Landscape (one
   strip/page, framed hug, progress bar) + portrait (stacked `_draw_lane` strips,
@@ -94,7 +100,7 @@ python3 -m pytest -q
 - **Decision detection is two-tier.** Pure geometry floods twisty roads (can't
   tell a curve from a junction — Mt Hamilton Rd gave 100+ false turns). OSM mode
   uses *durable road-name changes* (docs/product.md Rule Set 1). Validated on real Bay
-  Area tracks in `~/gpxtable/samples/`.
+  Area tracks in the `gpxsamples/` submodule.
 - **Tuned constants** (threshold sweeps on real tracks): analysis
   `MIN_ROAD_RUN_MILES=0.3`, `MERGE_MIN_SEPARATION_MILES=0.2`,
   `TURN_ANGLE_THRESHOLD_DEG=35`, `MAX_TURN_ARC_M=90`, `CONTINUE_MAX_ANGLE_DEG=25`;
@@ -109,11 +115,15 @@ python3 -m pytest -q
   hits the network). Re-record with `GPXSHEET_RECORD_OSM=1`. The onshore enrich
   fixture is `tests/fixtures/enrich_route.gpx`; the offshore synthetic `l_route`
   exercises the fallback path (empty Overpass → geometry-only).
+- **Rider waypoints win over OSM.** Every named GPX `<wpt>` always renders as a
+  POI; an OSM fuel station within `FUEL_BUFFER_M` of a waypoint is suppressed as a
+  duplicate (the rider already marked that stop). Fuel comes from OSM, with GPX
+  fuel waypoints as the geometry-only fallback.
 
 ## Test data
 
-`~/gpxtable/samples/*.gpx` — 19 real California/PNW moto routes, picked to stress
-every parser/analysis quirk. `examples/sample_route.gpx` is synthetic & offshore
+`gpxsamples/*.gpx` (git submodule) — real California/PNW moto routes, picked to
+stress every parser/analysis quirk. `examples/sample_route.gpx` is synthetic & offshore
 (no OSM coverage → enrichment falls back to geometry-only). For iteration prefer
 synthetic Routes.
 

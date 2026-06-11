@@ -70,6 +70,7 @@ class PlacedMarker:
     instruction: str | None = None
     branches: tuple[Branch, ...] = ()  # roads NOT taken, for ghosted stubs
     roundabout_exit: int | None = None
+    symbol: str | None = None  # GPX <sym> tag, for waypoint glyph selection
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,9 +203,24 @@ def build_strip_layout(
         return x, y
 
     # 3. Place markers.
+    # Find POIs that sit at/near the route endpoints so their name can replace
+    # the generic START/END label and their duplicate marker can be suppressed.
+    _start_poi = next(
+        (p for p in route.pois if p.mile <= MARKER_MATCH_TOLERANCE_MILES), None
+    )
+    _end_poi = next(
+        (
+            p for p in reversed(route.pois)
+            if p.mile >= route.length_miles - MARKER_MATCH_TOLERANCE_MILES
+        ),
+        None,
+    )
+    _endpoint_poi_ids = {id(p) for p in (_start_poi, _end_poi) if p is not None}
+
     markers: list[PlacedMarker] = []
     if show_start:
-        markers.append(PlacedMarker(*nodes[0], 0.0, "start", "START"))
+        start_label = _start_poi.name if _start_poi else "START"
+        markers.append(PlacedMarker(*nodes[0], 0.0, "start", start_label))
     for d in route.decision_points:
         x, y = pos_at_mile(d.mile)
         kind = "roundabout" if d.kind == DecisionKind.ROUNDABOUT else "decision"
@@ -221,8 +237,10 @@ def build_strip_layout(
         x, y = cleared_pos(m.mile)
         markers.append(PlacedMarker(x, y, m.mile, "reassurance", m.label))
     for poi in route.pois:
+        if id(poi) in _endpoint_poi_ids:
+            continue  # already used as the start/end label
         x, y = cleared_pos(poi.mile)
-        markers.append(PlacedMarker(x, y, poi.mile, poi.kind, poi.name))
+        markers.append(PlacedMarker(x, y, poi.mile, poi.kind, poi.name, symbol=poi.symbol))
 
     # Styled spans (unpaved / ferry): a recolored ribbon stretch plus a labeled
     # marker at each end (the boarding/landing or surface-change points).
@@ -241,7 +259,8 @@ def build_strip_layout(
         markers.append(PlacedMarker(ex, ey, s.end_mile, s.kind, end_label))
 
     if show_end:
-        markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", "END"))
+        end_label = _end_poi.name if _end_poi else "END"
+        markers.append(PlacedMarker(*nodes[-1], route.length_miles, "end", end_label))
 
     # 4. Normalize to a (0,0)-anchored box.
     xs = [p[0] for p in nodes]
@@ -251,7 +270,7 @@ def build_strip_layout(
     markers = [
         PlacedMarker(
             m.x - min_x, m.y - min_y, m.mile, m.kind, m.label, m.significance, m.instruction,
-            m.branches, m.roundabout_exit,
+            m.branches, m.roundabout_exit, m.symbol,
         )
         for m in markers
     ]

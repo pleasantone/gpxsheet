@@ -11,16 +11,16 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from . import colors
+from . import colors, defaults
 from .layout import TURN_STYLE_STYLIZED, build_strip_layout
 from .models import Route
 from .paginate import paginate, slice_route
 from .strip import _use_bundled_fonts, draw_strip, fit_pages
 
-# Portrait mode: each page stacks several route "lanes" (strips), each covering
-# a few decisions, clearly separated -- a roadbook / TripTik layout.
-LANES_PER_PAGE = 4
-DECISIONS_PER_LANE = 4
+# Internal fixed-cap fallback: when a pdf renderer is called directly with no
+# decisions_per_lane, break a page every this-many decisions. Distinct from the
+# public auto-fit default (defaults.DECISIONS_PER_LANE = 0); see CLAUDE.md.
+FIXED_DECISIONS_PER_LANE = 4
 
 
 # Physical page sizes in inches, given as portrait (width, height). Landscape
@@ -30,7 +30,6 @@ PAGE_SIZES = {
     "letter": (8.5, 11.0),  # US Letter
     "a4": (8.27, 11.69),  # ISO A4, 210 x 297 mm
 }
-DEFAULT_PAPER = "letter"
 
 
 # Drawable map-box (inches) for a lane, mirroring the fractions in `_draw_lane`
@@ -52,10 +51,10 @@ def iter_page_figures(
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     orientation: str = "landscape",
-    paper: str = DEFAULT_PAPER,
-    lanes_per_page: int = LANES_PER_PAGE,
-    decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    paper: str = defaults.PAPER,
+    lanes_per_page: int = defaults.LANES_PER_PAGE,
+    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    show_branches: bool = defaults.SHOW_BRANCHES,
 ):
     """Yield one matplotlib ``Figure`` per route-aware page (caller closes them).
 
@@ -65,7 +64,7 @@ def iter_page_figures(
     A positive ``decisions_per_lane`` breaks pages every that-many decisions;
     ``0`` or ``None`` auto-fits as many decisions per page as fit (see
     :func:`gpxsheet.strip.fit_pages`). ``show_branches`` toggles the ghosted
-    "roads not taken" stubs (on by default).
+    "roads not taken" stubs (off by default).
     """
     if orientation not in ("landscape", "portrait"):
         raise ValueError(f"orientation must be 'landscape' or 'portrait', got {orientation!r}")
@@ -125,10 +124,10 @@ def render_pdf(
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     orientation: str = "landscape",
-    paper: str = DEFAULT_PAPER,
-    lanes_per_page: int = LANES_PER_PAGE,
-    decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    paper: str = defaults.PAPER,
+    lanes_per_page: int = defaults.LANES_PER_PAGE,
+    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> Path:
     """Render an already-analyzed ``route`` to a multi-page PDF.
 
@@ -137,7 +136,7 @@ def render_pdf(
     roadbook-style). Both break a page every ``decisions_per_lane`` decisions;
     ``lanes_per_page`` is portrait-only. ``paper`` is one of :data:`PAGE_SIZES`
     (``"letter"`` or ``"a4"``). ``show_branches`` toggles the ghosted "roads not
-    taken" stubs (on by default).
+    taken" stubs (off by default).
     """
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
@@ -160,10 +159,10 @@ def render_pages_png(
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
     orientation: str = "landscape",
-    paper: str = DEFAULT_PAPER,
-    lanes_per_page: int = LANES_PER_PAGE,
-    decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    paper: str = defaults.PAPER,
+    lanes_per_page: int = defaults.LANES_PER_PAGE,
+    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    show_branches: bool = defaults.SHOW_BRANCHES,
     dpi: int | None = None,
 ) -> Path:
     """Render a paginated layout to a single tall PNG: every page stacked top to
@@ -200,7 +199,7 @@ def render_pages_png(
 
 def _compose_page(
     fig, route, start, end, page_no, page_count, total, turn_style,
-    page_w_in, page_h_in, show_branches=True,
+    page_w_in, page_h_in, show_branches=defaults.SHOW_BRANCHES,
 ) -> None:
     """Lay out a single page (header, map strip) into ``fig``.
 
@@ -274,7 +273,7 @@ def _draw_header(
 
 def _compose_portrait_page(
     fig, route, lanes, page_no, page_count, total, turn_style, lanes_per_page,
-    show_branches=True,
+    show_branches=defaults.SHOW_BRANCHES,
 ) -> None:
     """Stack several route lanes (strips) down a portrait page, clearly separated."""
     _draw_header(fig, route.name, page_no, page_count, lanes[0][0], total, name_max=38)
@@ -297,7 +296,8 @@ def _compose_portrait_page(
 
 
 def _draw_lane(
-    fig, route, start, end, rect, *, show_start, show_end, turn_style, show_branches=True
+    fig, route, start, end, rect, *, show_start, show_end, turn_style,
+    show_branches=defaults.SHOW_BRANCHES,
 ) -> None:
     """Draw one route lane (a framed strip covering [start, end]) into ``rect``."""
     from matplotlib.patches import Rectangle
@@ -369,8 +369,8 @@ def render_preview(
     output_path: str | Path,
     *,
     turn_style: str = TURN_STYLE_STYLIZED,
-    decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> Path:
     """Render the whole route as a single image of stacked strip lanes.
 
@@ -447,17 +447,17 @@ def render_layout(
     layout: str = "portrait",
     fmt: str = "pdf",
     turn_style: str = TURN_STYLE_STYLIZED,
-    paper: str = DEFAULT_PAPER,
-    lanes_per_page: int = LANES_PER_PAGE,
-    decisions_per_lane: int | None = DECISIONS_PER_LANE,
-    show_branches: bool = True,
+    paper: str = defaults.PAPER,
+    lanes_per_page: int = defaults.LANES_PER_PAGE,
+    decisions_per_lane: int | None = FIXED_DECISIONS_PER_LANE,
+    show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> Path:
     """Render an already-analyzed ``route`` to ``output_path`` in any layout/format.
 
     ``layout`` is one of :data:`LAYOUTS`, ``fmt`` one of :data:`FORMATS`.
     ``output_path``'s extension must match ``fmt`` (the ``preview``/``strip``
     renderers infer their format from it). ``show_branches`` toggles the ghosted
-    "roads not taken" stubs (on by default).
+    "roads not taken" stubs (off by default).
     """
     if layout not in LAYOUTS:
         raise ValueError(f"layout must be one of {LAYOUTS}, got {layout!r}")

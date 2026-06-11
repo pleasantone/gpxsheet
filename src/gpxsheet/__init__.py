@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from . import defaults
 from .validate import Finding, ValidationReport
 
 if TYPE_CHECKING:
@@ -38,11 +39,11 @@ def render(
     fuel_range: float | None = None,
     layout: str = "portrait",
     format: str = "pdf",
-    turn_style: str = "stylized",
-    paper: str = "letter",
-    lanes_per_page: int = 4,
+    turn_style: str = defaults.TURN_STYLE,
+    paper: str = defaults.PAPER,
+    lanes_per_page: int = defaults.LANES_PER_PAGE,
     decisions_per_lane: int | None = None,
-    show_branches: bool = True,
+    show_branches: bool = defaults.SHOW_BRANCHES,
 ) -> str:
     """Render a GPX route to a tank-bag navigation map.
 
@@ -66,7 +67,7 @@ def render(
             also ``0``) auto-fits as many as fit each lane without overlap; pass a
             positive number to force a fixed cap.
         show_branches: draw the ghosted "roads not taken" stubs at each junction
-            (on by default); set False to hide them.
+            (off by default); set True to show them.
 
     Returns:
         The path to the written file.

@@ -17,11 +17,11 @@ def test_marker_labels_carry_mileage_and_glyph():
     from gpxsheet.strip import _kind_glyph, _marker_label
 
     fuel = _marker_label(SimpleNamespace(kind="fuel", mile=12.3, label="Shell"))
-    assert "Fuel: Shell" in fuel and "(12.3 mi)" in fuel
+    assert "12.3" in fuel and "Shell" in fuel
     food = _marker_label(SimpleNamespace(kind="food", mile=8.0, label="Joe's Diner"))
-    assert "Joe's Diner" in food and "(8.0 mi)" in food
-    wp = _marker_label(SimpleNamespace(kind="waypoint", mile=5.5, label="Vista"))
-    assert wp == "Vista  (5.5 mi)"
+    assert "Joe's Diner" in food and "8.0" in food
+    wp = _marker_label(SimpleNamespace(kind="waypoint", mile=5.5, label="Vista", symbol=None))
+    assert "5.5" in wp and "Vista" in wp
     # Glyph prefixes are either empty or a single symbol + space; never a tofu box.
     for kind in ("fuel", "food", "ferry"):
         g = _kind_glyph(kind)

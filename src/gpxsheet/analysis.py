@@ -284,14 +284,23 @@ def _index_at_mile(route: Route, mile: float) -> int:
 
 
 def _label_near(route: Route, idx: int, max_miles: float = 1.0) -> tuple[str, str]:
-    """Best label for a point: nearest named waypoint, else the mileage."""
+    """Best label for a point: nearest named waypoint, else the mileage.
+
+    Waypoints with a name are always shown as dedicated POI markers, so they are
+    excluded here to avoid a duplicate reassurance label at the same location.
+    """
     pt = route.points[idx]
     best_name, best_d = None, miles_to_meters(max_miles)
     from .geo import haversine
 
+    poi_miles = {p.mile for p in route.pois}
+
     for wp in route.waypoints:
         if not wp.name:
             continue
+        mile, _ = _project_to_route(route, wp.lat, wp.lon)
+        if mile in poi_miles:
+            continue  # already shown as a POI marker
         d = haversine(pt.lat, pt.lon, wp.lat, wp.lon)
         if d < best_d:
             best_name, best_d = wp.name, d
@@ -349,9 +358,9 @@ def _looks_like_food(wp_name: str | None, wp_symbol: str | None) -> bool:
 def detect_pois(route: Route) -> list[POI]:
     """Project named GPX waypoints onto the route for display on the strip.
 
-    Real rider waypoints (``<wpt>``; shaping/via points are not loaded as
-    waypoints) become POI markers. Fuel waypoints are skipped -- they are already
-    shown as fuel stops -- and food/rest stops are tagged so the renderer can give
+    All rider waypoints (``<wpt>``) become POI markers regardless of whether they
+    mention fuel or food — the rider's explicit mark takes priority over OSM
+    enrichment in the same area. Food/rest stops are tagged so the renderer gives
     them their own glyph. Each waypoint is projected to the nearest point on the
     route for a mileage estimate; one farther than
     :data:`MAX_WAYPOINT_OFFSET_MILES` (perpendicular) is treated as off-route and
@@ -360,13 +369,15 @@ def detect_pois(route: Route) -> list[POI]:
     max_off_m = miles_to_meters(MAX_WAYPOINT_OFFSET_MILES)
     pois: list[POI] = []
     for wp in route.waypoints:
-        if not wp.name or _looks_like_fuel(wp.name, wp.symbol):
+        if not wp.name:
             continue
         mile, off_m = _project_to_route(route, wp.lat, wp.lon)
         if off_m > max_off_m:
             continue
         kind = POIKind.FOOD if _looks_like_food(wp.name, wp.symbol) else POIKind.WAYPOINT
-        pois.append(POI(mile=mile, name=wp.name, lat=wp.lat, lon=wp.lon, kind=kind))
+        pois.append(
+            POI(mile=mile, name=wp.name, lat=wp.lat, lon=wp.lon, kind=kind, symbol=wp.symbol)
+        )
     pois.sort(key=lambda p: p.mile)
     return pois
 
@@ -459,7 +470,7 @@ def analyze_route(
     #    twisty roads this over-detects (curves look like turns) -- OSM in step 2
     #    replaces these with junction/road-name decisions when available.
     route.decision_points = merge_close_decisions(detect_decision_points(route.points))
-    route.fuel_stops = detect_fuel_stops(route) if prof.include_fuel else []
+    route.fuel_stops = []  # populated by OSM enrichment; GPX fuel waypoints shown as POIs
     route.segments = build_segments(route)
 
     # 2. OSM enrichment: replaces decisions with durable road-name changes,
@@ -467,6 +478,7 @@ def analyze_route(
     #    Sparse waypoint-only routes are skipped (road names sampled along straight
     #    lines that don't follow roads are meaningless) and a failed Overpass query
     #    falls back to the geometry baseline, so analysis still produces output.
+    osm_ran = False
     if looks_sparse(route):
         warnings.warn(
             "Route geometry is sparse (likely a waypoint-only <rte>); skipping "
@@ -479,6 +491,7 @@ def analyze_route(
 
         try:
             enrich_route(route, include_fuel=prof.include_fuel, include_hazards=include_hazards)
+            osm_ran = True
         except Exception as exc:  # network/Overpass/data failure -> fall back
             warnings.warn(
                 f"OSM enrichment failed ({type(exc).__name__}: {exc}); "
@@ -486,14 +499,20 @@ def analyze_route(
                 stacklevel=2,
             )
 
+    # In geometry-only fallback (OSM unavailable), use GPX waypoints to detect
+    # fuel stops since OSM won't provide them. When OSM ran, its data is
+    # authoritative and GPX fuel waypoints are shown as POIs instead.
+    if not osm_ran and prof.include_fuel:
+        route.fuel_stops = detect_fuel_stops(route)
+
     # 3. Apply the profile's display threshold to whatever decisions step 1/2
     #    produced, then derive products that depend on the final fuel stops.
     route.decision_points = [
         d for d in route.decision_points if d.significance >= prof.decision_threshold
     ]
     route.fuel_report = analyze_fuel(route, fuel_range) if prof.include_fuel else None
+    route.pois = detect_pois(route) if prof.include_reassurance else []
     route.reassurance_markers = (
         generate_reassurance_markers(route, interval) if prof.include_reassurance else []
     )
-    route.pois = detect_pois(route) if prof.include_reassurance else []
     return route

@@ -13,6 +13,8 @@ from enum import StrEnum
 from fastapi import UploadFile
 from pydantic import BaseModel, ConfigDict, Field
 
+from .. import defaults
+
 
 class JobState(StrEnum):
     """Lifecycle states of a job."""
@@ -40,13 +42,13 @@ class RenderParams(ReportParams):
 
     layout: str = Field("portrait", pattern="^(portrait|landscape|preview|strip)$")
     format: str = Field("pdf", pattern="^(pdf|png)$")
-    turn_style: str = Field("stylized", pattern="^(stylized|faithful)$")
-    paper: str = Field("letter", pattern="^(letter|a4)$")  # pdf paginated layouts only
-    lanes_per_page: int = Field(4, ge=1)  # portrait only
+    turn_style: str = Field(defaults.TURN_STYLE, pattern="^(stylized|faithful)$")
+    paper: str = Field(defaults.PAPER, pattern="^(letter|a4)$")  # pdf paginated layouts only
+    lanes_per_page: int = Field(defaults.LANES_PER_PAGE, ge=1)  # portrait only
     # portrait / landscape / preview; default 0 = auto-fit as many as fit per lane
-    decisions_per_lane: int = Field(0, ge=0)
-    # ghosted "roads not taken" stubs at junctions; on by default
-    show_branches: bool = True
+    decisions_per_lane: int = Field(defaults.DECISIONS_PER_LANE, ge=0)
+    # ghosted "roads not taken" stubs at junctions; off by default
+    show_branches: bool = defaults.SHOW_BRANCHES
 
 
 class ReportForm(ReportParams):
