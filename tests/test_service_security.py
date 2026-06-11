@@ -202,6 +202,15 @@ def test_hsts_when_enabled(tmp_path):
     assert "max-age=" in client.get("/healthz").headers["Strict-Transport-Security"]
 
 
+def test_frame_ancestors_allowlist_enables_embedding(tmp_path):
+    """With a frame-ancestors allowlist, drop X-Frame-Options (can't allowlist an
+    origin) and let CSP govern — so e.g. the HF Spaces iframe can embed the app."""
+    client = _client(tmp_path, frame_ancestors=["https://huggingface.co"])
+    h = client.get("/healthz").headers
+    assert "X-Frame-Options" not in h
+    assert "frame-ancestors https://huggingface.co" in h["Content-Security-Policy"]
+
+
 # --- production secret guard ------------------------------------------------
 
 

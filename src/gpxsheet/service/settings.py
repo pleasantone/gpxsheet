@@ -56,6 +56,14 @@ def trust_first_party() -> bool:
     return os.getenv("GPXSHEET_TRUST_FIRST_PARTY", "").lower() in ("1", "true", "yes")
 
 
+def frame_ancestors() -> list[str]:
+    """CSP frame-ancestors allowlist (comma- or space-separated origins) permitting
+    the app to be embedded — e.g. the Hugging Face Spaces iframe needs
+    `https://huggingface.co`. Empty = deny all framing (clickjacking-safe default)."""
+    raw = os.getenv("GPXSHEET_FRAME_ANCESTORS", "")
+    return [o.strip() for o in raw.replace(",", " ").split() if o.strip()]
+
+
 def session_secret() -> str | None:
     """HMAC secret for signing first-party tokens. Optional: if unset, a random
     per-process secret is used (fine for a single replica; set this to share trust
