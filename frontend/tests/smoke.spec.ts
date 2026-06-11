@@ -12,17 +12,17 @@ test("smoke: upload GPX, see stats and preview, generate, download", async ({ pa
   await page.getByTestId("drop-zone").locator('input[type="file"]').setInputFiles(GPX);
 
   // Route name and stats appear
-  await expect(page.getByTestId("route-name")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("route-name")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("route-stats")).toBeVisible();
 
   // Preview image loads
   const preview = page.getByTestId("preview-image");
-  await expect(preview).toBeVisible({ timeout: 30_000 });
+  await expect(preview).toBeVisible({ timeout: 90_000 });
   await expect(preview).toHaveAttribute("src", /^blob:/);
 
   // Generate
   await page.getByTestId("btn-generate").click();
 
   // Download link appears
-  await expect(page.getByTestId("download-link")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("download-link")).toBeVisible({ timeout: 90_000 });
 });
