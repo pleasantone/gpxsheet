@@ -6,6 +6,7 @@ import hashlib
 import time
 from collections import defaultdict
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Form, Header, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -109,6 +110,28 @@ def _bearer_token(authorization: str | None) -> str | None:
     return None
 
 
+def _is_trusted_browser(request: Request, trusted: list[str]) -> bool:
+    """True for a first-party browser request (the deployment's own SPA) when
+    `trusted` origins are configured. Best-effort: keys off browser-set headers a
+    page's JS cannot forge. Non-browser clients can spoof these, so the supported
+    programmatic path remains the API key."""
+    if not trusted:
+        return False
+    # Browser-set and not settable from page JS — the strongest first-party signal.
+    if request.headers.get("sec-fetch-site") == "same-origin":
+        return True
+    # Fallback for proxies that strip Sec-Fetch-*: match the Origin/Referer origin.
+    origin = request.headers.get("origin")
+    if origin and origin in trusted:
+        return True
+    referer = request.headers.get("referer")
+    if referer:
+        p = urlsplit(referer)
+        if p.scheme and p.netloc and f"{p.scheme}://{p.netloc}" in trusted:
+            return True
+    return False
+
+
 def _cache_key(data: bytes, op: str, params: ReportParams, identity: str) -> str:
     # Identity is part of the key so cross-tenant requests never share a job
     # (each owner gets their own), which keeps per-job ownership consistent.
@@ -143,6 +166,7 @@ def create_app(
     rate_limit_per_minute: int | None = None,
     api_keys: frozenset[str] | None = None,
     cors_origins: list[str] | None = None,
+    trusted_origins: list[str] | None = None,
     enable_hsts: bool | None = None,
 ) -> FastAPI:
     """Build the API. Pass components explicitly (tests) or let env decide."""
@@ -160,6 +184,7 @@ def create_app(
     )
     keys = api_keys if api_keys is not None else settings.api_keys()
     origins = cors_origins if cors_origins is not None else settings.cors_origins()
+    trusted = trusted_origins if trusted_origins is not None else settings.trusted_origins()
     hsts = enable_hsts if enable_hsts is not None else settings.enable_hsts()
 
     app = FastAPI(title="GPXSheet", version="0.1.0", summary="GPX → tank-bag navigation PDFs")
@@ -180,9 +205,12 @@ def create_app(
         """Authenticate (when keys are configured) and return a rate-limit identity."""
         presented = x_api_key or _bearer_token(authorization)
         if keys:
-            if presented is None or presented not in keys:
-                raise HTTPException(status_code=401, detail="invalid or missing API key")
-            return f"key:{presented}"
+            if presented is not None and presented in keys:
+                return f"key:{presented}"
+            # First-party SPA (same-origin) is trusted without a key, when enabled.
+            if _is_trusted_browser(request, trusted):
+                return f"ip:{request.client.host if request.client else '?'}"
+            raise HTTPException(status_code=401, detail="invalid or missing API key")
         return f"ip:{request.client.host if request.client else '?'}"
 
     # Default-value form (not Annotated): `from __future__ import annotations`

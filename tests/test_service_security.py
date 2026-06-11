@@ -117,6 +117,52 @@ def test_result_requires_api_key(tmp_path, l_route_file):
     assert client.get(f"/v1/jobs/{job_id}/result", headers=hdr).status_code == 200
 
 
+# --- same-origin (first-party SPA) trust, with API-key escape hatch ---------
+
+
+def test_trusted_origin_allows_keyless_same_origin(tmp_path, l_route_file):
+    """With trusted origins configured, a same-origin browser request (the SPA)
+    is served without a key, while everyone else still needs one."""
+    client = _client(
+        tmp_path,
+        api_keys=frozenset({"s3cret"}),
+        trusted_origins=["https://app.example"],
+    )
+    # No key, no browser signal -> still rejected.
+    assert _post(client, "/v1/render", l_route_file).status_code == 401
+    # Browser-set Sec-Fetch-Site: same-origin -> trusted, no key needed.
+    assert _post(
+        client, "/v1/render", l_route_file, headers={"Sec-Fetch-Site": "same-origin"}
+    ).status_code in (200, 202)
+
+
+def test_trusted_origin_accepts_origin_and_referer_fallback(tmp_path, l_route_file):
+    client = _client(
+        tmp_path,
+        api_keys=frozenset({"s3cret"}),
+        trusted_origins=["https://app.example"],
+    )
+    assert _post(
+        client, "/v1/render", l_route_file, headers={"Origin": "https://app.example"}
+    ).status_code in (200, 202)
+    assert _post(
+        client, "/v1/render", l_route_file, headers={"Referer": "https://app.example/index.html"}
+    ).status_code in (200, 202)
+    # An untrusted origin (and no Sec-Fetch same-origin) is rejected.
+    assert _post(
+        client, "/v1/render", l_route_file, headers={"Origin": "https://evil.example"}
+    ).status_code == 401
+
+
+def test_trusted_origin_disabled_by_default_still_requires_key(tmp_path, l_route_file):
+    """Self-hoster default: keys set but no trusted origins -> key always required,
+    even for a same-origin browser request."""
+    client = _client(tmp_path, api_keys=frozenset({"s3cret"}))
+    assert _post(
+        client, "/v1/render", l_route_file, headers={"Sec-Fetch-Site": "same-origin"}
+    ).status_code == 401
+
+
 def test_rate_limit_is_per_key(tmp_path, l_route_file):
     client = _client(
         tmp_path, api_keys=frozenset({"a", "b"}), rate_limit_per_minute=1

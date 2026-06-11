@@ -47,6 +47,14 @@ def cors_origins() -> list[str]:
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
+def trusted_origins() -> list[str]:
+    """Origins whose same-origin browser requests are trusted without an API key
+    (e.g. the deployment's own bundled SPA). Comma-separated. Empty = feature off
+    (an API key is then required from everyone when keys are configured)."""
+    raw = os.getenv("GPXSHEET_TRUSTED_ORIGINS", "")
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 def enable_hsts() -> bool:
     """Send HSTS (only when served over TLS / behind a TLS-terminating proxy)."""
     return os.getenv("GPXSHEET_ENABLE_HSTS", "").lower() in ("1", "true", "yes")
