@@ -46,6 +46,16 @@ python3 -m pytest -q
   module form pins the run to the interpreter the project is installed into.
 - Sandbox Python may be 3.11 (vs 3.14 locally); the code installs and the suite
   passes on both. Commit + push before the container is reclaimed.
+- **OSM/Overpass is blocked by default.** The sandbox runs behind a security
+  proxy with **Trusted** network access (package registries + GitHub only), so
+  live enrichment fails with `403 Forbidden — Host not in allowlist` and falls
+  back to geometry-only (which floods dense tracks like Mt Hamilton with false
+  turns). The test suite is unaffected — `conftest` replays the committed OSM
+  cache offline. To run *live* enrichment / `gpxsheet generate` against real
+  routes, edit the environment's **Network access** → **Custom**, add
+  `overpass-api.de` (and keep "include default package managers" checked so pip
+  still works), then start a **new** session — resuming never re-runs setup. See
+  https://code.claude.com/docs/en/claude-code-on-the-web#network-access
 
 ## Architecture (src/gpxsheet/)
 
