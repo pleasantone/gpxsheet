@@ -2,7 +2,15 @@
 
 import pytest
 
-from gpxsheet.models import DecisionPoint, FuelStop, GeoPoint, ReassuranceMarker, Route, Segment
+from gpxsheet.models import (
+    POI,
+    DecisionPoint,
+    FuelStop,
+    GeoPoint,
+    ReassuranceMarker,
+    Route,
+    Segment,
+)
 from gpxsheet.paginate import paginate, slice_route
 
 
@@ -66,6 +74,28 @@ def test_slice_route_no_rebase_keeps_absolute_miles():
     assert all(40.0 < d.mile <= 90.0 + 1e-9 for d in page.decision_points)
     assert page.length_miles == pytest.approx(90.0)  # absolute end, not the 50 mi span
     assert page.segments[0].start_mile == 40.0
+
+
+def test_slice_poi_on_exact_page_boundary():
+    """A POI sitting exactly on a page boundary (mile 40.0) must appear on the
+    page that *starts* at that mile, not be dropped — inclusive-start [start, end]
+    for POIs vs exclusive-start (start, end] for decisions."""
+    route = Route(
+        name="R",
+        points=[GeoPoint(0, 0), GeoPoint(1, 1)],
+        distances_m=[0.0, 200.0 * 1609.344],
+        decision_points=[DecisionPoint(40.0, "Left onto Main", 60, 0, 0)],
+        pois=[POI(mile=40.0, name="Fuel Stop", lat=0, lon=0)],
+    )
+    # Page ending at 40.0: the decision is included (exclusive-start), POI included
+    page_end = slice_route(route, 0.0, 40.0)
+    assert len(page_end.decision_points) == 1
+    assert len(page_end.pois) == 1
+    # Page starting at 40.0: decision is excluded (it ends the previous page),
+    # but POI is included (inclusive-start for non-decisions)
+    page_start = slice_route(route, 40.0, 200.0)
+    assert len(page_start.decision_points) == 0
+    assert len(page_start.pois) == 1
 
 
 def test_slice_route_rebases_and_filters():

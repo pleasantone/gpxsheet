@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 from gpxsheet.models import DecisionPoint, GeoPoint, Route, Segment
-from gpxsheet.strip import fit_pages
+from gpxsheet.paginate import fit_pages
 
 
 class _Box(TypedDict):

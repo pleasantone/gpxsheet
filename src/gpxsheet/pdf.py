@@ -14,14 +14,8 @@ from pathlib import Path
 from . import colors, defaults
 from .layout import TURN_STYLE_STYLIZED, build_strip_layout
 from .models import Route
-from .paginate import paginate, slice_route
-from .strip import _use_bundled_fonts, draw_strip, fit_pages
-
-# Internal fixed-cap fallback: when a pdf renderer is called directly with no
-# decisions_per_lane, break a page every this-many decisions. Distinct from the
-# public auto-fit default (defaults.DECISIONS_PER_LANE = 0); see CLAUDE.md.
-FIXED_DECISIONS_PER_LANE = 4
-
+from .paginate import FIXED_DECISIONS_PER_LANE, fit_pages, paginate, plan_pages, slice_route
+from .strip import _use_bundled_fonts, draw_strip
 
 # Physical page sizes in inches, given as portrait (width, height). Landscape
 # swaps the two. The layout math below works in figure fractions, so only the
@@ -63,7 +57,7 @@ def iter_page_figures(
     map) or ``"portrait"`` (``lanes_per_page`` stacked strip lanes per page).
     A positive ``decisions_per_lane`` breaks pages every that-many decisions;
     ``0`` or ``None`` auto-fits as many decisions per page as fit (see
-    :func:`gpxsheet.strip.fit_pages`). ``show_branches`` toggles the ghosted
+    :func:`gpxsheet.paginate.plan_pages`). ``show_branches`` toggles the ghosted
     "roads not taken" stubs (off by default).
     """
     if orientation not in ("landscape", "portrait"):
@@ -73,8 +67,7 @@ def iter_page_figures(
         raise ValueError(f"paper must be one of {sorted(PAGE_SIZES)}, got {paper!r}")
     page_w_in, page_h_in = PAGE_SIZES[paper]  # portrait (width, height) inches
     lanes_per_page = max(1, lanes_per_page)
-    auto = not decisions_per_lane  # 0 or None -> auto-fit
-    cap = max(1, decisions_per_lane) if decisions_per_lane else 1  # fixed-cap value
+    dpl = decisions_per_lane or 0  # normalise None → 0 for plan_pages
     import matplotlib
 
     matplotlib.use("Agg")
@@ -84,13 +77,10 @@ def iter_page_figures(
 
     total = route.length_miles
     if orientation == "portrait":
-        if auto:
-            bw, bh = _portrait_lane_box_in(paper, lanes_per_page)
-            lanes = fit_pages(
-                route, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
-            )
-        else:
-            lanes = paginate(route, max_decisions=cap)
+        bw, bh = _portrait_lane_box_in(paper, lanes_per_page)
+        lanes = plan_pages(
+            route, dpl, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
+        )
         page_groups = [
             lanes[i : i + lanes_per_page] for i in range(0, len(lanes), lanes_per_page)
         ]
@@ -102,13 +92,10 @@ def iter_page_figures(
             )
             yield fig
     else:
-        if auto:
-            bw, bh = _landscape_box_in(paper)
-            pages = fit_pages(
-                route, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
-            )
-        else:
-            pages = paginate(route, max_decisions=cap)
+        bw, bh = _landscape_box_in(paper)
+        pages = plan_pages(
+            route, dpl, box_w_in=bw, box_h_in=bh, turn_style=turn_style, show_start=True
+        )
         for i, (start, end) in enumerate(pages, start=1):
             fig = plt.figure(figsize=(page_h_in, page_w_in))  # landscape
             _compose_page(
