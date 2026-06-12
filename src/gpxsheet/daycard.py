@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
+from . import perf
 from .geo import (
     KM_PER_MILE,
     M_TO_FT,
@@ -512,7 +513,8 @@ def build_day_cards(
     multiday = len(route.day_breaks) > 0
     gap_threshold = min(SERVICE_GAP_MILES, fuel_range) if fuel_range else SERVICE_GAP_MILES
 
-    pois = _collect_pois(route) if osm else {}
+    with perf.span("daycard.pois"):
+        pois = _collect_pois(route) if osm else {}
 
     cards: list[DayCard] = []
     for d in range(len(mbounds) - 1):
@@ -536,10 +538,17 @@ def build_day_cards(
         fires: list[Fire] = []
         if live:
             samples = _day_samples(route, start_mi, end_mi, depart_day, day_profile)
-            weather = _day_weather(samples)
-            air = fetch_air(samples)
-            elevation = _live_elevation(route, i0, i1, gain_ft)
-            fires = fetch_fires(_day_coords(route, i0, i1, ELEV_SAMPLE_MAX)) or []
+            # Each provider is a network round-trip; instrument so the perf line
+            # shows which source costs the time (spans repeat per day on a
+            # multi-day route, and are ~free outside a perf.track).
+            with perf.span("daycard.weather"):
+                weather = _day_weather(samples)
+            with perf.span("daycard.air"):
+                air = fetch_air(samples)
+            with perf.span("daycard.elevation"):
+                elevation = _live_elevation(route, i0, i1, gain_ft)
+            with perf.span("daycard.fire"):
+                fires = fetch_fires(_day_coords(route, i0, i1, ELEV_SAMPLE_MAX)) or []
 
         if elevation is not None:  # GPX had no usable elevation; use the DEM fallback
             gain_ft, max_ft = elevation.gain_ft, elevation.max_ft

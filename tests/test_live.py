@@ -273,3 +273,15 @@ def test_live_disabled_skips_sections(monkeypatch, tmp_path):
         _meridian_route(40.0), departure=depart, speed=30.0, osm=False, live=True
     )
     assert cards[0].weather is None and cards[0].air is None and not cards[0].fire
+
+
+def test_live_queries_are_perf_instrumented(monkeypatch, tmp_path):
+    from gpxsheet import perf
+
+    monkeypatch.setenv("GPXSHEET_LIVE_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(base, "_http_get_json", lambda url, params: None)  # fast skip
+    depart = datetime(2026, 6, 13, 9, 0, tzinfo=PT)
+    with perf.track("job:daycard") as rec:
+        build_day_cards(_meridian_route(40.0), departure=depart, speed=30.0, osm=False, live=True)
+    names = {n for n, _ in rec.spans}
+    assert {"daycard.weather", "daycard.air", "daycard.elevation", "daycard.fire"} <= names
