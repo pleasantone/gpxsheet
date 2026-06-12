@@ -123,24 +123,78 @@ Returns a job whose result `content_type` is `text/html` or `text/markdown`.
 
 ### `POST /v1/analyze` — structured route analysis (JSON)
 
-Form fields: `gpx` (required), `profile`, `fuel_range`. Returns a job whose
-result is `application/json`:
+The same OSM-enriched analysis that drives the map and the table, returned as
+plain JSON so a UI can render its own view (a list of decisions, a segment
+timeline, fuel markers) instead of an image.
+
+Form fields (all optional except `gpx`):
+
+| field | type | default | values / meaning |
+|-------|------|---------|------------------|
+| `gpx` | file | — | the `.gpx` upload (**required**) |
+| `profile` | string | `sport-touring` | `minimalist`, `sport-touring`, `rally` — the detail cut (see below) |
+| `fuel_range` | number | — | rider range in miles; sets `longest_fuel_gap_miles` and is what a UI compares the gap against |
+
+OSM enrichment always runs: road names, the turn-vs-curve distinction, and
+fuel discovery come from OpenStreetMap (the analysis falls back to geometry-only,
+with coarser road names and no auto-fuel, only when the route is too sparse to
+snap or Overpass is unreachable).
+
+Returns a job whose result is `application/json`. A real OSM-enriched run (the
+`profile=sport-touring`, `fuel_range=180` analysis of a short clip through a
+roundabout) looks like:
 
 ```json
 {
-  "name": "Skyline Loop",
-  "length_miles": 74.8,
+  "name": "Riverbank roundabout clip (La Loma Ave)",
+  "length_miles": 2.0,
   "decision_points": [
-    {"mile": 12.3, "instruction": "Right onto CA-9", "significance": 70}
+    {"mile": 0.0, "instruction": "Left at the fork", "significance": 60},
+    {"mile": 0.6, "instruction": "Continue onto La Loma Avenue", "significance": 40},
+    {"mile": 0.9, "instruction": "Take the 2nd exit onto La Loma Avenue", "significance": 50},
+    {"mile": 1.9, "instruction": "Continue onto Needham Street", "significance": 40}
   ],
-  "fuel_stops": [{"mile": 41.0, "name": "76 Bodega Bay"}],
-  "segments": [{"name": "Skyline Blvd", "start_mile": 0.0, "end_mile": 12.3}],
-  "longest_fuel_gap_miles": 63.0
+  "fuel_stops": [],
+  "segments": [
+    {"name": "Yosemite Boulevard", "start_mile": 0.0, "end_mile": 0.6},
+    {"name": "La Loma Avenue", "start_mile": 0.6, "end_mile": 1.9},
+    {"name": "Needham Street", "start_mile": 1.9, "end_mile": 2.0}
+  ],
+  "longest_fuel_gap_miles": 2.0
 }
 ```
 
-Use this to build your own UI (a list of decisions, a segment timeline, fuel
-markers) instead of rendering an image.
+**Response fields:**
+
+| field | type | meaning |
+|-------|------|---------|
+| `name` | string | the route name (from the GPX, else a fallback) |
+| `length_miles` | number | total route length, one decimal |
+| `decision_points` | array | where the rider must act — see below |
+| `fuel_stops` | array | `{mile, name}` per fuel opportunity, in route order |
+| `segments` | array | `{name, start_mile, end_mile}` named road stretches, contiguous and in order |
+| `longest_fuel_gap_miles` | number \| null | longest distance between fuel opportunities (route start/end count as endpoints); `null` when the profile omits fuel |
+
+Each **decision point** is `{mile, instruction, significance}`:
+
+- `instruction` is a human-readable cue derived from OSM road names and the
+  turn geometry — `"Continue onto <road>"` for a straight-through name change,
+  `"<Left|Right|Sharp left|…> onto <road>"` for a turn, `"<Left|Right> at the
+  fork"`, or `"Take the Nth exit onto <road>"` at a roundabout.
+- `significance` is 0–80: higher = more consequential (a sharp turn or a
+  state-highway junction scores higher than a gentle residential name change).
+  The **`profile` gates this**: a decision survives only if its significance
+  clears the profile's threshold — `minimalist` = 55, `sport-touring` = 40,
+  `rally` = 30. So the same route returns fewer, higher-stakes decisions under
+  `minimalist` (here, only the `significance: 60` fork) and more under `rally`.
+
+**`fuel_stops` / `longest_fuel_gap_miles`** populate from OSM-discovered fuel
+(plus any fuel waypoints in the GPX). The roundabout clip above is too short to
+pass a station, so `fuel_stops` is empty; on a real touring route they fill in —
+e.g. a longer clip returns `"fuel_stops": [{"mile": 13.7, "name": "Canyon Auto
+Service"}]` with `"longest_fuel_gap_miles": 13.7`. The `minimalist` profile
+omits fuel entirely (`fuel_stops: []`, `longest_fuel_gap_miles: null`); use
+`sport-touring` or `rally` for fuel.
 
 ### `POST /v1/validate` — route warnings (JSON)
 
