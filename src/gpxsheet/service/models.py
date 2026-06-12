@@ -83,8 +83,11 @@ class DayCardParams(ReportParams):
     """Params for ``/v1/daycard`` (per-day read-ahead briefing).
 
     Inherits ``profile``/``fuel_range`` from :class:`ReportParams`; ``departure``
-    (+24h per day) drives the sun / golden-hour / after-dark sections and is
-    optional (without it those are skipped). ``format`` is markdown/HTML/JSON.
+    (+24h per day) drives the sun / golden-hour / after-dark sections and the
+    weather/air lookups, and is optional (without it those are skipped).
+    ``format`` is markdown/HTML/JSON. ``live`` gates the keyless live providers
+    (Open-Meteo weather/air/elevation + NIFC wildfire); the server also honors
+    ``GPXSHEET_DISABLE_LIVE`` and degrades gracefully when a source is down.
     """
 
     format: str = Field("markdown", pattern="^(markdown|html|json)$")
@@ -93,6 +96,7 @@ class DayCardParams(ReportParams):
     units: str = Field("imperial", pattern="^(imperial|metric)$")
     speed: float = Field(0.0, ge=0)
     osm: bool = True
+    live: bool = True
 
 
 class ReportForm(ReportParams):

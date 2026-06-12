@@ -263,6 +263,13 @@ def test_daycard_invalid_format_rejected(client, l_route_file):
     assert _post(client, "/v1/daycard", l_route_file, format="pdf").status_code == 422
 
 
+def test_daycard_accepts_live_toggle(client, l_route_file):
+    # The live providers degrade to nothing offline; the job still succeeds.
+    r = _post(client, "/v1/daycard", l_route_file, departure="8:00 AM", live="false")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "done"
+
+
 def test_table_bad_gpx_errors_job(client):
     bad = b'<gpx version="1.1"><trk><trkseg></trk></gpx>'  # mismatched tag
     r = client.post("/v1/table", files={"gpx": ("bad.gpx", bad, "application/gpx+xml")})

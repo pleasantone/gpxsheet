@@ -12,7 +12,9 @@ JSON) alongside `render`/`table`/`analyze`/`validate`.
   weather/air/elevation, NIFC fire) run; **key-gated** sources (AirNow,
   OpenWeather, OpenCelliD) are **skipped when no key is configured**. **Cache**
   every response so duplicate/adjacent queries don't hammer servers.
-  `GPXSHEET_DISABLE_LIVE=1` forces static-only (used by the offline sandbox/CI).
+  `GPXSHEET_DISABLE_LIVE=1` (or the umbrella `GPXSHEET_OFFLINE=1`) forces
+  static-only (used by the offline sandbox/CI). See the shared external-data-source
+  env convention in `gpxsheet.sources` / [deploy.md](deploy.md).
 - **Trip timing:** reuse the table's `--departure` (+24h per day). **No departure
   → static-only** (skip weather / golden-hour / after-dark).
 - **Output:** new `daycard` op → **md / HTML + structured JSON**; also a
@@ -24,7 +26,7 @@ JSON) alongside `render`/`table`/`analyze`/`validate`.
 
 - `src/gpxsheet/daycard.py` — builds `list[DayCard]` from an analyzed `Route`;
   renders md/HTML/JSON (mirrors `routetable.py`).
-- `src/gpxsheet/providers/` — `base.py` (provider interface + on-disk cache),
+- `src/gpxsheet/live/` — `base.py` (provider interface + on-disk cache),
   `weather.py`, `air.py`, `fire.py`, `elevation.py`, `cell.py`; OSM-backed bits
   extend `enrich` (`passes`, `viewpoints`, `construction`, `wildlife`).
 - Reuse: `timing.sun_times`/`SpeedProfile` (ETAs/sun), `enrich.features_from_polygon`
@@ -36,13 +38,13 @@ JSON) alongside `render`/`table`/`analyze`/`validate`.
 class Provider:
     name: str
     requires_key: str | None      # env var; if set & missing -> skip w/ note
-    base_url_env: str | None       # overridable, like GPXSHEET_OVERPASS_URL
+    base_url_env: str | None       # overridable, like GPXSHEET_OVERPASS_BASE_URL
     def fetch(self, route, day_window) -> Result | None   # None = unavailable
 ```
 
 - Live-by-default; key-gated providers skip silently without their key.
 - **Cache** keyed on `(provider, rounded lat/lon, date/hour)` in
-  `GPXSHEET_PROVIDERS_CACHE_DIR`.
+  `GPXSHEET_LIVE_CACHE_DIR`.
 - **Graceful degradation:** any failure (no key, network down, past forecast
   horizon) omits that section with an "unavailable" note; the card still renders
   — same idiom as the OSM geometry-only fallback.
@@ -95,17 +97,19 @@ a note. No `--departure` → static-only.
 
 ## Determinism & tests
 
-An autouse fixture wires providers to a committed `tests/fixtures/providers_cache`
+An autouse fixture wires providers to a committed `tests/fixtures/live_cache`
 and runs **cache-only** (miss → skip), mirroring the OSM harness in `conftest.py`;
-record with `GPXSHEET_RECORD_PROVIDERS=1`. CI/sandbox set `GPXSHEET_DISABLE_LIVE=1`
+record with `GPXSHEET_RECORD_LIVE=1`. CI/sandbox set `GPXSHEET_DISABLE_LIVE=1`
 so the suite is fully offline. Pure logic (crosswind/sun/gaps) unit-tested directly.
 
 ## Env vars (GPXSHEET_*)
 
 `GPXSHEET_AIRNOW_API_KEY`, `GPXSHEET_OPENWEATHER_API_KEY`,
 `GPXSHEET_OPENCELLID_API_KEY` (optional; gate keyed providers);
-`GPXSHEET_PROVIDERS_CACHE_DIR`; `GPXSHEET_DISABLE_LIVE`; per-provider
-`*_BASE_URL` overrides (self-host/proxy/testing), like `GPXSHEET_OVERPASS_URL`.
+`GPXSHEET_LIVE_CACHE_DIR`; `GPXSHEET_DISABLE_LIVE` (or umbrella `GPXSHEET_OFFLINE`);
+`GPXSHEET_RECORD_LIVE`; per-provider `*_BASE_URL` overrides (self-host/proxy/
+testing), like `GPXSHEET_OVERPASS_BASE_URL`. These follow the shared external-data-
+source convention in `gpxsheet.sources` (see [deploy.md](deploy.md)).
 
 ## Phased build
 
@@ -125,7 +129,21 @@ so the suite is fully offline. Pure logic (crosswind/sun/gaps) unit-tested direc
 - **Cell:** deferred to Phase 3 (key-gated); no fake "remoteness" heuristic
   labelled as coverage.
 
-## Phase 2 — kickoff (resume here)
+## Phase 2 — DONE
+
+Phase 2 is built: `src/gpxsheet/live/` (`base` cache + graceful HTTP seam,
+`weather`, `air`, `elevation`, `fire`) wired into `daycard.build_day_cards` behind
+a `live=` flag (plus `--live/--no-live`, the `live` web field, and
+`GPXSHEET_DISABLE_LIVE`). Weather carries per-sample **crosswind** (route bearing
+vs `wind_direction_10m`); warnings gained `heat`/`cold`/`wind`/`precip`/`smoke`/
+`fire`. Determinism mirrors the OSM harness — autouse `_live_cache` in
+`conftest.py` replays a committed `tests/fixtures/live_cache` cache-only
+(record with `GPXSHEET_RECORD_LIVE=1`); pure bits (crosswind, nearest-hour,
+horizon, fire intersect, cache/gating) are unit-tested in `tests/test_live.py`.
+**Remaining: Phase 3** (key-gated AirNow/OpenWeather, cell coverage). The original
+kickoff plan, kept for reference:
+
+### Phase 2 — kickoff (original plan)
 
 Phase 1 (offline) is merged: `gpxsheet.daycard` + `daycard` CLI + `/v1/daycard`,
 with the `DayCard` model already carrying slots for weather/air/fire/elevation.
@@ -138,10 +156,10 @@ Phase 2 adds the **keyless live providers** behind a cached, graceful interface.
 and `curl -s https://overpass-api.de/api/status`. Re-run a real day card so
 **passes + scenic** populate live (the Phase-1 POI query was degrading offline).
 
-**1. Provider layer** — `src/gpxsheet/providers/`:
+**1. Provider layer** — `src/gpxsheet/live/`:
 - `base.py`: `Provider` (name, `requires_key: str|None`, `base_url_env`, `fetch`),
   an on-disk response cache keyed on `(provider, round(lat,2), round(lon,2),
-  date/hour)` under `GPXSHEET_PROVIDERS_CACHE_DIR`, and a `GPXSHEET_DISABLE_LIVE`
+  date/hour)` under `GPXSHEET_LIVE_CACHE_DIR`, and a `GPXSHEET_DISABLE_LIVE`
   short-circuit (→ skip, return None). Key-gated providers return None (with a
   card note) when their key env is unset. Wrap all I/O so any failure degrades.
 - `weather.py` (Open-Meteo `/v1/forecast`, keyless): hourly `temperature_2m,
@@ -166,13 +184,13 @@ provider toggles); populate `DayCard.weather/air/fire/elevation_profile`; extend
 `build_day_cards_markdown` + `to_dict`. `DayCardParams` (service) gains the knobs.
 
 **4. Determinism/tests.** Mirror the OSM harness in `tests/conftest.py`: an
-autouse fixture points providers at a committed `tests/fixtures/providers_cache`
-and runs **cache-only** (miss → skip); record with `GPXSHEET_RECORD_PROVIDERS=1`.
+autouse fixture points providers at a committed `tests/fixtures/live_cache`
+and runs **cache-only** (miss → skip); record with `GPXSHEET_RECORD_LIVE=1`.
 CI/sandbox set `GPXSHEET_DISABLE_LIVE=1`. Unit-test the pure bits directly
 (crosswind, nearest-hour, horizon skip, fire-polygon intersect).
 
-**5. Env vars (all `GPXSHEET_*`):** `PROVIDERS_CACHE_DIR`, `DISABLE_LIVE`,
-`RECORD_PROVIDERS`, per-provider `*_BASE_URL` overrides; Phase-3 keys
+**5. Env vars (all `GPXSHEET_*`):** `LIVE_CACHE_DIR`, `DISABLE_LIVE`,
+`RECORD_LIVE`, per-provider `*_BASE_URL` overrides; Phase-3 keys
 `AIRNOW_API_KEY`, `OPENWEATHER_API_KEY`, `OPENCELLID_API_KEY`.
 
 **Docs to update on completion:** `web-api.md` (new daycard fields), `library-api.md`

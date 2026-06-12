@@ -16,7 +16,6 @@ fuel comes from GPX waypoints that look like fuel stops.
 from __future__ import annotations
 
 import logging
-import os
 import warnings
 from dataclasses import replace
 
@@ -482,15 +481,17 @@ def _osm_enrich_pass(route: Route, osm: bool = True) -> bool:
     offline analysis).
     """
     from .enrich import enrich_route
+    from .sources import osm_disabled
 
     if not osm:
         return False
-    if os.getenv("GPXSHEET_DISABLE_OSM", "").lower() in ("1", "true", "yes"):
+    if osm_disabled():
         # Opt-out for air-gapped / Overpass-rate-limited deployments (and CI smoke
         # tests): skip enrichment entirely, with no network call, and use the
-        # geometry-only baseline. Consistent with enrich._configure_osm_cache.
+        # geometry-only baseline. Honors GPXSHEET_DISABLE_OSM and the umbrella
+        # GPXSHEET_OFFLINE (see gpxsheet.sources).
         warnings.warn(
-            "OSM enrichment disabled (GPXSHEET_DISABLE_OSM); "
+            "OSM enrichment disabled (GPXSHEET_DISABLE_OSM / GPXSHEET_OFFLINE); "
             "using geometry-only analysis.",
             stacklevel=3,
         )

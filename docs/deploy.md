@@ -29,7 +29,7 @@ fails loudly instead of silently degrading every render to geometry-only.
 `overpass-api.de` round-robins across several mirrors, and osmnx pins one IP per
 process; if that mirror is down, every Overpass query fails and enrichment silently
 degrades to geometry-only (which floods twisty roads with false turns). Set
-`GPXSHEET_OVERPASS_URL` to point osmnx at a healthy endpoint — another public mirror
+`GPXSHEET_OVERPASS_BASE_URL` to point osmnx at a healthy endpoint — another public mirror
 (e.g. `https://overpass.kumi.systems/api`) or a self-hosted instance — when the
 default is flaky. It governs all Overpass traffic (the road graph and the fuel/feature
 queries); unset, osmnx's default `https://overpass-api.de/api` stands.
@@ -55,11 +55,39 @@ Then point gpxsheet at it. **osmnx wants the base `…/api`** (it appends
 `/interpreter` itself), so use the `/api` path, not `/api/interpreter`:
 
 ```bash
-GPXSHEET_OVERPASS_URL=http://localhost:12345/api
+GPXSHEET_OVERPASS_BASE_URL=http://localhost:12345/api
 ```
 
-That's the only wiring needed — `GPXSHEET_OVERPASS_URL` already governs all Overpass
+That's the only wiring needed — `GPXSHEET_OVERPASS_BASE_URL` already governs all Overpass
 traffic, so no code or image change is required.
+
+## External data sources & offline operation
+
+GPXSheet reaches the network from two subsystems: the **OSM** enrichment core
+(osmnx → Overpass) and the day-card **live** providers (Open-Meteo, NIFC). They're
+different under the hood — osmnx builds graphs; the providers are plain JSON GETs —
+but they expose the same four knobs through a regular `GPXSHEET_*` naming scheme,
+so the two read as siblings (`gpxsheet.sources` is the in-code home for the
+convention):
+
+| concern | OSM source | live source (day cards) |
+|---|---|---|
+| on-disk response cache | `GPXSHEET_OSM_CACHE_DIR` | `GPXSHEET_LIVE_CACHE_DIR` |
+| skip the network | `GPXSHEET_DISABLE_OSM` | `GPXSHEET_DISABLE_LIVE` |
+| record test fixtures | `GPXSHEET_RECORD_OSM` | `GPXSHEET_RECORD_LIVE` |
+| endpoint override | `GPXSHEET_OVERPASS_BASE_URL` | `GPXSHEET_<PROVIDER>_BASE_URL` |
+
+Two intentional specifics: the OSM endpoint keeps the precise name
+`GPXSHEET_OVERPASS_BASE_URL` (it *is* the Overpass endpoint), and each live
+provider has its own URL override (`GPXSHEET_OPENMETEO_BASE_URL`,
+`GPXSHEET_OPENMETEO_AIR_BASE_URL`, `GPXSHEET_OPENMETEO_ELEVATION_BASE_URL`,
+`GPXSHEET_NIFC_FIRE_BASE_URL`) while sharing one cache and one disable switch.
+
+**`GPXSHEET_OFFLINE=1`** is the umbrella — it implies *every* `GPXSHEET_DISABLE_*`
+at once (OSM falls back to geometry-only; the live sections are omitted). Reach for
+it on an air-gapped box or in deterministic CI; each `DISABLE_*` switch still works
+on its own when you only want to silence one source. Disabling never errors — both
+subsystems degrade gracefully.
 
 ## Hugging Face Space (reference deployment)
 

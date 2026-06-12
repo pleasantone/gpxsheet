@@ -11,6 +11,7 @@ from collections.abc import Sequence
 
 EARTH_RADIUS_M = 6_371_008.8  # mean Earth radius (IUGG)
 METERS_PER_MILE = 1609.344
+M_TO_FT = 3.280839895  # metres -> feet (elevation display)
 
 # Equirectangular flat-earth constant for short-range projections and geographic
 # buffering. One canonical value avoids the 0.5 % lat/lon discrepancy between the

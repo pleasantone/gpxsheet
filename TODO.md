@@ -22,16 +22,16 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   solely on the OSM-tag path (`seasonal.is_seasonal_edge`), removing the
   special-case code. Otherwise, expand the curated list; and parse closure windows
   for a date-aware verdict (validate carries no trip date today).
-- **Day cards — live conditions (Phase 2/3)** — the `daycard` output
+- **Day cards — live conditions (Phase 3)** — the `daycard` output
   (`gpxsheet.daycard`, CLI `daycard`, `/v1/daycard`) ships Phase 1 (offline: stats,
   sun/golden-hour/after-dark, passes/scenic/gravel/construction/wildlife,
-  no-services gaps). Add the live providers per
-  [day-cards-design.md](docs/day-cards-design.md): **Phase 2** keyless Open-Meteo
-  weather (+crosswind from route bearings), air/smoke, elevation, and NIFC wildfire,
-  behind a cached, graceful provider interface; **Phase 3** key-gated AirNow /
-  OpenWeather and cell-coverage dead zones. **Resume at the "Phase 2 — kickoff"
-  section** of [day-cards-design.md](docs/day-cards-design.md) for the exact
-  step-by-step (provider layer, Open-Meteo fields, crosswind formula, test harness).
+  no-services gaps) **and Phase 2** (keyless live providers in
+  `gpxsheet.live`: Open-Meteo weather with crosswind, air/smoke, an elevation
+  DEM fallback, and NIFC wildfire — cached + graceful, gated by `live=` /
+  `GPXSHEET_DISABLE_LIVE`). Remaining **Phase 3** per
+  [day-cards-design.md](docs/day-cards-design.md): key-gated AirNow / OpenWeather
+  (fresher smoke / forecasts) and cell-coverage dead zones (OpenCelliD / FCC,
+  flagged approximate).
 - **Y/T-intersection & junction-geometry significance scoring** — docs/product.md's
   scoring table defines Y/T-intersection scores, but only road-name / highway-name /
   sharp-turn scoring is wired up today. Implementing this would reintroduce the

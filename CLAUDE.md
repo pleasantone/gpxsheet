@@ -58,8 +58,20 @@ exposes it under a **Table** tab (vs the **Sheet** tab).
 wildlife, no-services gaps), distinct from the tank-bag sheet/table. Built on the
 analyzed `Route` + a best-effort OSM POI query; warnings reuse `validate.Finding`.
 CLI `daycard`, web op `"daycard"` → `/v1/daycard` (`DayCardParams`; md/HTML/JSON),
-lib `daycard.render_day_cards`/`build_day_cards`. **Phase 1 is offline**; live
-conditions (weather/smoke/wildfire/cell) are Phase 2/3 — design + provider plan in
+lib `daycard.render_day_cards`/`build_day_cards`. **Phase 2 adds keyless live
+conditions** behind `src/gpxsheet/live/` — Open-Meteo weather (with per-sample
+**crosswind** from route bearings), air-quality/smoke, an elevation DEM fallback,
+and NIFC wildfire perimeters. Providers are **graceful** (any source down →
+section omitted) and cache every response on disk; `live=`/`--no-live` and
+`GPXSHEET_DISABLE_LIVE=1` (or umbrella `GPXSHEET_OFFLINE=1`) gate them, weather/air
+also need `--departure`. The OSM core and the live providers share one **external-
+data-source env convention** — `GPXSHEET_<SRC>_CACHE_DIR` / `DISABLE_<SRC>` /
+`RECORD_<SRC>` / `*_BASE_URL`, with `GPXSHEET_OFFLINE` as the umbrella — centralized
+in `src/gpxsheet/sources.py` (`<SRC>` ∈ {`OSM`, `LIVE`}). Tests
+replay a committed `tests/fixtures/live_cache` cache-only (autouse
+`_live_cache` in conftest, mirroring the OSM harness; record with
+`GPXSHEET_RECORD_LIVE=1`). Key-gated sources (AirNow/OpenWeather) and cell
+coverage are Phase 3 — design + provider plan in
 [docs/day-cards-design.md](docs/day-cards-design.md).
 
 `src/gpxsheet/gpx.py` lifts named, non-shaping plain `<rtept>`s to waypoints (not
@@ -218,7 +230,8 @@ Non-obvious structural facts (module purpose is derivable from filenames/docstri
 round-trip), gets no results, and falls back to geometry-only — i.e. offshore
 avoids OSM *results*, not the network call. To force geometry-only with no network
 (air-gapped, rate-limited, or deterministic CI), set `GPXSHEET_DISABLE_OSM=1`
-(honored in `analysis._osm_enrich_pass`; the e2e smoke test sets it).
+(honored in `analysis._osm_enrich_pass` via `sources.osm_disabled`; the e2e smoke
+test sets it) — or `GPXSHEET_OFFLINE=1` to also silence the live providers.
 For iteration prefer synthetic routes.
 
 Non-obvious fixture relationships:

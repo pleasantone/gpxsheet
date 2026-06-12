@@ -227,6 +227,10 @@ def daycard(
         True, "--osm/--no-osm",
         help="Enrich via OSM (passes, scenic, gravel); --no-osm is fast/offline.",
     ),
+    live: bool = typer.Option(
+        True, "--live/--no-live",
+        help="Fetch keyless live data (weather/air/elevation, wildfire); --no-live skips it.",
+    ),
     timezone: str | None = typer.Option(
         None, "--timezone", help="IANA timezone for displayed times, e.g. US/Pacific."
     ),
@@ -234,9 +238,11 @@ def daycard(
     """Build per-day read-ahead cards (markdown, HTML, or JSON).
 
     A planning-time briefing per day: distance, climb, sunset / riding-after-dark,
-    passes and scenic stops, and cautions (gravel, construction, wildlife,
-    no-services gaps). Output format follows ``-o`` (``.md`` / ``.html`` /
-    ``.json``); sun sections need ``--departure``.
+    passes and scenic stops, cautions (gravel, construction, wildlife, no-services
+    gaps), and keyless live conditions (weather at your ETA with crosswind, air
+    quality / smoke, nearby wildfires). Output format follows ``-o`` (``.md`` /
+    ``.html`` / ``.json``); sun + weather sections need ``--departure``. ``--no-live``
+    (or ``GPXSHEET_DISABLE_LIVE=1``) skips the network for a fully offline card.
     """
     from .daycard import render_day_cards
     from .routetable import parse_departure
@@ -257,6 +263,7 @@ def daycard(
             tz=tz,
             fuel_range=fuel_range,
             osm=osm,
+            live=live,
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)

@@ -7,28 +7,50 @@ the sun sets and whether you'll be caught out after dark, the passes and scenic
 stops, and any cautions (gravel, construction, wildlife, long no-services gaps).
 One card per day (``Route.day_breaks``/``day_names``).
 
-This is **Phase 1**: everything here is computed from the already-analyzed
+Most of the card is computed from the already-analyzed
 :class:`~gpxsheet.models.Route` plus a best-effort OSM points-of-interest query
 (passes / viewpoints / construction / wildlife) that degrades to empty when OSM is
-unavailable. Live providers (weather, smoke/AQI, wildfire, cell coverage) land in
-later phases; see ``docs/day-cards-design.md``.
+unavailable. **Phase 2** adds keyless live conditions from :mod:`gpxsheet.live`
+(Open-Meteo weather with crosswind, air-quality/smoke, an elevation DEM fallback,
+NIFC wildfire) behind ``live=``; each source degrades to ``None`` independently.
+Key-gated sources and cell coverage are Phase 3; see ``docs/day-cards-design.md``.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
-from .geo import haversine, meters_to_miles
+from .geo import (
+    M_TO_FT,
+    METERS_PER_DEG_LAT,
+    bearing,
+    bearing_delta,
+    haversine,
+    meters_to_miles,
+    miles_to_meters,
+)
+from .live import (
+    AirInfo,
+    ElevationProfile,
+    Fire,
+    SamplePoint,
+    WeatherInfo,
+    WeatherSample,
+    fetch_air,
+    fetch_elevation,
+    fetch_fires,
+    fetch_weather,
+)
 from .models import Route, RouteSpan, SpanKind
 from .timing import SpeedProfile
 from .validate import INFO, WARNING, Finding
 
 # Default cruising speed (mph) when OSM gave no speed profile and none was set.
 DEFAULT_SPEED_MPH = 30.0
-M_TO_FT = 3.280839895
 # Thresholds for the per-day cautions.
 LONG_DAY_HOURS = 8.0
 LONG_DAY_MILES = 400.0
@@ -37,6 +59,17 @@ GRAVEL_WARN_MILES = 0.2
 # A no-services gap longer than this (and longer than the rider's range, if given)
 # is worth flagging.
 SERVICE_GAP_MILES = 60.0
+
+# Live-weather sampling + warning thresholds (imperial; see build_day_cards).
+SAMPLE_SPACING_MILES = 27.5
+HIGH_WIND_MPH = 25.0
+HIGH_GUST_MPH = 35.0
+HIGH_CROSSWIND_MPH = 20.0
+HOT_F = 95.0
+COLD_F = 40.0
+WET_PROB_PCT = 50.0
+# Max coordinates in one Open-Meteo elevation batch (matches the provider cap).
+ELEV_SAMPLE_MAX = 100
 
 # Output formats and their file extensions.
 DAYCARD_FORMATS = ("markdown", "html", "json")
@@ -106,6 +139,11 @@ class DayCard:
     gravel: list[RouteSpan] = field(default_factory=list)
     no_services: list[ServiceGap] = field(default_factory=list)
     sun: SunInfo | None = None
+    # Phase 2 live data (None = not fetched / unavailable).
+    weather: WeatherInfo | None = None
+    air: AirInfo | None = None
+    fire: list[Fire] = field(default_factory=list)
+    elevation_profile: ElevationProfile | None = None
     warnings: list[Finding] = field(default_factory=list)
     attributions: list[str] = field(default_factory=list)
 
@@ -131,6 +169,18 @@ class DayCard:
                 "after_dark": self.sun.after_dark,
                 "dark_from_mile": self.sun.dark_from_mile,
             }
+        if self.weather:
+            out["weather"] = {
+                "source": self.weather.source,
+                "as_of": iso(self.weather.as_of),
+                "note": self.weather.note,
+                "samples": [
+                    {**asdict(s), "time": iso(s.time)} for s in self.weather.samples
+                ],
+            }
+        if self.air:
+            out["air"] = asdict(self.air)
+            out["air"]["as_of"] = iso(self.air.as_of)
         out["warnings"] = [
             {"level": w.level, "code": w.code, "message": w.message} for w in self.warnings
         ]
@@ -247,6 +297,102 @@ def _golden_hours(
 
 
 # ---------------------------------------------------------------------------
+# Live-data sampling (Phase 2): weather / air / elevation / fire
+# ---------------------------------------------------------------------------
+
+
+def _interp_latlon(route: Route, target_m: float) -> tuple[float, float]:
+    """Interpolated ``(lat, lon)`` at cumulative distance ``target_m`` along route."""
+    dists = route.distances_m
+    pts = route.points
+    if target_m <= 0 or len(pts) < 2:
+        return pts[0].lat, pts[0].lon
+    if target_m >= dists[-1]:
+        return pts[-1].lat, pts[-1].lon
+    # Linear scan is fine: a handful of samples per day.
+    j = next(k for k in range(len(dists) - 1) if dists[k + 1] >= target_m)
+    span = dists[j + 1] - dists[j]
+    t = (target_m - dists[j]) / span if span > 0 else 0.0
+    a, b = pts[j], pts[j + 1]
+    return a.lat + t * (b.lat - a.lat), a.lon + t * (b.lon - a.lon)
+
+
+def _heading_at(route: Route, target_m: float) -> float | None:
+    """Route bearing (deg) through the point at cumulative distance ``target_m``."""
+    pts = route.points
+    if len(pts) < 2:
+        return None
+    dists = route.distances_m
+    j = next((k for k in range(len(dists) - 1) if dists[k + 1] >= target_m), len(pts) - 2)
+    a, b = pts[j], pts[j + 1]
+    return bearing(a.lat, a.lon, b.lat, b.lon)
+
+
+def _crosswind(
+    heading: float | None, wind_from_deg: float | None, wind_mph: float | None
+) -> float | None:
+    """Crosswind component (mph): ``|wind * sin(Δ)|`` between heading and wind-from."""
+    if heading is None or wind_from_deg is None or wind_mph is None:
+        return None
+    delta = math.radians(bearing_delta(heading, wind_from_deg))
+    return round(abs(wind_mph * math.sin(delta)), 1)
+
+
+def _day_samples(
+    route: Route,
+    start_mi: float,
+    end_mi: float,
+    depart_day: datetime | None,
+    day_profile: SpeedProfile,
+) -> list[SamplePoint]:
+    """Sample points every ~:data:`SAMPLE_SPACING_MILES` across the day, with ETAs."""
+    day_miles = end_mi - start_mi
+    n = max(1, round(day_miles / SAMPLE_SPACING_MILES))
+    miles = [start_mi + day_miles * i / n for i in range(n + 1)]
+    out: list[SamplePoint] = []
+    for m in miles:
+        lat, lon = _interp_latlon(route, miles_to_meters(m))
+        time = depart_day + day_profile.time_to(m - start_mi) if depart_day else None
+        out.append(SamplePoint(round(m, 1), lat, lon, time, _heading_at(route, miles_to_meters(m))))
+    return out
+
+
+def _day_coords(route: Route, i0: int, i1: int, max_n: int) -> list[tuple[float, float]]:
+    """Up to ``max_n`` evenly-spaced ``(lat, lon)`` over point indices ``[i0, i1]``."""
+    span = i1 - i0
+    if span <= 0:
+        return []
+    step = max(1, span // max_n)
+    idxs = list(range(i0, i1 + 1, step))
+    if idxs[-1] != i1:
+        idxs.append(i1)
+    return [(route.points[k].lat, route.points[k].lon) for k in idxs]
+
+
+def _day_weather(samples: list[SamplePoint]) -> WeatherInfo | None:
+    """Fetch weather for the day's samples and fill each one's crosswind."""
+    info = fetch_weather(samples)
+    if info is None:
+        return None
+    by_mile = {round(s.mile, 1): s for s in samples}
+    for ws in info.samples:
+        sp = by_mile.get(round(ws.mile, 1))
+        heading = sp.heading if sp else None
+        ws.crosswind_mph = _crosswind(heading, ws.wind_dir_deg, ws.wind_mph)
+    return info
+
+
+def _live_elevation(
+    route: Route, i0: int, i1: int, gpx_gain_ft: float | None
+) -> ElevationProfile | None:
+    """Open-Meteo elevation fallback, only when the GPX carried no usable ``ele``."""
+    if gpx_gain_ft is not None:
+        return None
+    coords = _day_coords(route, i0, i1, ELEV_SAMPLE_MAX)
+    return fetch_elevation(coords)
+
+
+# ---------------------------------------------------------------------------
 # OSM points of interest (best-effort; degrades to empty without OSM)
 # ---------------------------------------------------------------------------
 
@@ -310,7 +456,7 @@ def _collect_pois(route: Route, road_buffer_m: float = 200.0) -> dict[str, list]
         import shapely.geometry as sg
 
         line = sg.LineString([(p.lon, p.lat) for p in route.points])
-        corridor = line.buffer(road_buffer_m / 111_320.0)  # ~deg per metre
+        corridor = line.buffer(road_buffer_m / METERS_PER_DEG_LAT)  # ~deg per metre
         feats = ox.features_from_polygon(corridor, tags=_POI_TAGS)
         if feats.empty:
             return {}
@@ -350,13 +496,18 @@ def build_day_cards(
     speed: float = 0.0,
     fuel_range: float | None = None,
     osm: bool = True,
+    live: bool = True,
 ) -> list[DayCard]:
     """Build one :class:`DayCard` per day of ``route``.
 
     ``departure`` (with the day rolling +24h, like the route table) enables the
-    sun / golden-hour / after-dark sections; without it those are skipped. ``osm``
-    gates the best-effort POI query. ``imperial`` only affects rendering, not the
-    stored values (which are SI-ish: miles + feet).
+    sun / golden-hour / after-dark sections and the weather/air-quality lookups
+    (which need an ETA); without it those are skipped. ``osm`` gates the best-
+    effort POI query; ``live`` gates the keyless live providers (Open-Meteo
+    weather/air/elevation + NIFC wildfire), which also honor
+    ``GPXSHEET_DISABLE_LIVE`` and degrade gracefully when offline. ``imperial``
+    only affects rendering, not the stored values (which are imperial-ish: miles,
+    feet, °F, mph).
     """
     profile = _speed_profile(route, speed)
     pbounds = _point_bounds(route)
@@ -384,6 +535,18 @@ def build_day_cards(
         services = _service_gaps(route, start_mi, end_mi, gap_threshold)
         sun = _day_sun(route, i0, i1, depart_day, day_profile, day_miles)
 
+        weather = air = elevation = None
+        fires: list[Fire] = []
+        if live:
+            samples = _day_samples(route, start_mi, end_mi, depart_day, day_profile)
+            weather = _day_weather(samples)
+            air = fetch_air(samples)
+            elevation = _live_elevation(route, i0, i1, gain_ft)
+            fires = fetch_fires(_day_coords(route, i0, i1, ELEV_SAMPLE_MAX)) or []
+
+        if elevation is not None:  # GPX had no usable elevation; use the DEM fallback
+            gain_ft, max_ft = elevation.gain_ft, elevation.max_ft
+
         card = DayCard(
             index=d,
             name=route.day_names[d] if d < len(route.day_names) else "",
@@ -402,11 +565,30 @@ def build_day_cards(
             gravel=gravel,
             no_services=services,
             sun=sun,
-            attributions=["Map data © OpenStreetMap contributors"],
+            weather=weather,
+            air=air,
+            fire=fires,
+            elevation_profile=elevation,
+            attributions=_attributions(weather, air, elevation, fires),
         )
         card.warnings = _warnings(card)
         cards.append(card)
     return cards
+
+
+def _attributions(
+    weather: WeatherInfo | None,
+    air: AirInfo | None,
+    elevation: ElevationProfile | None,
+    fires: list[Fire],
+) -> list[str]:
+    """Data-source credits for whatever the card actually used."""
+    out = ["Map data © OpenStreetMap contributors"]
+    if weather or air or elevation:
+        out.append("Weather/air/elevation © Open-Meteo.com (CC BY 4.0)")
+    if fires:
+        out.append("Wildfire perimeters: NIFC / WFIGS")
+    return out
 
 
 def _day_sun(
@@ -481,6 +663,66 @@ def _warnings(card: DayCard) -> list[Finding]:
             Finding(WARNING, "services", f"No fuel for {g.miles:.0f} mi "
                     f"(mile {g.start_mile:.0f}–{g.end_mile:.0f}) — top off and tell someone.")
         )
+    out += _live_warnings(card)
+    return out
+
+
+def _live_warnings(card: DayCard) -> list[Finding]:
+    """Warnings from the Phase-2 live data (weather / air / fire)."""
+    out: list[Finding] = []
+    if card.weather and card.weather.samples:
+        out += _weather_warnings(card.weather.samples)
+    if card.air and card.air.smoke:
+        bits = []
+        if card.air.max_aqi is not None:
+            bits.append(f"AQI {card.air.max_aqi}")
+        if card.air.max_pm25 is not None:
+            bits.append(f"PM2.5 {card.air.max_pm25:.0f}")
+        detail = f" ({', '.join(bits)})" if bits else ""
+        out.append(
+            Finding(WARNING, "smoke", f"Likely wildfire smoke / poor air{detail} — "
+                    "carry a respirator-rated mask and watch visibility.")
+        )
+    for f in card.fire:
+        where = "on the route corridor" if f.dist_mi <= 0 else f"~{f.dist_mi:.0f} mi away"
+        status = f" ({f.status})" if f.status else ""
+        out.append(
+            Finding(WARNING, "fire", f"Active fire: {f.name} {where}{status} — "
+                    "check closures before you go (perimeters update on a delay).")
+        )
+    return out
+
+
+def _weather_warnings(samples: list[WeatherSample]) -> list[Finding]:
+    """Heat / cold / wind / crosswind / precip warnings from the day's samples."""
+    out: list[Finding] = []
+
+    def peak(attr: str) -> float | None:
+        vals = [getattr(s, attr) for s in samples if getattr(s, attr) is not None]
+        return max(vals) if vals else None
+
+    hi = peak("temp_f")
+    if hi is not None and hi >= HOT_F:
+        out.append(Finding(WARNING, "heat", f"Hot: up to ~{hi:.0f}°F — hydrate and pace stops."))
+    lo = min((s.temp_f for s in samples if s.temp_f is not None), default=None)
+    if lo is not None and lo <= COLD_F:
+        out.append(Finding(WARNING, "cold", f"Cold: down to ~{lo:.0f}°F — pack layers."))
+    gust = peak("gust_mph")
+    wind = peak("wind_mph")
+    if (gust is not None and gust >= HIGH_GUST_MPH) or (wind is not None and wind >= HIGH_WIND_MPH):
+        g = f", gusting {gust:.0f}" if gust is not None else ""
+        out.append(Finding(WARNING, "wind", f"Strong wind: up to ~{wind or 0:.0f} mph{g}."))
+    cross = peak("crosswind_mph")
+    if cross is not None and cross >= HIGH_CROSSWIND_MPH:
+        out.append(
+            Finding(WARNING, "wind", f"High crosswind: up to ~{cross:.0f} mph — "
+                    "expect to be pushed across the lane.")
+        )
+    prob = peak("precip_prob")
+    if prob is not None and prob >= WET_PROB_PCT:
+        out.append(
+            Finding(WARNING, "precip", f"Wet: up to ~{prob:.0f}% chance of precip; pack rain gear.")
+        )
     return out
 
 
@@ -506,6 +748,37 @@ def _fmt_dur(td: timedelta | None) -> str:
 
 def _fmt_clock(dt: datetime | None, tz: tzinfo | None) -> str:
     return dt.astimezone(tz).strftime("%H:%M") if dt else "—"
+
+
+def _fmt_temp(f: float, imperial: bool) -> str:
+    return f"{f:.0f}°F" if imperial else f"{(f - 32) * 5 / 9:.0f}°C"
+
+
+def _fmt_speed(mph: float, imperial: bool) -> str:
+    return f"{mph:.0f} mph" if imperial else f"{mph * 1.609344:.0f} km/h"
+
+
+def _weather_line(w: WeatherInfo, imperial: bool) -> str | None:
+    """A one-line weather summary (range of temp / wind / crosswind / precip)."""
+    if not w.samples:
+        note = w.note or "unavailable"
+        return f"* Weather: {note}"
+    temps = [s.temp_f for s in w.samples if s.temp_f is not None]
+    winds = [s.wind_mph for s in w.samples if s.wind_mph is not None]
+    cross = [s.crosswind_mph for s in w.samples if s.crosswind_mph is not None]
+    probs = [s.precip_prob for s in w.samples if s.precip_prob is not None]
+    parts: list[str] = []
+    if temps:
+        lo, hi = min(temps), max(temps)
+        parts.append(f"{_fmt_temp(lo, imperial)}–{_fmt_temp(hi, imperial)}")
+    if winds:
+        w_str = f"wind ≤{_fmt_speed(max(winds), imperial)}"
+        if cross and max(cross) >= 1:
+            w_str += f" (crosswind ≤{_fmt_speed(max(cross), imperial)})"
+        parts.append(w_str)
+    if probs and max(probs) >= 1:
+        parts.append(f"precip ≤{max(probs):.0f}%")
+    return "* Weather: " + ", ".join(parts) if parts else None
 
 
 def build_day_cards_markdown(
@@ -539,6 +812,21 @@ def build_day_cards_markdown(
             lines.append("* Passes: " + ", ".join(parts))
         if c.scenic:
             lines.append("* Scenic: " + ", ".join(f"{p.name} (mi {p.mile:.0f})" for p in c.scenic))
+        if c.weather and (wl := _weather_line(c.weather, imperial)):
+            lines.append(wl)
+        if c.air and (c.air.max_aqi is not None or c.air.max_pm25 is not None):
+            bits = []
+            if c.air.max_aqi is not None:
+                bits.append(f"AQI {c.air.max_aqi}")
+            if c.air.max_pm25 is not None:
+                bits.append(f"PM2.5 {c.air.max_pm25:.0f}")
+            smoke = " — possible smoke" if c.air.smoke else ""
+            lines.append(f"* Air: {', '.join(bits)}{smoke}")
+        if c.fire:
+            lines.append("* Fires: " + ", ".join(
+                f"{f.name} (~{f.dist_mi:.0f} mi)" if f.dist_mi > 0 else f"{f.name} (on route)"
+                for f in c.fire
+            ))
         if c.warnings:
             lines.append("")
             lines.append("### Warnings")
@@ -567,12 +855,15 @@ def render_day_cards(
     tz: tzinfo | None = None,
     fuel_range: float | None = None,
     osm: bool = True,
+    live: bool = True,
 ) -> Path:
     """Analyze ``gpx_source`` and write per-day cards to ``output_path``.
 
     ``fmt`` is ``markdown`` | ``html`` | ``json``. Runs the full analysis (OSM on by
     default, with hazards) so gravel/fuel are populated; ``osm=False`` is fast and
-    fully offline (no passes/scenic POIs).
+    fully offline (no passes/scenic POIs). ``live`` gates the keyless live
+    providers (Open-Meteo weather/air/elevation + NIFC wildfire); weather/air also
+    need ``departure`` for ETAs, and everything honors ``GPXSHEET_DISABLE_LIVE``.
     """
     if fmt not in DAYCARD_FORMATS:
         raise ValueError(f"fmt must be one of {DAYCARD_FORMATS}, got {fmt!r}")
@@ -581,7 +872,7 @@ def render_day_cards(
     route = analyze(str(gpx_source), include_hazards=True, osm=osm)
     cards = build_day_cards(
         route, departure=departure, tz=tz, imperial=imperial, speed=speed,
-        fuel_range=fuel_range, osm=osm,
+        fuel_range=fuel_range, osm=osm, live=live,
     )
     if fmt == "json":
         text = build_day_cards_json(cards)

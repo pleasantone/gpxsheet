@@ -160,7 +160,7 @@ def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
 
     from .analysis_cache import get_core
 
-    perf.annotate(fmt=params.format, osm=params.osm, profile=params.profile)
+    perf.annotate(fmt=params.format, osm=params.osm, live=params.live, profile=params.profile)
     depart_at, tz = parse_departure(params.departure, params.timezone)
     imperial = params.units == "imperial"
     core = get_core(gpx_bytes, osm=params.osm)
@@ -176,6 +176,7 @@ def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
             speed=params.speed,
             fuel_range=params.fuel_range,
             osm=params.osm,
+            live=params.live,
         )
     if params.format == "json":
         data, ext = build_day_cards_json(cards).encode(), "json"
