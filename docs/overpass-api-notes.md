@@ -118,50 +118,17 @@ When you get a 429, the response includes a `Retry-After` header. Honor it rathe
 
 ## Self-Hosting: California Extract
 
-For batch queries across many routes (e.g. building a Pashnit route database), the public instance will get you throttled. Self-hosting with a California extract is the right call.
+GPXSheet ships a ready-to-run self-hosted Overpass stack in the repo's
+[`osm/`](https://github.com/pleasantone/gpxsheet/tree/main/osm) directory — a
+self-contained Docker Compose service that imports the Geofabrik California extract,
+keeps it current from Geofabrik diffs, and serves the standard Overpass API locally
+(no slot/CPU rate limits, so you can use unsimplified tracks and fire queries
+rapidly). See [`osm/README.md`](https://github.com/pleasantone/gpxsheet/blob/main/osm/README.md)
+for setup, requirements (disk/RAM), data freshness, and operations.
 
-### Data Size
-- California OSM extract: ~1.2–1.5 GB compressed (`.osm.pbf`)
-- Loaded into Overpass database: ~15–25 GB on disk
-
-### Resource Requirements
-| Resource | Comfortable | Minimum |
-|----------|-------------|---------|
-| RAM | 4–8 GB | 2 GB (slow) |
-| Disk | 30–40 GB | 20 GB |
-| CPU | Any modern | Not demanding at idle |
-
-### Getting the Extract
-Geofabrik maintains regularly updated regional extracts:
-```
-https://download.geofabrik.de/north-america/us/california-latest.osm.pbf
-```
-
-### Docker Deployment (Easiest Path)
-
-```bash
-docker run -e OVERPASS_META=yes \
-  -e OVERPASS_MODE=init \
-  -e OVERPASS_PLANET_URL=https://download.geofabrik.de/north-america/us/california-latest.osm.pbf \
-  -e OVERPASS_RULES_LOAD=10 \
-  -v /your/data/dir:/db \
-  -p 12345:80 \
-  wiktorn/overpass-api
-```
-
-The `wiktorn/overpass-api` image handles init/import/serve lifecycle. First run imports the data (~30–60 min); subsequent runs just serve. Point scripts at:
-
-```
-http://your-server:12345/api/interpreter
-```
-
-### Keeping Data Fresh
-- **Diff updater:** Run automatically to track OSM edits — keeps data current continuously
-- **Periodic re-import:** Re-download and re-import the California PBF weekly or monthly
-- For road geometry and POI data (fuel, food, lodging), a weekly refresh is more than sufficient
-
-### Integration with Existing Infrastructure
-With Proxmox already running, deploy as an LXC container or VM. Accessible via Tailscale from anywhere — VPS, iPhone, etc. On your own instance you can use unsimplified GPX tracks, skip caching, fire queries rapidly, and never worry about rate limits.
+Wire gpxsheet to it with `GPXSHEET_OVERPASS_URL=http://localhost:12345/api` (the base
+`/api` — osmnx appends `/interpreter`); see the deploy guide's
+[Self-hosted Overpass](deploy.md#self-hosted-overpass) section.
 
 ---
 
