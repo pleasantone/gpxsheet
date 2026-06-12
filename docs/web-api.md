@@ -120,44 +120,156 @@ Form fields (all optional except `gpx`):
 | `osm` | bool | `true` | OSM enrichment (auto fuel, road names, road-snapped distance); `false` is fast and fully offline |
 
 Returns a job whose result `content_type` is `text/html` or `text/markdown`.
+The HTML is the same table wrapped in a `gpxtable` CSS class you can style; the
+markdown is what's shown below. A real run (`format=markdown`, `departure="9:00
+AM"`, `timezone=US/Pacific`) of a route with named waypoints:
+
+```markdown
+## Route: Table Test Route
+* Departure at Fri Jun 12 09:00:00 2026 PDT
+* Total distance: 45 mi
+* Default speed: 30.00 mph
+
+| Name                           |   Dist. | GL |  ETA  | Notes
+| :----------------------------- | ------: | -- | ----: | :----
+| Start Cafe                     |       0 |    | 09:00 | Restaurant
+| Nicasio Square                 |       7 |    | 09:14 | Restroom (+0:15)
+| Shell Gas Station              |   19/19 |  G | 09:53 | Gas Station (+0:15)
+| Pat's Diner                    |      32 |  L | 10:34 | Restaurant (+1:00)
+| Trailhead                      |   26/46 |    | 12:01 | Flag
+
+* 06/12/26: Sunrise: 05:45, Starts: 09:00, Ends: 13:31, Sunset: 20:34
+```
+
+Reading the columns: `Dist.` is cumulative miles, and once past the first fuel
+stop becomes `since-gas/total` (so `19/19` then `26/46` means 26 mi since the
+last gas on a 46-mi running total); `GL` flags **G**as / **L**unch stops; `ETA`
+is the arrival clock time (needs `departure`); `Notes` carries the symbol and any
+layover (`+0:15`, `+1:00`). The header/footer line gives departure, total
+distance, the speed basis, and sunrise/sunset.
+
+**With OSM on (the default)**, the table also auto-discovers fuel, snaps
+distances to the road, derives per-segment speed limits (so the ETA is variable,
+not a flat average), and adds a **Road** column. The same pipeline on an
+OSM-enriched clip yields a row the GPX never named — the fuel station and road
+come straight from OpenStreetMap, the speed from its `maxspeed` tags:
+
+```markdown
+* Speed: OSM limits (avg 32.40 mph)
+
+| Name                           |   Dist. | GL |  ETA  | Road                     | Notes
+| :----------------------------- | ------: | -- | ----: | :----------------------- | :----
+| Canyon Auto Service            |   14/14 |    | 09:24 | Farm Hill Boulevard      | Gas Station
+```
 
 ### `POST /v1/analyze` — structured route analysis (JSON)
 
-Form fields: `gpx` (required), `profile`, `fuel_range`. Returns a job whose
-result is `application/json`:
+The same OSM-enriched analysis that drives the map and the table, returned as
+plain JSON so a UI can render its own view (a list of decisions, a segment
+timeline, fuel markers) instead of an image.
+
+Form fields (all optional except `gpx`):
+
+| field | type | default | values / meaning |
+|-------|------|---------|------------------|
+| `gpx` | file | — | the `.gpx` upload (**required**) |
+| `profile` | string | `sport-touring` | `minimalist`, `sport-touring`, `rally` — the detail cut (see below) |
+| `fuel_range` | number | — | rider range in miles; sets `longest_fuel_gap_miles` and is what a UI compares the gap against |
+
+OSM enrichment always runs: road names, the turn-vs-curve distinction, and
+fuel discovery come from OpenStreetMap (the analysis falls back to geometry-only,
+with coarser road names and no auto-fuel, only when the route is too sparse to
+snap or Overpass is unreachable).
+
+Returns a job whose result is `application/json`. A real OSM-enriched run (the
+`profile=sport-touring`, `fuel_range=180` analysis of a short clip through a
+roundabout) looks like:
 
 ```json
 {
-  "name": "Skyline Loop",
-  "length_miles": 74.8,
+  "name": "Riverbank roundabout clip (La Loma Ave)",
+  "length_miles": 2.0,
   "decision_points": [
-    {"mile": 12.3, "instruction": "Right onto CA-9", "significance": 70}
+    {"mile": 0.0, "instruction": "Left at the fork", "significance": 60},
+    {"mile": 0.6, "instruction": "Continue onto La Loma Avenue", "significance": 40},
+    {"mile": 0.9, "instruction": "Take the 2nd exit onto La Loma Avenue", "significance": 50},
+    {"mile": 1.9, "instruction": "Continue onto Needham Street", "significance": 40}
   ],
-  "fuel_stops": [{"mile": 41.0, "name": "76 Bodega Bay"}],
-  "segments": [{"name": "Skyline Blvd", "start_mile": 0.0, "end_mile": 12.3}],
-  "longest_fuel_gap_miles": 63.0
+  "fuel_stops": [],
+  "segments": [
+    {"name": "Yosemite Boulevard", "start_mile": 0.0, "end_mile": 0.6},
+    {"name": "La Loma Avenue", "start_mile": 0.6, "end_mile": 1.9},
+    {"name": "Needham Street", "start_mile": 1.9, "end_mile": 2.0}
+  ],
+  "longest_fuel_gap_miles": 2.0
 }
 ```
 
-Use this to build your own UI (a list of decisions, a segment timeline, fuel
-markers) instead of rendering an image.
+**Response fields:**
+
+| field | type | meaning |
+|-------|------|---------|
+| `name` | string | the route name (from the GPX, else a fallback) |
+| `length_miles` | number | total route length, one decimal |
+| `decision_points` | array | where the rider must act — see below |
+| `fuel_stops` | array | `{mile, name}` per fuel opportunity, in route order |
+| `segments` | array | `{name, start_mile, end_mile}` named road stretches, contiguous and in order |
+| `longest_fuel_gap_miles` | number \| null | longest distance between fuel opportunities (route start/end count as endpoints); `null` when the profile omits fuel |
+
+Each **decision point** is `{mile, instruction, significance}`:
+
+- `instruction` is a human-readable cue derived from OSM road names and the
+  turn geometry — `"Continue onto <road>"` for a straight-through name change,
+  `"<Left|Right|Sharp left|…> onto <road>"` for a turn, `"<Left|Right> at the
+  fork"`, or `"Take the Nth exit onto <road>"` at a roundabout.
+- `significance` is 0–80: higher = more consequential (a sharp turn or a
+  state-highway junction scores higher than a gentle residential name change).
+  The **`profile` gates this**: a decision survives only if its significance
+  clears the profile's threshold — `minimalist` = 55, `sport-touring` = 40,
+  `rally` = 30. So the same route returns fewer, higher-stakes decisions under
+  `minimalist` (here, only the `significance: 60` fork) and more under `rally`.
+
+**`fuel_stops` / `longest_fuel_gap_miles`** populate from OSM-discovered fuel
+(plus any fuel waypoints in the GPX). The roundabout clip above is too short to
+pass a station, so `fuel_stops` is empty; on a real touring route they fill in —
+e.g. a longer clip returns `"fuel_stops": [{"mile": 13.7, "name": "Canyon Auto
+Service"}]` with `"longest_fuel_gap_miles": 13.7`. The `minimalist` profile
+omits fuel entirely (`fuel_stops: []`, `longest_fuel_gap_miles: null`); use
+`sport-touring` or `rally` for fuel.
 
 ### `POST /v1/validate` — route warnings (JSON)
 
-Form fields: `gpx` (required), `profile`, `fuel_range`. Returns a job whose JSON
-result lists findings; `level` is `warning` or `info`, `code` is one of `fuel`,
-`unpaved`, `ferry`, `seasonal`:
+Same form fields and OSM-enriched analysis as `/v1/analyze` (`gpx` required,
+plus `profile`, `fuel_range`). Returns a job whose JSON result lists findings.
+A real run (the OSM-enriched 15 mi clip with a deliberately tight
+`fuel_range=10` to trip the gap check):
 
 ```json
 {
-  "name": "Skyline Loop",
-  "length_miles": 74.8,
+  "name": "Enrich Fixture (gaia 15mi clip)",
+  "length_miles": 14.8,
   "findings": [
-    {"level": "warning", "code": "fuel", "message": "Longest fuel gap 63 mi exceeds the 50 mi range."},
-    {"level": "info", "code": "ferry", "message": "Ferry check skipped (no OSM data)."}
+    {"level": "warning", "code": "fuel", "message": "Longest fuel gap 14 mi exceeds the 10 mi range."},
+    {"level": "info", "code": "ferry", "message": "Ferry check skipped (no OSM data)."},
+    {"level": "info", "code": "seasonal", "message": "Seasonal-closure risk is not checked yet (see TODO.md)."}
   ]
 }
 ```
+
+Each finding has a `level` (`warning` or `info`) and a `code`:
+
+| `code` | `warning` when… | `info` when… |
+|--------|-----------------|--------------|
+| `fuel` | the longest fuel gap exceeds `fuel_range` | no `fuel_range` given, or the profile omits fuel |
+| `unpaved` | the route has ≥0.2 mi of unpaved/track surface | the OSM surface data wasn't available (a "skipped" note) |
+| `ferry` | a ferry crossing is on the route (named) | the OSM ferry data wasn't available (a "skipped" note) |
+| `seasonal` | — (not implemented yet) | always present, as a reminder it isn't checked |
+
+So a clean route within range is a successful job with only `info` notes; a route
+with a fuel gap, unpaved miles, or a ferry surfaces `warning`s. The `unpaved` and
+`ferry` checks need OSM hazard data — when it's present they're either a `warning`
+(found) or silent (clear); the `info` "skipped (no OSM data)" note above appears
+only when that data is unavailable (sparse route, or Overpass unreachable).
 
 Warnings do **not** fail the job — a route with warnings is still a successful
 job; read the findings.
