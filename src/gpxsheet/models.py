@@ -189,6 +189,9 @@ class Route:
     # Hazard data from OSM enrichment; None means "not assessed" (no OSM run).
     unpaved_miles: float | None = None
     ferry_crossings: list[str] | None = None
+    # Seasonal-closure risks (curated passes + OSM seasonal/conditional tags); None
+    # = not assessed, [] = assessed and clear. See gpxsheet.seasonal.
+    seasonal_closures: list[str] | None = None
     # Piecewise-constant speed limit profile from OSM (coalesced ``(start_mile,
     # mph)`` breakpoints); None means "not assessed" (no OSM run). Drives variable
     # ETAs in the route table; a user-supplied fixed speed overrides it.

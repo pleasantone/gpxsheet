@@ -567,6 +567,7 @@ def derive_products(
         fuel_stops=list(core.fuel_stops) if prof.include_fuel else [],
         spans=spans,
         ferry_crossings=core.ferry_crossings if include_hazards else None,
+        seasonal_closures=core.seasonal_closures if include_hazards else None,
         fuel_report=None,
         pois=[],
         reassurance_markers=[],
@@ -597,7 +598,7 @@ def analyze_route(
     Decisions and segments come from OSM road topology (durable road-name changes,
     named roads), falling back to the geometry baseline (with a warning) when the
     route is too sparse to sample or the Overpass query fails. ``include_hazards``
-    surfaces OSM hazard data (ferry crossings) for
+    surfaces OSM hazard data (ferry crossings, seasonal closures) for
     :func:`gpxsheet.validate.validate_route`. ``osm=False`` forces a fast, fully
     offline geometry-only analysis. Returns the analyzed :class:`Route`.
     """
@@ -612,6 +613,7 @@ def analyze_route(
     route.fuel_stops = derived.fuel_stops
     route.spans = derived.spans
     route.ferry_crossings = derived.ferry_crossings
+    route.seasonal_closures = derived.seasonal_closures
     route.fuel_report = derived.fuel_report
     route.pois = derived.pois
     route.reassurance_markers = derived.reassurance_markers

@@ -20,11 +20,17 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Analysis (open)
 
-- **Seasonal-closure risk check** — `validate.validate_route` only emits an INFO
-  "Seasonal-closure risk is not checked yet" placeholder (the `seasonal` finding
-  code is already reserved in the validate report, the web API, and docs/product.md).
-  Implement a real assessment (e.g. OSM seasonal / `access:conditional` tags, or a
-  curated pass/closure list for known seasonal roads).
+- **✅ Seasonal-closure risk check** — done. `validate.validate_route` now warns
+  on seasonal roads via a *hybrid* check (`gpxsheet.seasonal`): a curated list of
+  well-known seasonal roads (Sierra/Cascade passes) matched on OSM road names, plus
+  an OSM-tag supplement (`seasonal` / `*:conditional` / `snowmobile`). Mirrors the
+  ferry hazard (`Route.seasonal_closures`; `None`=not assessed, `[]`=clear).
+  Possible follow-up: **audit the curated `SEASONAL_ROADS` list against live OSM —
+  if every road in it already carries reliable `seasonal` / `access:conditional`
+  tags, drop the curated list and rely solely on the OSM-tag path
+  (`seasonal.is_seasonal_edge`), removing the special-case code.** Also: expand the
+  curated list; parse closure windows for a date-aware verdict (validate carries no
+  trip date today).
 - **Y/T-intersection & junction-geometry significance scoring** — docs/product.md's
   scoring table defines Y/T-intersection scores, but only road-name / highway-name /
   sharp-turn scoring is wired up today. Implementing this would reintroduce the

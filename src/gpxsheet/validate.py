@@ -1,10 +1,11 @@
 """Route validation (the ``validate`` output mode in docs/product.md).
 
 Reports hazards/warnings for a route: fuel gaps exceeding the rider's range,
-unpaved stretches, and ferry crossings. Operates on an already-analyzed
-:class:`~gpxsheet.models.Route`; the unpaved/ferry checks need OSM data
-(`analyze(..., include_hazards=True)`), and degrade to a "skipped" note when OSM
-data isn't available (osmnx missing, sparse route, or Overpass failure).
+unpaved stretches, ferry crossings, and seasonal-closure risk. Operates on an
+already-analyzed :class:`~gpxsheet.models.Route`; the unpaved/ferry/seasonal
+checks need OSM data (`analyze(..., include_hazards=True)`), and degrade to a
+"skipped" note when OSM data isn't available (osmnx missing, sparse route, or
+Overpass failure).
 """
 
 from __future__ import annotations
@@ -93,10 +94,18 @@ def validate_route(route: Route, *, fuel_range: float | None = None) -> list[Fin
         names = ", ".join(route.ferry_crossings)
         findings.append(Finding(WARNING, "ferry", f"Ferry crossing present: {names}."))
 
-    # --- Seasonal closure (not yet implemented) -------------------------
-    findings.append(
-        Finding(INFO, "seasonal", "Seasonal-closure risk is not checked yet (see TODO.md).")
-    )
+    # --- Seasonal closure (needs OSM) -----------------------------------
+    if route.seasonal_closures is None:
+        findings.append(Finding(INFO, "seasonal", "Seasonal-closure check skipped (no OSM data)."))
+    elif route.seasonal_closures:
+        names = "; ".join(route.seasonal_closures)
+        findings.append(
+            Finding(
+                WARNING,
+                "seasonal",
+                f"Seasonal closure risk: {names}. Verify the road is open before riding.",
+            )
+        )
 
     return findings
 

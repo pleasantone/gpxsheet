@@ -250,11 +250,14 @@ A real run (the OSM-enriched 15 mi clip with a deliberately tight
   "length_miles": 14.8,
   "findings": [
     {"level": "warning", "code": "fuel", "message": "Longest fuel gap 14 mi exceeds the 10 mi range."},
-    {"level": "info", "code": "ferry", "message": "Ferry check skipped (no OSM data)."},
-    {"level": "info", "code": "seasonal", "message": "Seasonal-closure risk is not checked yet (see TODO.md)."}
+    {"level": "info", "code": "ferry", "message": "Ferry check skipped (no OSM data)."}
   ]
 }
 ```
+
+(This suburban clip has no unpaved, ferry, or seasonal hazard, so those stay
+silent; only the deliberately-tight fuel gap warns. `ferry` shows an `info`
+"skipped" here because its OSM data wasn't in this run's cache.)
 
 Each finding has a `level` (`warning` or `info`) and a `code`:
 
@@ -263,13 +266,15 @@ Each finding has a `level` (`warning` or `info`) and a `code`:
 | `fuel` | the longest fuel gap exceeds `fuel_range` | no `fuel_range` given, or the profile omits fuel |
 | `unpaved` | the route has ≥0.2 mi of unpaved/track surface | the OSM surface data wasn't available (a "skipped" note) |
 | `ferry` | a ferry crossing is on the route (named) | the OSM ferry data wasn't available (a "skipped" note) |
-| `seasonal` | — (not implemented yet) | always present, as a reminder it isn't checked |
+| `seasonal` | a known/seasonally-tagged road is on the route (named, with its typical window) | the OSM data wasn't available (a "skipped" note) |
 
 So a clean route within range is a successful job with only `info` notes; a route
-with a fuel gap, unpaved miles, or a ferry surfaces `warning`s. The `unpaved` and
-`ferry` checks need OSM hazard data — when it's present they're either a `warning`
-(found) or silent (clear); the `info` "skipped (no OSM data)" note above appears
-only when that data is unavailable (sparse route, or Overpass unreachable).
+with a fuel gap, unpaved miles, a ferry, or a seasonal pass surfaces `warning`s.
+The `unpaved`, `ferry`, and `seasonal` checks need OSM hazard data — when it's
+present they're either a `warning` (found) or silent (clear); the `info` "skipped
+(no OSM data)" note appears only when that data is unavailable (sparse route, or
+Overpass unreachable). The seasonal check is hybrid: a curated list of well-known
+seasonal roads (Sierra/Cascade passes) plus OSM `seasonal`/`*:conditional` tags.
 
 Warnings do **not** fail the job — a route with warnings is still a successful
 job; read the findings.

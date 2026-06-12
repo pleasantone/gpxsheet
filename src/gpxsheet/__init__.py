@@ -130,7 +130,7 @@ def validate(
     profile: str = DEFAULT_PROFILE,
     fuel_range: float | None = None,
 ) -> ValidationReport:
-    """Validate a route for fuel gaps, unpaved stretches and ferry crossings.
+    """Validate a route for fuel gaps, unpaved stretches, ferries and seasonal closures.
 
     Analyzes the route (with OSM hazard data) and returns a
     :class:`ValidationReport` holding the analyzed :class:`Route` and the list of
