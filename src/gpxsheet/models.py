@@ -13,6 +13,7 @@ These map directly onto the Route Graph Model in docs/product.md::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from .geo import meters_to_miles
 
@@ -28,12 +29,20 @@ class GeoPoint:
 
 @dataclass(frozen=True, slots=True)
 class Waypoint:
-    """A named point of interest from the GPX (<wpt>) or OSM enrichment."""
+    """A named point of interest from the GPX (<wpt>) or OSM enrichment.
+
+    ``arrival_time``/``departure_time`` are best-effort, display-only metadata
+    carried by Garmin BaseCamp route via points (``trp:ViaPoint``); they are
+    optional, frequently absent, and never feed distance/ETA math. See
+    docs/basecamp-routes.md.
+    """
 
     lat: float
     lon: float
     name: str | None = None
     symbol: str | None = None
+    arrival_time: datetime | None = None
+    departure_time: datetime | None = None
 
 
 class DecisionKind:
@@ -180,6 +189,19 @@ class Route:
     # Hazard data from OSM enrichment; None means "not assessed" (no OSM run).
     unpaved_miles: float | None = None
     ferry_crossings: list[str] | None = None
+    # Piecewise-constant speed limit profile from OSM (coalesced ``(start_mile,
+    # mph)`` breakpoints); None means "not assessed" (no OSM run). Drives variable
+    # ETAs in the route table; a user-supplied fixed speed overrides it.
+    speed_samples_mph: list[tuple[float, float]] | None = None
+    # Point indices where a new ``<trk>`` (≈ a new day) begins, excluding 0. Empty
+    # for single-track routes and plain ``<rte>``s. Lets the route table render
+    # per-day sections.
+    day_breaks: list[int] = field(default_factory=list)
+    # One name per day (``len(day_breaks) + 1`` entries) -- the source ``<trk>``
+    # names -- for labelling per-day sections. Empty for single-track/``<rte>``
+    # routes (the renderer falls back to "Day N"). An entry may be "" if its track
+    # was unnamed.
+    day_names: list[str] = field(default_factory=list)
 
     @property
     def length_m(self) -> float:

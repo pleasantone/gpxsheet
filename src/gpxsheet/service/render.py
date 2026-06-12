@@ -35,22 +35,32 @@ def run_job(op: str, gpx_bytes: bytes, params: BaseModel) -> JobResult:
     ``"table"`` (HTML/markdown route table; ``params`` is a :class:`TableParams`),
     or ``"analyze"`` / ``"validate"`` (JSON report; ``params`` is a
     :class:`ReportParams`).
+
+    Wrapped in a perf track so a slow job logs one ``gpxsheet.perf`` line with the
+    phase breakdown (cache hit/miss, load, geometry, enrich, derive, render).
     """
-    if op == "analyze":
-        assert isinstance(params, ReportParams)
-        payload, name = _analyze_dict(gpx_bytes, params)
-        return _json_result(payload, name)
-    if op == "validate":
-        assert isinstance(params, ReportParams)
-        payload, name = _validate_dict(gpx_bytes, params)
-        return _json_result(payload, name)
-    if op == "render":
-        assert isinstance(params, RenderParams)
-        return _render_result(gpx_bytes, params)
-    if op == "table":
-        assert isinstance(params, TableParams)
-        return _table_result(gpx_bytes, params)
-    raise ValueError(f"unknown job op {op!r}")
+    from gpxsheet import perf
+
+    with perf.track(f"job:{op}", bytes=_human_bytes(len(gpx_bytes))):
+        if op == "analyze":
+            assert isinstance(params, ReportParams)
+            payload, name = _analyze_dict(gpx_bytes, params)
+            return _json_result(payload, name)
+        if op == "validate":
+            assert isinstance(params, ReportParams)
+            payload, name = _validate_dict(gpx_bytes, params)
+            return _json_result(payload, name)
+        if op == "render":
+            assert isinstance(params, RenderParams)
+            return _render_result(gpx_bytes, params)
+        if op == "table":
+            assert isinstance(params, TableParams)
+            return _table_result(gpx_bytes, params)
+        raise ValueError(f"unknown job op {op!r}")
+
+
+def _human_bytes(n: int) -> str:
+    return f"{n / 1_048_576:.1f}MB" if n >= 1_048_576 else f"{n / 1024:.0f}KB"
 
 
 def _safe_filename(name: str | None, ext: str) -> str:
@@ -69,64 +79,82 @@ def _json_result(payload: dict, name: str | None) -> JobResult:
 
 
 def _render_result(gpx_bytes: bytes, params: RenderParams) -> JobResult:
-    from gpxsheet import analyze
+    from gpxsheet import perf
+    from gpxsheet.analysis import derive_products
     from gpxsheet.pdf import render_layout
 
+    from .analysis_cache import get_core
+
+    perf.annotate(layout=params.layout, fmt=params.format, profile=params.profile)
+    core = get_core(gpx_bytes, osm=True)
+    route = derive_products(core, profile=params.profile, fuel_range=params.fuel_range)
     ext = params.format  # "pdf" | "png"
     with tempfile.TemporaryDirectory() as tmp:
-        gpx_path = Path(tmp) / "route.gpx"
         out_path = Path(tmp) / f"out.{ext}"
-        gpx_path.write_bytes(gpx_bytes)
-        route = analyze(str(gpx_path), profile=params.profile, fuel_range=params.fuel_range)
-        render_layout(
-            route,
-            out_path,
-            layout=params.layout,
-            fmt=params.format,
-            turn_style=params.turn_style,
-            paper=params.paper,
-            lanes_per_page=params.lanes_per_page,
-            decisions_per_lane=params.decisions_per_lane,
-            show_branches=params.show_branches,
-        )
+        with perf.span("render"):
+            render_layout(
+                route,
+                out_path,
+                layout=params.layout,
+                fmt=params.format,
+                turn_style=params.turn_style,
+                paper=params.paper,
+                lanes_per_page=params.lanes_per_page,
+                decisions_per_lane=params.decisions_per_lane,
+                show_branches=params.show_branches,
+            )
         return out_path.read_bytes(), _CONTENT_TYPES[ext], ext, _safe_filename(route.name, ext)
 
 
 def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
-    """A GPXtable route table as HTML or markdown (no OSM pipeline involved)."""
-    from gpxsheet import table
+    """A native route table (analysis graph) as HTML or markdown.
 
-    depart_at, tz = table.parse_departure(params.departure, params.timezone)
-    gpx = table.parse_gpx(gpx_bytes)
-    md = table.build_table_markdown(
-        gpx,
-        imperial=(params.units == "imperial"),
-        speed=params.speed,
-        depart_at=depart_at,
-        ignore_times=params.ignore_times,
-        display_coordinates=params.coordinates,
-        tz=tz,
+    Runs the analysis (OSM on by default; ``--no-osm`` for a fast offline table)
+    so the table inherits auto-discovered fuel and road-snapped distance.
+    """
+    from gpxsheet import perf
+    from gpxsheet.analysis import derive_products
+    from gpxsheet.routetable import (
+        build_table_markdown,
+        markdown_to_html,
+        parse_departure,
     )
+
+    from .analysis_cache import get_core
+
+    perf.annotate(fmt=params.format, osm=params.osm, cue=params.cue)
+    depart_at, tz = parse_departure(params.departure, params.timezone)
+    route = derive_products(get_core(gpx_bytes, osm=params.osm))
+    with perf.span("table.build"):
+        md = build_table_markdown(
+            route,
+            imperial=(params.units == "imperial"),
+            speed=params.speed,
+            departure=depart_at,
+            tz=tz,
+            display_coordinates=params.coordinates,
+            show_cue=params.cue,
+        )
     if params.format == "html":
-        data, ext = table.markdown_to_html(md).encode(), "html"
+        with perf.span("table.html"):
+            data, ext = markdown_to_html(md).encode(), "html"
     else:
         data, ext = md.encode(), "md"
     content_type = _CONTENT_TYPES["html" if params.format == "html" else "markdown"]
-    return data, content_type, ext, _safe_filename(table.route_title(gpx), ext)
+    return data, content_type, ext, _safe_filename(route.name, ext)
 
 
 def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):
-    from gpxsheet import analyze
+    from gpxsheet.analysis import derive_products
 
-    with tempfile.TemporaryDirectory() as tmp:
-        gpx_path = Path(tmp) / "route.gpx"
-        gpx_path.write_bytes(gpx_bytes)
-        return analyze(
-            str(gpx_path),
-            profile=params.profile,
-            fuel_range=params.fuel_range,
-            include_hazards=include_hazards,
-        )
+    from .analysis_cache import get_core
+
+    return derive_products(
+        get_core(gpx_bytes, osm=True),
+        profile=params.profile,
+        fuel_range=params.fuel_range,
+        include_hazards=include_hazards,
+    )
 
 
 def _analyze_dict(gpx_bytes: bytes, params: ReportParams) -> tuple[dict, str | None]:

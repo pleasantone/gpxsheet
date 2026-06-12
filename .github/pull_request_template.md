@@ -4,7 +4,7 @@
 
 ## Related
 
-<!-- Link to the relevant milestone in docs/product.md or an issue. -->
+<!-- Link to the relevant section in docs/product.md or an issue. -->
 
 ## Checklist
 

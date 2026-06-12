@@ -9,6 +9,7 @@ Built with matplotlib (vector PDF via ``PdfPages``), reusing
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from . import colors, defaults
@@ -16,6 +17,38 @@ from .layout import TURN_STYLE_STYLIZED, build_strip_layout
 from .models import Route
 from .paginate import plan_pages, slice_route
 from .strip import _use_bundled_fonts, draw_strip
+
+# Cap for the glanceable single-image overviews (preview / strip): above this many
+# decisions they stop being glanceable and the render time balloons (every
+# decision is a marker + a leader-placed label). A long twisty route analyzed
+# geometry-only -- no OSM -- floods to 1000+, so the overviews draw only the most
+# significant ones. The paginated roadbook (portrait/landscape) is NOT capped --
+# it spreads every decision across pages. OSM routes stay well under this anyway.
+MAX_RENDER_DECISIONS = 80
+
+
+def _cap_decisions(route: Route) -> Route:
+    """A render view of ``route`` with at most :data:`MAX_RENDER_DECISIONS`.
+
+    Keeps the most significant decisions (then the sharpest), restored to mile
+    order, and rebuilds the road segments to match (the schematic ribbon draws a
+    node per segment, so a flood of segments is as slow as a flood of decisions).
+    Returns ``route`` unchanged when it is already under the cap. Only floods --
+    i.e. geometry-only on a long twisty track, where segment names are generic
+    "Leg N" anyway -- ever hit this; OSM routes stay well under the cap.
+    """
+    if len(route.decision_points) <= MAX_RENDER_DECISIONS:
+        return route
+    from .analysis import build_segments
+
+    kept = sorted(
+        route.decision_points,
+        key=lambda d: (d.significance, abs(d.turn_angle or 0.0)),
+        reverse=True,
+    )[:MAX_RENDER_DECISIONS]
+    kept.sort(key=lambda d: d.mile)
+    capped = replace(route, decision_points=kept)
+    return replace(capped, segments=build_segments(capped))
 
 # Physical page sizes in inches, given as portrait (width, height). Landscape
 # swaps the two. The layout math below works in figure fractions, so only the
@@ -450,6 +483,9 @@ def render_layout(
         raise ValueError(f"fmt must be one of {FORMATS}, got {fmt!r}")
     output_path = Path(output_path)
 
+    # The paginated roadbook (portrait/landscape) keeps every decision -- it spreads
+    # them across pages, and dropping turns from the printed nav product would be
+    # wrong. Only the glanceable single-image overviews cap a decision flood.
     if layout in ("portrait", "landscape"):
         render = render_pdf if fmt == "pdf" else render_pages_png
         return render(
@@ -457,6 +493,7 @@ def render_layout(
             lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
             show_branches=show_branches,
         )
+    route = _cap_decisions(route)  # preview/strip: bound a decision flood
     if layout == "preview":
         return render_preview(
             route, output_path, turn_style=turn_style, decisions_per_lane=decisions_per_lane,

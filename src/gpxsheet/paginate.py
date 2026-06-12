@@ -15,6 +15,7 @@ auto-fit (greedy analytic fit, :func:`fit_pages`); positive → fixed decision c
 from __future__ import annotations
 
 import functools
+import math
 from dataclasses import replace
 
 from .geo import miles_to_meters
@@ -23,6 +24,13 @@ from .models import Route
 
 # A page holds at most this many decisions; the last page absorbs the run-out.
 MAX_DECISIONS_PER_PAGE = 5
+
+# Hard ceiling on auto-fit lanes. A long twisty route analyzed geometry-only (no
+# OSM) floods with decisions -- e.g. a 1900 mi PNW track yields ~1300, which the
+# greedy fit would turn into ~440 lanes, an O(n^2) fit plus a minutes-long render
+# of a useless sheet. Above this many decisions we skip the greedy fit and pack
+# decisions evenly so the lane count -- and the render -- stays bounded.
+MAX_AUTOFIT_LANES = 40
 
 
 def paginate(
@@ -252,6 +260,12 @@ def plan_pages(
     """
     if decisions_per_lane:
         return paginate(route, max_decisions=max(1, decisions_per_lane))
+    length = route.length_miles
+    n_dec = sum(1 for d in route.decision_points if 0.0 < d.mile < length)
+    if n_dec > MAX_AUTOFIT_LANES:
+        # Decision flood (geometry-only on a long twisty track): skip the O(n^2)
+        # greedy fit and pack decisions evenly so lanes <= MAX_AUTOFIT_LANES.
+        return paginate(route, max_decisions=math.ceil(n_dec / MAX_AUTOFIT_LANES))
     return fit_pages(
         route, box_w_in=box_w_in, box_h_in=box_h_in,
         turn_style=turn_style, show_start=show_start,

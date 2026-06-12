@@ -147,10 +147,7 @@ def validate(
 def table(
     gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
     output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output file path (.html or .md)."
-    ),
-    fmt: str = typer.Option(
-        "html", "--format", help="Output format: html | markdown (inferred from -o extension)."
+        None, "--output", "-o", help="Output file path; format inferred from .html or .md."
     ),
     departure: str | None = typer.Option(
         None, "--departure", help='Departure time, e.g. "9:00 AM" or "July 4 2pm".'
@@ -164,23 +161,30 @@ def table(
     coordinates: bool = typer.Option(
         False, "--coordinates", help="Include latitude/longitude columns."
     ),
-    ignore_times: bool = typer.Option(
-        False, "--ignore-times", help="Ignore timestamps in the GPX track."
+    cue: bool = typer.Option(
+        False, "--cue", help="Append a turn-by-turn cue sheet from decision points."
+    ),
+    osm: bool = typer.Option(
+        True, "--osm/--no-osm",
+        help="Enrich via OSM (auto fuel, road-snapped distance); --no-osm is fast/offline.",
     ),
     timezone: str | None = typer.Option(
         None, "--timezone", help="IANA timezone for displayed times, e.g. US/Pacific."
     ),
 ) -> None:
-    """Generate a route table (markdown or HTML) via GPXtable.
+    """Generate a route table (markdown or HTML) from the analysis graph.
 
-    Independent of the OSM pipeline: works offline straight from the GPX waypoints.
+    Built natively on GPXsheet's analysis: OSM enrichment is on by default (auto
+    fuel, road-snapped distance); pass ``--no-osm`` for a fast, fully offline
+    table. Output format follows the ``-o`` extension (``.md`` → markdown, else
+    HTML). ETAs require ``--departure``.
     """
-    from .table import parse_departure, render_table
+    from .routetable import parse_departure, render_table
 
     if output is None:
-        output = Path("route_table.md" if fmt == "markdown" else "route_table.html")
+        output = Path("route_table.html")
     suffix = output.suffix.lower()
-    out_fmt = "markdown" if suffix in (".md", ".markdown") else "html" if suffix == ".html" else fmt
+    out_fmt = "markdown" if suffix in (".md", ".markdown") else "html"
     try:
         depart_at, tz = parse_departure(departure, timezone)
         out = render_table(
@@ -189,10 +193,11 @@ def table(
             fmt=out_fmt,
             imperial=not metric,
             speed=speed,
-            depart_at=depart_at,
-            ignore_times=ignore_times,
+            departure=depart_at,
             display_coordinates=coordinates,
+            show_cue=cue,
             tz=tz,
+            osm=osm,
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)

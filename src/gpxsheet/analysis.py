@@ -32,6 +32,7 @@ from .models import (
     ReassuranceMarker,
     Route,
     Segment,
+    SpanKind,
 )
 from .profiles import Profile, get_profile
 from .simplify import rdp
@@ -258,12 +259,18 @@ def generate_reassurance_markers(
     if interval_miles <= 0 or route.length_miles <= interval_miles:
         return []
 
+    # Precompute the candidate landmarks ONCE: named waypoints not already shown as
+    # POIs. Each waypoint's route projection is O(points), so doing it here instead
+    # of per-marker turns an O(markers·waypoints·points) blowup into O(waypoints·
+    # points) + O(markers·waypoints) -- seconds -> milliseconds on long routes.
+    landmarks = _landmark_candidates(route)
+
     markers: list[ReassuranceMarker] = []
     mile = interval_miles
     while mile < route.length_miles - END_MARKER_BUFFER_MILES:
         idx = _index_at_mile(route, mile)
         pt = route.points[idx]
-        label, reason = _label_near(route, idx)
+        label, reason = _label_near(mile, route.distances_m[idx], landmarks)
         markers.append(
             ReassuranceMarker(
                 mile=round(mile, 1), label=label, lat=pt.lat, lon=pt.lon, reason=reason
@@ -286,30 +293,46 @@ def _index_at_mile(route: Route, mile: float) -> int:
     return lo
 
 
-def _label_near(route: Route, idx: int, max_miles: float = 1.0) -> tuple[str, str]:
-    """Best label for a point: nearest named waypoint, else the mileage.
+def _landmark_candidates(route: Route) -> list[tuple[str, float]]:
+    """``(name, along-route mile)`` for named waypoints not already shown as POIs.
 
-    Waypoints with a name are always shown as dedicated POI markers, so they are
-    excluded here to avoid a duplicate reassurance label at the same location.
+    Each waypoint is projected to the route once here (the expensive O(points)
+    step) so :func:`_label_near` can stay a cheap per-marker nearest lookup.
+    Waypoints already rendered as POI markers are excluded to avoid a duplicate
+    reassurance label at the same place.
     """
-    pt = route.points[idx]
-    best_name, best_d = None, miles_to_meters(max_miles)
-    from .geo import haversine
-
     poi_miles = {p.mile for p in route.pois}
-
+    out: list[tuple[str, float]] = []
     for wp in route.waypoints:
         if not wp.name:
             continue
         mile, _ = _project_to_route(route, wp.lat, wp.lon)
         if mile in poi_miles:
-            continue  # already shown as a POI marker
-        d = haversine(pt.lat, pt.lon, wp.lat, wp.lon)
+            continue
+        out.append((wp.name, mile))
+    return out
+
+
+def _label_near(
+    marker_mile: float,
+    distance_m: float,
+    landmarks: list[tuple[str, float]],
+    max_miles: float = 1.0,
+) -> tuple[str, str]:
+    """Label a marker by the nearest landmark *along the route*, else its mileage.
+
+    Matching on along-route mileage (``|marker_mile - landmark_mile|``) rather than
+    straight-line distance avoids borrowing a town's name for a marker that passes
+    near it as the crow flies but is many route-miles away (switchbacks, loops).
+    """
+    best_name, best_d = None, max_miles
+    for name, mile in landmarks:
+        d = abs(marker_mile - mile)
         if d < best_d:
-            best_name, best_d = wp.name, d
+            best_name, best_d = name, d
     if best_name:
         return best_name, "landmark"
-    return f"{meters_to_miles(route.distances_m[idx]):.0f} mi", "interval"
+    return f"{meters_to_miles(distance_m):.0f} mi", "interval"
 
 
 def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, float]:
@@ -448,14 +471,20 @@ def _geometry_baseline(route: Route) -> None:
     route.segments = build_segments(route)
 
 
-def _osm_enrich_pass(route: Route, prof: Profile, include_hazards: bool) -> bool:
+def _osm_enrich_pass(route: Route, osm: bool = True) -> bool:
     """Step 2: replace geometry decisions with OSM road-name decisions.
 
-    Skips sparse routes (waypoint-only <rte>) and falls back gracefully on any
-    Overpass/network failure. Returns True if OSM ran successfully.
+    Profile-independent: always requests fuel **and** hazards so the result is a
+    superset reusable by every profile/display (the cheap per-profile gating
+    happens later in :func:`derive_products`). Skips sparse routes (waypoint-only
+    <rte>) and falls back gracefully on any Overpass/network failure. Returns True
+    if OSM ran successfully. ``osm=False`` skips enrichment outright (a fast, fully
+    offline analysis).
     """
     from .enrich import enrich_route
 
+    if not osm:
+        return False
     if os.getenv("GPXSHEET_DISABLE_OSM", "").lower() in ("1", "true", "yes"):
         # Opt-out for air-gapped / Overpass-rate-limited deployments (and CI smoke
         # tests): skip enrichment entirely, with no network call, and use the
@@ -475,7 +504,7 @@ def _osm_enrich_pass(route: Route, prof: Profile, include_hazards: bool) -> bool
         )
         return False
     try:
-        enrich_route(route, include_fuel=prof.include_fuel, include_hazards=include_hazards)
+        enrich_route(route, include_fuel=True, include_hazards=True)
         return True
     except Exception as exc:  # network/Overpass/data failure -> fall back
         log.exception("OSM enrichment failed; using geometry-only analysis")
@@ -487,23 +516,72 @@ def _osm_enrich_pass(route: Route, prof: Profile, include_hazards: bool) -> bool
         return False
 
 
-def _apply_profile(
-    route: Route, prof: Profile, fuel_range: float | None, osm_ran: bool
-) -> None:
-    """Step 3: apply profile threshold and derive fuel/reassurance products."""
-    # Geometry-only fallback: GPX waypoints are the fuel source since OSM didn't run.
-    if not osm_ran and prof.include_fuel:
-        route.fuel_stops = detect_fuel_stops(route)
+def analyze_core(route: Route, *, osm: bool = True) -> Route:
+    """Profile-independent analysis: geometry baseline + OSM enrichment.
 
-    route.decision_points = [
-        d for d in route.decision_points if d.significance >= prof.decision_threshold
-    ]
-    route.fuel_report = analyze_fuel(route, fuel_range) if prof.include_fuel else None
-    route.pois = detect_pois(route) if prof.include_reassurance else []
-    route.reassurance_markers = (
-        generate_reassurance_markers(route, prof.reassurance_interval_miles)
-        if prof.include_reassurance else []
+    The result depends only on the GPX geometry and ``osm`` -- it carries the
+    *full* decision set (every significance), road segments, fuel stops (OSM +
+    waypoints), the OSM speed profile, unpaved/ferry spans and hazard metadata --
+    so it is safe to **cache** and reuse across profiles and display options.
+    Cheap per-request products (threshold filtering, fuel report, POIs,
+    reassurance, hazard visibility) are layered on by :func:`derive_products`.
+    Mutates and returns ``route``.
+    """
+    from . import perf
+
+    with perf.span("geometry"):
+        _geometry_baseline(route)
+    with perf.span("enrich"):
+        osm_ran = _osm_enrich_pass(route, osm)
+    if not osm_ran:
+        # Geometry-only: GPX fuel waypoints are the only fuel source (no OSM).
+        route.fuel_stops = detect_fuel_stops(route)
+    return route
+
+
+def derive_products(
+    core: Route,
+    *,
+    profile: str | Profile = "sport-touring",
+    fuel_range: float | None = None,
+    include_hazards: bool = False,
+) -> Route:
+    """Apply profile + display gating to a cached :func:`analyze_core` result.
+
+    Returns a fresh :class:`Route` (the shared ``core`` is never mutated): the
+    decision set filtered to the profile threshold, fuel/POIs/reassurance gated by
+    the profile, the fuel-range report, and hazards (ferry spans/crossings) shown
+    only when ``include_hazards``. All cheap and OSM-free.
+    """
+    prof = profile if isinstance(profile, Profile) else get_profile(profile)
+    spans = (
+        list(core.spans)
+        if include_hazards
+        else [s for s in core.spans if s.kind != SpanKind.FERRY]
     )
+    out = replace(
+        core,
+        decision_points=[
+            d for d in core.decision_points if d.significance >= prof.decision_threshold
+        ],
+        fuel_stops=list(core.fuel_stops) if prof.include_fuel else [],
+        spans=spans,
+        ferry_crossings=core.ferry_crossings if include_hazards else None,
+        fuel_report=None,
+        pois=[],
+        reassurance_markers=[],
+    )
+    from . import perf
+
+    out.fuel_report = analyze_fuel(out, fuel_range) if prof.include_fuel else None
+    with perf.span("derive.pois"):
+        out.pois = detect_pois(out) if prof.include_reassurance else []
+    with perf.span("derive.reassurance"):
+        out.reassurance_markers = (
+            generate_reassurance_markers(out, prof.reassurance_interval_miles)
+            if prof.include_reassurance else []
+        )
+    return out
 
 
 def analyze_route(
@@ -512,18 +590,29 @@ def analyze_route(
     profile: str | Profile = "sport-touring",
     fuel_range: float | None = None,
     include_hazards: bool = False,
+    osm: bool = True,
 ) -> Route:
-    """Run the full analysis, populating ``route`` in place.
+    """Run the full analysis: :func:`analyze_core` then :func:`derive_products`.
 
     Decisions and segments come from OSM road topology (durable road-name changes,
     named roads), falling back to the geometry baseline (with a warning) when the
     route is too sparse to sample or the Overpass query fails. ``include_hazards``
-    adds OSM hazard data (ferry crossings; unpaved mileage is captured whenever the
-    OSM pass runs) for :func:`gpxsheet.validate.validate_route`. Returns the same
-    :class:`Route` for convenience.
+    surfaces OSM hazard data (ferry crossings) for
+    :func:`gpxsheet.validate.validate_route`. ``osm=False`` forces a fast, fully
+    offline geometry-only analysis. Returns the analyzed :class:`Route`.
     """
-    prof = profile if isinstance(profile, Profile) else get_profile(profile)
-    _geometry_baseline(route)
-    osm_ran = _osm_enrich_pass(route, prof, include_hazards)
-    _apply_profile(route, prof, fuel_range, osm_ran)
+    analyze_core(route, osm=osm)
+    derived = derive_products(
+        route, profile=profile, fuel_range=fuel_range, include_hazards=include_hazards
+    )
+    # Preserve the in-place contract: copy the per-request products back onto the
+    # caller's route. (The cached service path calls analyze_core + derive_products
+    # directly, where the core must stay unmutated.)
+    route.decision_points = derived.decision_points
+    route.fuel_stops = derived.fuel_stops
+    route.spans = derived.spans
+    route.ferry_crossings = derived.ferry_crossings
+    route.fuel_report = derived.fuel_report
+    route.pois = derived.pois
+    route.reassurance_markers = derived.reassurance_markers
     return route

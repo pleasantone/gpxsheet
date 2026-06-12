@@ -8,6 +8,20 @@ from gpxsheet.profiles import Profile
 from gpxsheet.simplify import rdp
 
 
+def test_label_near_matches_along_route_not_crow_flies():
+    from gpxsheet.analysis import _label_near
+    from gpxsheet.geo import miles_to_meters
+
+    landmarks = [("Summit", 5.0), ("Harbor", 50.0)]  # (name, along-route mile)
+    # A marker within 1 route-mile borrows the landmark's name.
+    assert _label_near(5.3, miles_to_meters(5.3), landmarks)[0] == "Summit"
+    # >1 route-mile from any landmark -> mileage, even if one is close as-the-crow-
+    # flies (that geometry is exactly what the along-route rule rejects).
+    assert _label_near(30.0, miles_to_meters(30.0), landmarks) == ("30 mi", "interval")
+    # Picks the nearest by along-route mileage when two are in range.
+    assert _label_near(5.4, miles_to_meters(5.4), [("A", 5.0), ("B", 5.9)])[0] == "A"
+
+
 def test_load_route_parses_geometry(l_route_file):
     route = load_route(l_route_file)
     assert route.name == "Test Route"

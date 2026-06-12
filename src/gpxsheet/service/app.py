@@ -117,7 +117,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers.setdefault("X-Frame-Options", "DENY")
         # API routes stay locked down; SPA HTML needs script execution + blob: images.
         # style-src allows 'unsafe-inline' so the inline-rendered Table view can keep
-        # GPXtable's `text-align` cell styles (sanitized via DOMPurify before injection);
+        # the route table's `text-align` cell styles (sanitized via DOMPurify before injection);
         # script-src/default-src stay strict, so this is style-only.
         is_api = request.url.path.startswith("/v1/") or request.url.path in ("/healthz", "/readyz")
         base = (
@@ -296,9 +296,15 @@ def create_app(
             if presented is not None and presented in keys:
                 return f"key:{presented}"
             # The bundled SPA carries a server-signed first-party token (injected
-            # into its page), accepted in lieu of a key when enabled.
+            # into its page), accepted in lieu of a key when enabled. Key the
+            # identity off the *token*, not the client IP: a job's owner must be
+            # stable across its submit -> poll -> fetch, but behind a proxy/load
+            # balancer (e.g. HF Spaces) request.client.host is the proxy peer and
+            # can differ between requests, which would 404 the owner off their own
+            # job ("unknown job"). The SPA sends one fixed token for its whole
+            # session, so it is the stable per-session identity.
             if trust_fp and _valid_fp_token(fp_secret, x_first_party):
-                return f"ip:{request.client.host if request.client else '?'}"
+                return f"fp:{x_first_party}"
             raise HTTPException(status_code=401, detail="invalid or missing API key")
         return f"ip:{request.client.host if request.client else '?'}"
 
@@ -414,7 +420,7 @@ def create_app(
         response: Response,
         identity: str = Depends(client_identity),
     ) -> JobStatus:
-        """Render a GPXtable route table (HTML or markdown) as a job."""
+        """Render a route table (HTML or markdown) as a job."""
         return submit_job("table", body.gpx, _to_params(body, TableParams), identity, response)
 
     @app.post(

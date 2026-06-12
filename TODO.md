@@ -5,13 +5,18 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Input / GPX support (open)
 
-- **Broaden GPX route/track support across planners** — ingest GPX from
-  **Kurviger**, **Furkot**, and **Garmin BaseCamp**, using each tool's
-  route extensions to reconstruct a real track from route points (e.g. the
-  shaping/via points and any embedded geometry), so a `<rte>`-only export still
-  yields trackpoints for analysis. Handle files that carry **both** a `<rte>` and
-  a `<trk>` (combined route + track) — decide which is authoritative and merge
-  consistently. Add fixtures from each planner under `gpxsamples/`/`tests/`.
+- **✅ Garmin BaseCamp routes** — done. The loader reconstructs the dense track
+  from `gpxx:RoutePointExtension`/`gpxx:rpt` and lifts `trp:ViaPoint` stops to
+  waypoints (with optional arrival/departure times). See
+  [docs/basecamp-routes.md](docs/basecamp-routes.md); fixture
+  `gpxsamples/basecamp-route.gpx`.
+- **Broaden GPX route/track support across more planners** — ingest GPX from
+  **Kurviger** and **Furkot**, using each tool's route extensions to reconstruct
+  a real track from route points (shaping/via points and any embedded geometry),
+  so a `<rte>`-only export still yields trackpoints for analysis. Handle files
+  that carry **both** a `<rte>` and a `<trk>` (combined route + track) — decide
+  which is authoritative and merge consistently. Add fixtures from each planner
+  under `gpxsamples/`/`tests/`. (BaseCamp, above, is the reference implementation.)
 
 ## Analysis (open)
 
@@ -45,5 +50,5 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 - Distributed (Redis-backed) rate limiting + quotas (current limiter is
   per-process, so quotas are per-replica). Optional API-key auth already exists.
-- Per-container memory limits + bounded queue depth (see security-audit §8).
+- Per-container memory limits + bounded queue depth.
 - Metrics / observability.

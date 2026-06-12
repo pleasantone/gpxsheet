@@ -107,12 +107,25 @@ The rider should never need to ask:
 <wpt>
 ```
 
+### GPX Route (Garmin BaseCamp / Trip Planner)
+
+```xml
+<rte> + gpxx:RoutePointExtension/gpxx:rpt + trp:ViaPoint
+```
+
+A BaseCamp route stores its real road-snapped geometry inside per-`<rtept>`
+`gpxx:RoutePointExtension`/`gpxx:rpt` extensions (not the sparse `<rtept>` list),
+and tags announced stops with `trp:ViaPoint`. The loader reconstructs the dense
+track from the `rpt` children and lifts via points to waypoints (shaping points
+excluded); optional via arrival/departure times are kept as display-only metadata.
+See [basecamp-routes.md](basecamp-routes.md).
+
 ---
 
 ## Future Support
 
 * Kurviger exports
-* Garmin BaseCamp exports
+* Furkot exports
 * REVER exports
 * Combined route/track files
 
@@ -189,23 +202,24 @@ route = gpxsheet.analyze("route.gpx", fuel_range=180)
 report = gpxsheet.validate("route.gpx", fuel_range=180)
 ```
 
-A fourth output, the **route table**, wraps the separate
-[GPXtable](https://github.com/pleasantone/GPXtable) library (`gpxtable` on PyPI) to
-produce a markdown/HTML table of waypoints, distances, fuel/lunch markers and ETAs. It
-reads the GPX waypoints directly and is independent of the OSM `analyze` pipeline (fully
-offline). See `src/gpxsheet/table.py` and the `gpxsheet table` CLI command.
+A fourth output, the **route table**, renders a markdown/HTML table of waypoints,
+distances, fuel/lunch markers and ETAs natively from the `analyze` pipeline, so it
+inherits OSM enrichment (auto-discovered fuel, road-snapped distance). OSM is on by
+default with a `--no-osm` fast offline path; ETAs need `--departure`. See
+`src/gpxsheet/routetable.py` (plus `waypoints.py` for stop classification and
+`timing.py` for ETA/sun) and the `gpxsheet table` CLI command.
 
 ---
 
 ## Web Service (built)
 
 Implemented as a FastAPI app (the `service` extra). Each operation is an async job
-created by a typed POST — `/v1/render` (a map), `/v1/table` (a GPXtable route table,
+created by a typed POST — `/v1/render` (a map), `/v1/table` (a route table,
 HTML/markdown), `/v1/analyze` and `/v1/validate` (JSON reports) — with the GPX and
 parameters as multipart form fields. Submit
 returns a job (`202` + `Location`, or `200` if already cached); poll
-`GET /v1/jobs/{id}` and fetch `GET /v1/jobs/{id}/result`. See **Milestone 5** in
-the Implementation Status section for the full as-built description.
+`GET /v1/jobs/{id}` and fetch `GET /v1/jobs/{id}/result`. See the **Web service**
+entry under [What's built](#whats-built) for the full as-built description.
 
 ---
 
@@ -821,19 +835,19 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 
 > This section records what is actually built and the engineering decisions made
 > while implementing the spec above. The sections above are the design intent;
-> this section is the as-built reality. Last updated: Phase 1 (milestones 1–5)
-> complete, plus post-Phase-1 rendering/analysis polish and OSM-enrichment
-> robustness, released as **v0.2.0**; web UI added post-v0.2.0. Planned/queued
-> work is tracked in
+> this section is the as-built reality. Release history is in the
+> [CHANGELOG](https://github.com/pleasantone/gpxsheet/blob/main/CHANGELOG.md);
+> planned/queued work is tracked in
 > [TODO.md](https://github.com/pleasantone/gpxsheet/blob/main/TODO.md).
 
-## Milestone progress
+## What's built
 
-* **Milestone 1 — Route analysis engine: ✅ complete.**
-  GPX loading (track/route/waypoint), geometry cleanup (RDP), decision-point
+* **Route analysis engine.**
+  GPX loading (track/route/waypoint, incl. Garmin BaseCamp routes — see
+  [basecamp-routes.md](basecamp-routes.md)), geometry cleanup (RDP), decision-point
   detection, reassurance markers, fuel analysis, segmentation, `analyze` text
   output, and OSM enrichment — all implemented and tuned against real tracks.
-* **Milestone 2 — Schematic map-strip renderer: ✅ complete.**
+* **Schematic map-strip renderer.**
   `gpxsheet.layout` (pure Schematic Layout Engine) turns the route graph into a
   stylized strip: a ribbon that jogs at each decision, with segment length
   compressed sub-linearly (`sqrt`) in real distance. Two turn styles:
@@ -848,7 +862,7 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   to two lines. A marker landing on mile 0 / the route end is nudged clear of the
   START/END marker. CLI: `gpxsheet strip <gpx> [-o out.png]
   [--turns stylized|faithful]`. Validated on real OSM tracks.
-* **Milestone 3 — PDF generation: ✅ complete.** `gpxsheet.pdf` composes a
+* **PDF generation.** `gpxsheet.pdf` composes a
   US-Letter/A4 document with route-aware pagination (`gpxsheet.paginate`,
   breaks at decisions, never mid-road). Lanes **auto-fit by default** — as many
   decisions per lane as fit without label overlap (`strip.fit_pages`); pass
@@ -871,17 +885,18 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   (waypoint-only `<rte>`) or the live Overpass query fails, so analysis still
   produces output. Monster tracks are enriched in chunks. Orientation defaults to
   portrait (`--landscape` for one strip/page).
-* **Milestone 4 — Packaged + published: ✅ complete.** `pyproject.toml` builds a
+* **Packaged + published.** `pyproject.toml` builds a
   clean sdist + wheel (PEP 639 license, PEP 561 `py.typed`, version from
   `gpxsheet.__version__`). Core deps are gpxpy + matplotlib + typer + osmnx +
   shapely (OSM is integral, not an optional extra); extras: `service`, `dev`,
   `docs`. `twine check` passes. Releases are automated: conventional commits →
   release-please PR → merging it tags `vX.Y.Z` → `publish.yml` publishes to
   TestPyPI then PyPI via OIDC trusted publishing (v0.2.0 shipped this way).
-* **Milestone 5 — Web service: ✅ complete (verified live).** `gpxsheet.service`
+* **Web service.** `gpxsheet.service`
   is a FastAPI app (the `service` extra) exposing the engine over REST. Every
   operation is an async job created via a typed POST: `/v1/render` (a map),
-  `/v1/analyze` and `/v1/validate` (JSON reports). All three return a job polled at
+  `/v1/table` (a route table), `/v1/analyze` and `/v1/validate` (JSON reports).
+  These return a job polled at
   `GET /v1/jobs/{id}` (status + result `content_type`) and fetched at `.../result`
   (streams the artifact or 303 → presigned URL); plus `/healthz` and `/docs`.
   `/v1/render` takes `layout` ∈ {`portrait`, `landscape`, `preview`, `strip`} ×
@@ -903,7 +918,7 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   status `done` → external PDF download through the presigned URL, plus cache
   hits. Tests: dev path end-to-end via `TestClient` (incl. cache/cap/limit); the
   Redis/MinIO prod path has a gated integration test (`GPXSHEET_SERVICE_IT=1`).
-* **Web UI (post-v0.2.0): ✅ complete.** A React 19 + TypeScript + Vite 6 +
+* **Web UI.** A React 19 + TypeScript + Vite 6 +
   Tailwind v4 SPA in `frontend/` bundles into `src/gpxsheet/service/static/` and
   is served by FastAPI at `/` via a `StaticFiles` mount (guarded by `is_dir()` so
   the service boots cleanly without a build). UX: full-page drop zone →
