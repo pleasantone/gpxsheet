@@ -29,7 +29,9 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
   [day-cards-design.md](docs/day-cards-design.md): **Phase 2** keyless Open-Meteo
   weather (+crosswind from route bearings), air/smoke, elevation, and NIFC wildfire,
   behind a cached, graceful provider interface; **Phase 3** key-gated AirNow /
-  OpenWeather and cell-coverage dead zones.
+  OpenWeather and cell-coverage dead zones. **Resume at the "Phase 2 — kickoff"
+  section** of [day-cards-design.md](docs/day-cards-design.md) for the exact
+  step-by-step (provider layer, Open-Meteo fields, crosswind formula, test harness).
 - **Y/T-intersection & junction-geometry significance scoring** — docs/product.md's
   scoring table defines Y/T-intersection scores, but only road-name / highway-name /
   sharp-turn scoring is wired up today. Implementing this would reintroduce the

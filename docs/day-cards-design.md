@@ -124,3 +124,56 @@ so the suite is fully offline. Pure logic (crosswind/sun/gaps) unit-tested direc
   Elevation (Phase 2).
 - **Cell:** deferred to Phase 3 (key-gated); no fake "remoteness" heuristic
   labelled as coverage.
+
+## Phase 2 — kickoff (resume here)
+
+Phase 1 (offline) is merged: `gpxsheet.daycard` + `daycard` CLI + `/v1/daycard`,
+with the `DayCard` model already carrying slots for weather/air/fire/elevation.
+Phase 2 adds the **keyless live providers** behind a cached, graceful interface.
+
+**0. Verify network (new session).** The env allowlist should now include
+`api.open-meteo.com`, `air-quality-api.open-meteo.com`, `services3/9.arcgis.com`,
+`overpass-api.de`, `download.geofabrik.de`. Sanity-check: `curl -s
+'https://api.open-meteo.com/v1/forecast?latitude=37&longitude=-122&hourly=temperature_2m'`
+and `curl -s https://overpass-api.de/api/status`. Re-run a real day card so
+**passes + scenic** populate live (the Phase-1 POI query was degrading offline).
+
+**1. Provider layer** — `src/gpxsheet/providers/`:
+- `base.py`: `Provider` (name, `requires_key: str|None`, `base_url_env`, `fetch`),
+  an on-disk response cache keyed on `(provider, round(lat,2), round(lon,2),
+  date/hour)` under `GPXSHEET_PROVIDERS_CACHE_DIR`, and a `GPXSHEET_DISABLE_LIVE`
+  short-circuit (→ skip, return None). Key-gated providers return None (with a
+  card note) when their key env is unset. Wrap all I/O so any failure degrades.
+- `weather.py` (Open-Meteo `/v1/forecast`, keyless): hourly `temperature_2m,
+  apparent_temperature, wind_speed_10m, wind_gusts_10m, wind_direction_10m,
+  precipitation_probability, precipitation, visibility, weather_code`. Sample
+  every ~25–30 mi at each point's ETA; pick the nearest hour. Batch points via
+  comma-separated `latitude`/`longitude`. Past ~16-day horizon → skip with a note.
+- `air.py` (Open-Meteo Air-Quality, keyless): `us_aqi, pm2_5` → smoke flag.
+- `elevation.py` (Open-Meteo Elevation, keyless): only when GPX `ele` is missing.
+- `fire.py` (NIFC current perimeters, ArcGIS feature service on
+  `services3.arcgis.com`): query the route bbox envelope, intersect polygons with
+  the route corridor (shapely), report name/distance/status.
+
+**2. Crosswind (the differentiator).** At each weather sample, route heading =
+`geo.bearing` between bracketing points; wind blows *from* `wind_direction_10m`.
+`crosswind = wind_speed * sin(Δ)` where `Δ` = angle between the route heading and
+the wind-from bearing. Warn on high gusts/crosswind (thresholds in `daycard.py`).
+
+**3. Wire into `daycard.build_day_cards`.** Add params (e.g. `live: bool = True`,
+provider toggles); populate `DayCard.weather/air/fire/elevation_profile`; extend
+`_warnings` with `weather`/`wind`/`smoke`/`fire` codes; render the new sections in
+`build_day_cards_markdown` + `to_dict`. `DayCardParams` (service) gains the knobs.
+
+**4. Determinism/tests.** Mirror the OSM harness in `tests/conftest.py`: an
+autouse fixture points providers at a committed `tests/fixtures/providers_cache`
+and runs **cache-only** (miss → skip); record with `GPXSHEET_RECORD_PROVIDERS=1`.
+CI/sandbox set `GPXSHEET_DISABLE_LIVE=1`. Unit-test the pure bits directly
+(crosswind, nearest-hour, horizon skip, fire-polygon intersect).
+
+**5. Env vars (all `GPXSHEET_*`):** `PROVIDERS_CACHE_DIR`, `DISABLE_LIVE`,
+`RECORD_PROVIDERS`, per-provider `*_BASE_URL` overrides; Phase-3 keys
+`AIRNOW_API_KEY`, `OPENWEATHER_API_KEY`, `OPENCELLID_API_KEY`.
+
+**Docs to update on completion:** `web-api.md` (new daycard fields), `library-api.md`
+(`DayCard` fields), `product.md`, `CLAUDE.md`, `TODO.md` (tick Phase 2).
