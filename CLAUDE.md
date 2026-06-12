@@ -28,11 +28,15 @@ The `table` command renders a markdown/HTML route table — waypoints, distances
 fuel/lunch markers, ETAs — **natively from the `analyze` pipeline** (`src/gpxsheet/
 routetable.py`), so it inherits OSM enrichment: OSM is **on by default** (auto-
 discovered `amenity=fuel`, road-snapped distance), with `--no-osm` for a fast,
-fully offline table. ETAs need `--departure`. Supporting seams: `waypoints.py`
-(the classifier — G/L/GL markers, layover, fuel-reset; schema-compatible with a
-GPXtable `--config`) and `timing.py` (ETA/layover/since-gas + sunrise/sunset).
-Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`); the SPA exposes it
-under a **Table** tab (vs the **Sheet** tab).
+fully offline table. ETAs need `--departure`. OSM also drives **variable ETAs**
+(per-segment `maxspeed`/highway-class speed; a user `--speed` overrides it), a
+**Road column** (from `route.segments` names), `--cue` (a turn-by-turn cue sheet
+from `decision_points`), and **per-day sections** for multi-`<trk>` routes
+(`route.day_breaks`, +24h/day). Supporting seams: `waypoints.py` (the classifier
+— G/L/GL markers, layover, fuel-reset; schema-compatible with a GPXtable
+`--config`) and `timing.py` (`SpeedProfile` + ETA/layover/since-gas + sun).
+Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`/`cue`); the SPA
+exposes it under a **Table** tab (vs the **Sheet** tab).
 
 `src/gpxsheet/gpx.py` lifts named, non-shaping plain `<rtept>`s to waypoints (not
 just Garmin ViaPoints), so plain `<rte>` stops drive POIs / the table. The

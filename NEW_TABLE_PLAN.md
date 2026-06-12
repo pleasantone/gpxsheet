@@ -106,13 +106,19 @@ kept initially, then removed — see below.)
   `table.py` + `test_table.py`, made `astral`/`markdown2`/`python-dateutil`
   direct deps.
 
-## Explicitly deferred (follow-up work, NOT on this branch)
-- Per-segment speed from OSM `maxspeed`/`highway` → variable ETA.
-- A real Road/Notes column from `route.segments` road names.
-- Turn-by-turn rows from `decision_points` (cue-sheet mode).
-- Multi-day `day_breaks` on `Route` + `load_route`.
-- An OSM on/off toggle in the SPA Table tab (API already supports `osm`).
-- ✅ ~~Dropping the `gpxtable` runtime dependency~~ — done on this branch.
+## Follow-ups — ✅ all implemented (later commits on this branch)
+- ✅ Per-segment speed from OSM `maxspeed`/`highway` → variable ETA; a user
+  `--speed` overrides OSM (`enrich._edge_speed_mph`, `timing.SpeedProfile`).
+- ✅ Road column from `route.segments` road names (shown when OSM names exist).
+- ✅ Turn-by-turn cue sheet from `decision_points` (`--cue` / `TableParams.cue`).
+- ✅ Multi-day `day_breaks` on `Route` + `load_route`; per-day table sections.
+- ✅ OSM + cue toggles in the SPA Table tab.
+- ✅ Dropped the `gpxtable` runtime dependency.
+
+## Still open (genuinely not done)
+- Nothing required. Possible future polish: per-track day *names* in day headers
+  (Route only stores `day_breaks` indices, so days are labelled "Day N"); smarter
+  day-boundary assignment for a waypoint sitting exactly on a track break.
 - Dropping the `gpxtable` runtime dependency.
 
 ## Verification
