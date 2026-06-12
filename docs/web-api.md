@@ -7,11 +7,8 @@ endpoint, and how to drive them from a browser (with worked `fetch` examples).
 ## Why this exists
 
 GPXSheet turns a GPX route into **glanceable, map-centric motorcycle tank-bag
-navigation aids** for sport-touring. A rider plans a route in their mapping tool
-of choice, exports the GPX, and wants something they can actually read at a
-glance in a tank-bag while moving — not a turn-by-turn list and not a full map.
-
-The service takes that GPX and produces:
+navigation aids** for sport-touring (the [design notes](product.md) cover the
+goals). The service takes a rider's exported GPX and produces:
 
 - a **roadbook-style PDF** (or PNG) — the route broken into a sequence of
   schematic "strips," each showing the shape of the road, the decision points
