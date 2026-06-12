@@ -4,6 +4,73 @@ All notable changes are documented here. From the next release onward this file
 is maintained automatically by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.1.0](https://github.com/pleasantone/gpxsheet/compare/v1.0.0...v1.1.0) (2026-06-12)
+
+
+### Features
+
+* **frontend:** add footer with project links ([#45](https://github.com/pleasantone/gpxsheet/issues/45)) ([d52934e](https://github.com/pleasantone/gpxsheet/commit/d52934e5eace36824c188a531772d21cd0d1ad61))
+* **frontend:** add OSM, cue-sheet and speed toggles to the Table tab ([c293d1c](https://github.com/pleasantone/gpxsheet/commit/c293d1c5941d887423815b79784788990db0cc5c))
+* **frontend:** clearer job feedback (submitting → processing → ready) ([0c717ba](https://github.com/pleasantone/gpxsheet/commit/0c717ba6b97332acf92c2e8e375a57d4eebe9f42))
+* **frontend:** Generate button for Table mode (parity with Sheet) ([7d7f247](https://github.com/pleasantone/gpxsheet/commit/7d7f247fab30821e7865d7c08b58122fad1b12e5))
+* **frontend:** warm analysis on upload in both modes ([acca68c](https://github.com/pleasantone/gpxsheet/commit/acca68c800999812519e4891a57aeac449e1d1f2))
+* **gpx:** harvest Garmin BaseCamp route geometry and via stops ([f06c76f](https://github.com/pleasantone/gpxsheet/commit/f06c76fe1bdcefb7303af427e00efbcbbf2b75c6))
+* **gpx:** harvest Garmin BaseCamp route geometry and via stops ([1959804](https://github.com/pleasantone/gpxsheet/commit/19598049447874f554b305c0d10533863485c7da))
+* **gpx:** lift named plain route points to waypoints ([1254250](https://github.com/pleasantone/gpxsheet/commit/12542506134227ad270dcbc7a4cf59c05ff00dd4))
+* **service:** background-render mode + queue position for HF ([#47](https://github.com/pleasantone/gpxsheet/issues/47)) ([2794735](https://github.com/pleasantone/gpxsheet/commit/2794735e425bb06b07fc720cf0f7996cbe61ad43))
+* **service:** per-job performance instrumentation ([cde3de5](https://github.com/pleasantone/gpxsheet/commit/cde3de5715c2d8967b768fb3a8c2c8ac13f12b49))
+* **table:** add a Road column from OSM segment names ([3f0020c](https://github.com/pleasantone/gpxsheet/commit/3f0020c5c06809c374face3fa3a19b6dac5730a9))
+* **table:** add a turn-by-turn cue sheet (--cue) ([4a50881](https://github.com/pleasantone/gpxsheet/commit/4a50881bf6fa8772f69c75da3131afafe2a2f766))
+* **table:** add timing engine (ETA, layover, fuel distance, sun) ([9aa03e5](https://github.com/pleasantone/gpxsheet/commit/9aa03e55048ac67dcf9b80e6edcd6b35a5afeeab))
+* **table:** add waypoint classifier ported from GPXtable ([d6972f0](https://github.com/pleasantone/gpxsheet/commit/d6972f088132b100e2302da644abcdfe7ae9564c))
+* **table:** boundary stops span both days; add Route.day_names ([f5a9aa0](https://github.com/pleasantone/gpxsheet/commit/f5a9aa048d26bddf7bdb85244d32803617aa8efc))
+* **table:** native route table renderer on the analysis graph ([f2a70e9](https://github.com/pleasantone/gpxsheet/commit/f2a70e9cd21a624db11aff06125aa3a564fce17d))
+* **table:** per-day sections for multi-track routes ([4657e51](https://github.com/pleasantone/gpxsheet/commit/4657e51093951d0830c9b13c0489c9c09c3c0930))
+* **table:** variable ETA from OSM speed limits (--speed overrides) ([f7d558f](https://github.com/pleasantone/gpxsheet/commit/f7d558f361557896d54adfda8b46d7b9eec8a4e4))
+* **table:** wire CLI and service to the native route table ([3e4fab5](https://github.com/pleasantone/gpxsheet/commit/3e4fab598017ca7a7cdea5110a1ad4145563d110))
+
+
+### Bug Fixes
+
+* **analysis:** label reassurance markers by along-route distance ([d75e4ca](https://github.com/pleasantone/gpxsheet/commit/d75e4caefe5bc24bf0574ab4ec7d6974d57815d8))
+* **enrich:** make the OSM fuel query best-effort ([2f385cd](https://github.com/pleasantone/gpxsheet/commit/2f385cdf34d85d3dba11f2f05265e2b1023f3616))
+* **enrich:** make the OSM fuel query best-effort ([37ea2b4](https://github.com/pleasantone/gpxsheet/commit/37ea2b44e4fbba79e21162930f07a093b0e1dae3))
+* **frontend:** auto-generate the table when entering the Table tab ([336f6d2](https://github.com/pleasantone/gpxsheet/commit/336f6d213153a7fafb768c4a245ae6ef684f2383))
+* **render:** cap decisions only for the preview/strip overviews ([cfe946e](https://github.com/pleasantone/gpxsheet/commit/cfe946e9693c34bc7aa47f268de78ec9b06fd9a3))
+* **service:** surface gpxsheet INFO logs (perf) under uvicorn ([34d0ee1](https://github.com/pleasantone/gpxsheet/commit/34d0ee10ee7f89f25c614ef97753296f45d29079))
+
+
+### Performance
+
+* **analysis:** fix O(markers·waypoints·points) reassurance blowup ([7685812](https://github.com/pleasantone/gpxsheet/commit/7685812a9fd5b82ac5e4c70149111af74ddc2c04))
+* **render:** bound decision-flooded routes so renders can't hang ([a0355d5](https://github.com/pleasantone/gpxsheet/commit/a0355d5a125c3cdd922a18135f5f6257c75a4137))
+* **service:** cache the analysis core; one OSM pass per (gpx, osm) ([67b5f1b](https://github.com/pleasantone/gpxsheet/commit/67b5f1b2ed62c392f94d9a4c14a1f2032a694055))
+
+
+### Refactoring
+
+* **analysis:** split cacheable core from per-request derivation ([b3a64f3](https://github.com/pleasantone/gpxsheet/commit/b3a64f31d04607cc91db16fa496831a7aca2a708))
+* **table:** drop GPXtable-style knobs; remove ignore_times no-op ([ac941cd](https://github.com/pleasantone/gpxsheet/commit/ac941cd7c73a28ca02150ad9da3ff4a9e8a8710e))
+* **table:** drop the gpxtable runtime dependency ([c54957e](https://github.com/pleasantone/gpxsheet/commit/c54957e56bf2b21f11fcceb342b6c1d7ababbc64))
+
+
+### Documentation
+
+* **basecamp:** use absolute GitHub links so mkdocs --strict passes ([8a1144c](https://github.com/pleasantone/gpxsheet/commit/8a1144ce99303d099fd3cc8390a6680aa2429ad6))
+* **claude:** drop rtk note from Bash gotchas ([5c4e36c](https://github.com/pleasantone/gpxsheet/commit/5c4e36c855a028dd46e87c8efdbe4405b7003ec1))
+* **claude:** note Bash gotchas (blocked sleep, rtk, live-OSM sandbox) ([83c9218](https://github.com/pleasantone/gpxsheet/commit/83c92180dfecd5da8020bd3fefe8cfcd0e02f75e))
+* document the route table, slim the README, de-milestone ([9aab09b](https://github.com/pleasantone/gpxsheet/commit/9aab09b779054927f48192ab86bd8e25c88631de))
+* remove stale planning docs and de-duplicate documentation ([b774e7d](https://github.com/pleasantone/gpxsheet/commit/b774e7dc9229de5adedcfa5b9903f9cc84b60fa9))
+* remove stale planning docs and de-duplicate documentation ([6c52785](https://github.com/pleasantone/gpxsheet/commit/6c52785cc648c453277a6f90bc39f6d16640d349))
+* route table coverage, README slim-down, de-milestone ([46316e8](https://github.com/pleasantone/gpxsheet/commit/46316e82c59e293de3a79738eeed6fb1d075c971))
+* **table:** add GPXtable improvement suggestions (forward direction) ([eb806ca](https://github.com/pleasantone/gpxsheet/commit/eb806ca0ba1ef72b51c435334c324406aa6055d1))
+* **table:** document the native route table; add OSM-on tests ([ad58d4b](https://github.com/pleasantone/gpxsheet/commit/ad58d4bd1092f992f6781486c4343ce364fba1b6))
+* **table:** document variable speed, road column, cue, multi-day ([eef3bae](https://github.com/pleasantone/gpxsheet/commit/eef3bae0bcb51cfcd9a7baeb248f948fbb8c848b))
+* **table:** mark day-names and boundary-stop polish done ([71759e1](https://github.com/pleasantone/gpxsheet/commit/71759e1d61c51486617587d1991d53318bddb9e7))
+* **table:** mark NEW_TABLE_PLAN complete ([860518e](https://github.com/pleasantone/gpxsheet/commit/860518e9147ab673ea0da0b7ab99f36e78ac7808))
+* **table:** plan native route table on the analysis graph ([249838d](https://github.com/pleasantone/gpxsheet/commit/249838db7c9b232020996fd2ebacd3d97bc689d1))
+* **todo:** add planner GPX support and interactive OSM map items ([e23268d](https://github.com/pleasantone/gpxsheet/commit/e23268d004ad341db1aa9ffec29ede470b80c43f))
+
 ## [1.0.0](https://github.com/pleasantone/gpxsheet/compare/v0.3.0...v1.0.0) (2026-06-11)
 
 
