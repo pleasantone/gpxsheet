@@ -20,14 +20,26 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 .venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
 .venv/bin/gpxsheet generate <gpx> --layout landscape     # one strip/page
 .venv/bin/gpxsheet generate <gpx> --layout strip -o strip.png   # single strip PNG
-.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # GPXtable route table (html|md)
+.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # route table (html|md)
+.venv/bin/gpxsheet table <gpx> --no-osm -o route.md             # fast, fully offline
 ```
 
-The `table` command wraps the **GPXtable** library (`gpxtable` on PyPI, a core dep)
-to emit a markdown/HTML route table — waypoints, distances, fuel/lunch markers, ETAs.
-It is **independent of the OSM/`analyze` pipeline** (reads GPX waypoints directly, fully
-offline). Backend seam: `src/gpxsheet/table.py`; web op `"table"` → `/v1/table`
-(`TableParams`); the SPA exposes it under a **Table** tab (vs the **Sheet** tab).
+The `table` command renders a markdown/HTML route table — waypoints, distances,
+fuel/lunch markers, ETAs — **natively from the `analyze` pipeline** (`src/gpxsheet/
+routetable.py`), so it inherits OSM enrichment: OSM is **on by default** (auto-
+discovered `amenity=fuel`, road-snapped distance), with `--no-osm` for a fast,
+fully offline table. ETAs need `--departure`. Supporting seams: `waypoints.py`
+(the classifier — G/L/GL markers, layover, fuel-reset; schema-compatible with a
+GPXtable `--config`) and `timing.py` (ETA/layover/since-gas + sunrise/sunset).
+Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`); the SPA exposes it
+under a **Table** tab (vs the **Sheet** tab).
+
+`src/gpxsheet/gpx.py` lifts named, non-shaping plain `<rtept>`s to waypoints (not
+just Garmin ViaPoints), so plain `<rte>` stops drive POIs / the table. The old
+`gpxtable`-wrapping path (`src/gpxsheet/table.py`) is **retained** as a parity
+oracle and for `parse_departure` / the shared markdown2→HTML styling; `gpxtable`
+stays a core dep for now. Distances are corrected vs GPXtable, whose route path
+lags distance by one point (drops the final leg).
 
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.

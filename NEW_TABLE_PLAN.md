@@ -1,5 +1,16 @@
 # Native Route Table — implementation plan
 
+> **Status (branch `feat/native-route-table`):** Commits 1–5 done — classifier
+> (`waypoints.py`), timing engine (`timing.py`), renderer (`routetable.py`),
+> named-rtept lift (`gpx.py`), CLI + `/v1/table` wired (OSM default-on, `--no-osm`
+> offline), docs. Full suite green (`ruff`/`mypy`/`pytest`). gpxtable kept as a
+> parity oracle. **Not pushed / no PR** pending review.
+>
+> **Key finding:** GPXtable's route path lags distance by one point (each row
+> shows the distance to the *previous* point and the final leg vanishes — total
+> 32 vs the correct 45.5 mi on the test route). So gpxtable is a *format* oracle,
+> not a byte oracle; we keep true cumulative distance. Raised below.
+
 Re-implement GPXtable's route-table output **natively inside gpxsheet**, driven
 by the analyzed `Route` graph instead of wrapping `GPXTableCalculator`. This lets
 the table inherit gpxsheet's OSM enrichment (auto-discovered fuel, real road

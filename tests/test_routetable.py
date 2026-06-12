@@ -89,3 +89,20 @@ def test_html_wraps_table(analyzed):
     html = markdown_to_html(build_table_markdown(analyzed))
     assert '<table class="gpxtable">' in html
     assert "<td>" in html
+
+
+def test_osm_discovered_fuel_appears_in_table(enrich_route_file):
+    # The headline win over GPXtable: with OSM on (served from the committed
+    # cache), an amenity=fuel station with no rider waypoint becomes a table row.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        route = analyze(str(enrich_route_file), osm=True)
+    assert route.fuel_stops, "expected OSM to discover at least one fuel stop"
+    md = build_table_markdown(route)
+    assert route.fuel_stops[0].name in md
+
+
+def test_no_osm_skips_enrichment(enrich_route_file):
+    # --no-osm stays fully offline: no Overpass call, no discovered fuel.
+    route = analyze(str(enrich_route_file), osm=False)
+    assert route.fuel_stops == []
