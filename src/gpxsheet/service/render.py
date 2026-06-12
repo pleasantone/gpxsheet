@@ -186,10 +186,8 @@ def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
     else:
         md = build_day_cards_markdown(cards, imperial=imperial, tz=tz)
         data, ext = md.encode(), "md"
-    content_type = _CONTENT_TYPES[
-        {"json": "json", "html": "html", "markdown": "markdown"}[params.format]
-    ]
-    return data, content_type, ext, _safe_filename(route.name, ext)
+    # format is validated to markdown|html|json, all keys of _CONTENT_TYPES.
+    return data, _CONTENT_TYPES[params.format], ext, _safe_filename(route.name, ext)
 
 
 def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from .geo import bearing_delta
 from .models import Branch
 
 # A branch within this many degrees of the road taken (or of the road arrived on)
@@ -41,7 +42,7 @@ def direction_word(angle: float) -> str:
 
 
 def _angular_close(b1: float, b2: float, tol: float) -> bool:
-    return abs((b1 - b2 + 180.0) % 360.0 - 180.0) <= tol
+    return abs(bearing_delta(b1, b2)) <= tol
 
 
 def branches_not_taken(

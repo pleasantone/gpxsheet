@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .geo import (
+    KM_PER_MILE,
     M_TO_FT,
     METERS_PER_DEG_LAT,
     bearing,
@@ -46,7 +47,7 @@ from .live import (
     fetch_weather,
 )
 from .models import Route, RouteSpan, SpanKind
-from .timing import SpeedProfile
+from .timing import SpeedProfile, observer
 from .validate import INFO, WARNING, Finding
 
 # Default cruising speed (mph) when OSM gave no speed profile and none was set.
@@ -71,9 +72,8 @@ WET_PROB_PCT = 50.0
 # Max coordinates in one Open-Meteo elevation batch (matches the provider cap).
 ELEV_SAMPLE_MAX = 100
 
-# Output formats and their file extensions.
+# Output formats accepted by render_day_cards.
 DAYCARD_FORMATS = ("markdown", "html", "json")
-EXTENSIONS = {"markdown": "md", "html": "html", "json": "json"}
 
 
 @dataclass(slots=True)
@@ -271,11 +271,9 @@ def _after_dark(
 def _sun_event(lat: float, lon: float, date: datetime, event: str) -> datetime | None:
     """``sunrise``/``sunset`` (etc.) for ``date`` at ``(lat, lon)``, best-effort."""
     try:
-        import astral
         import astral.sun
 
-        obs = astral.LocationInfo("", "", "", lat, lon).observer
-        return astral.sun.sun(obs, date=date)[event]
+        return astral.sun.sun(observer(lat, lon), date=date)[event]
     except Exception:  # noqa: BLE001 - almanac is decorative; never break the card
         return None
 
@@ -285,10 +283,9 @@ def _golden_hours(
 ) -> tuple[datetime | None, datetime | None]:
     """``(morning_golden_end, evening_golden_start)`` for the day, best-effort."""
     try:
-        import astral
         import astral.sun
 
-        obs = astral.LocationInfo("", "", "", lat, lon).observer
+        obs = observer(lat, lon)
         morning = astral.sun.golden_hour(obs, date=date, direction=astral.sun.SunDirection.RISING)
         evening = astral.sun.golden_hour(obs, date=date, direction=astral.sun.SunDirection.SETTING)
         return morning[1], evening[0]
@@ -732,7 +729,7 @@ def _weather_warnings(samples: list[WeatherSample]) -> list[Finding]:
 
 
 def _fmt_dist(miles: float, imperial: bool) -> str:
-    return f"{miles:.0f} mi" if imperial else f"{miles / 0.621371:.0f} km"
+    return f"{miles:.0f} mi" if imperial else f"{miles * KM_PER_MILE:.0f} km"
 
 
 def _fmt_elev(feet: float, imperial: bool) -> str:
@@ -755,7 +752,7 @@ def _fmt_temp(f: float, imperial: bool) -> str:
 
 
 def _fmt_speed(mph: float, imperial: bool) -> str:
-    return f"{mph:.0f} mph" if imperial else f"{mph * 1.609344:.0f} km/h"
+    return f"{mph:.0f} mph" if imperial else f"{mph * KM_PER_MILE:.0f} km/h"
 
 
 def _weather_line(w: WeatherInfo, imperial: bool) -> str | None:

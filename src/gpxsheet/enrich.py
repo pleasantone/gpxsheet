@@ -35,7 +35,14 @@ from .analysis import (
     turn_angle_at_mile,
     turn_word,
 )
-from .geo import METERS_PER_DEG_LAT, bearing, haversine, meters_to_miles, miles_to_meters
+from .geo import (
+    KM_PER_MILE,
+    METERS_PER_DEG_LAT,
+    bearing,
+    haversine,
+    meters_to_miles,
+    miles_to_meters,
+)
 from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
 from .models import (
     Branch,
@@ -191,7 +198,7 @@ def _parse_maxspeed_mph(value: str | None) -> float | None:
     if not match:
         return None
     num = float(match.group(1))
-    return num if "mph" in value.lower() else num * (1.0 / 1.609344)
+    return num if "mph" in value.lower() else num / KM_PER_MILE
 
 
 def _edge_speed_mph(maxspeed: str | None, highway: str | None) -> float | None:

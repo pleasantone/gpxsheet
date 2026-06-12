@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
 from typing import Any
 
-from .geo import meters_to_miles, miles_to_meters
+from .geo import MILES_PER_KM, meters_to_miles, miles_to_meters
 from .models import Route
 from .timing import (
     SpeedProfile,
@@ -32,8 +32,8 @@ from .timing import (
 )
 from .waypoints import classify
 
-# Miles->km for speed/length display, matching GPXtable's constant exactly.
-KM_TO_MILES = 0.621371
+# km->miles for speed/length display (GPXtable's constant; centralized in geo).
+KM_TO_MILES = MILES_PER_KM
 # Default travel speed when none is given: 30 mph (GPXtable's default).
 DEFAULT_SPEED_MPH = 30.0
 # A fuel stop within this many miles of a named waypoint is considered the same
