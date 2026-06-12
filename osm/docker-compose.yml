@@ -1,0 +1,72 @@
+# Self-hosted OSM Overpass API for California.
+#
+# Imports the Geofabrik California extract into an Overpass database, keeps it
+# current from Geofabrik's per-region diffs, and serves the standard Overpass
+# QL/XML API. The database lives in a named volume so it survives container
+# recreation — the (slow, one-time) import is not repeated on restart.
+#
+# Quick start:
+#   cp .env.example .env        # optional: tune ports / region / update cadence
+#   docker compose up -d        # first run downloads + imports California
+#   docker compose logs -f      # watch the import (can take 30-90+ min)
+#
+# See README.md for storage sizing, the initial-import timeline, and example
+# queries.
+
+name: gpxsheet-osm
+
+services:
+  overpass:
+    image: wiktorn/overpass-api:latest
+    container_name: gpxsheet-overpass
+    restart: unless-stopped
+
+    environment:
+      # init = import the planet/region file on first boot, then run the
+      # dispatcher + apply diffs. The entrypoint skips the import when the DB
+      # volume is already populated, so this stays idempotent across restarts.
+      OVERPASS_MODE: "init"
+
+      # Region source (Geofabrik California extract + its matching diff feed).
+      # Override both together if you point this at a different region.
+      OVERPASS_PLANET_URL: "${OVERPASS_PLANET_URL:-https://download.geofabrik.de/north-america/us/california-latest.osm.pbf}"
+      OVERPASS_DIFF_URL: "${OVERPASS_DIFF_URL:-https://download.geofabrik.de/north-america/us/california-updates/}"
+
+      # "no" = current data only (no attic / object history). Smaller DB, faster
+      # import, no augmented-diff (adiff) support — which is all GPXSheet-style
+      # POI / road queries need. Set to "attic" if you ever need history.
+      OVERPASS_META: "no"
+
+      # Build area objects (needed for area[...] / is_in queries) after import.
+      OVERPASS_RULES_LOAD: "10"
+
+      # Seconds the updater sleeps between diff fetches. Geofabrik publishes
+      # region diffs daily, so polling hourly is plenty.
+      OVERPASS_UPDATE_SLEEP: "${OVERPASS_UPDATE_SLEEP:-3600}"
+
+      # Dispatcher scratch space for query results, in bytes (default 2 GiB).
+      OVERPASS_SPACE: "${OVERPASS_SPACE:-2147483648}"
+
+      # Server-side max query runtime (seconds) advertised to clients.
+      OVERPASS_MAX_TIMEOUT: "${OVERPASS_MAX_TIMEOUT:-1000}"
+
+    ports:
+      # Host:container. The API is served on container port 80.
+      - "${OVERPASS_PORT:-12345}:80"
+
+    volumes:
+      # Persistent storage for the imported database + replication state.
+      - overpass-db:/db
+
+    healthcheck:
+      # /api/status answers once the dispatcher is up. start_period is long so
+      # the lengthy first-boot import doesn't flap the container as unhealthy.
+      test: ["CMD-SHELL", "wget -qO- http://localhost/api/status || exit 1"]
+      interval: 1m
+      timeout: 15s
+      retries: 5
+      start_period: 2h
+
+volumes:
+  overpass-db:
+    name: gpxsheet-overpass-db
