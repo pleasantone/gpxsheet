@@ -72,6 +72,22 @@ def _configure_osm_cache(ox) -> None:
         ox.settings.cache_folder = cache_dir
 
 
+def _configure_overpass_url(ox) -> None:
+    """Point osmnx at a different Overpass server when GPXSHEET_OVERPASS_URL is set.
+
+    ``overpass-api.de`` round-robins across mirrors and osmnx pins one IP per
+    process (``osmnx._http._config_dns``); when that mirror is down, every query
+    fails with ``ConnectionError`` and enrichment silently degrades to
+    geometry-only. osmnx exposes the endpoint as ``settings.overpass_url``, so the
+    fix is to point it at a healthy mirror (e.g. ``https://overpass.kumi.systems/api``)
+    or a self-hosted instance. Overriding by URL keeps a real hostname, so TLS SNI
+    and certificate validation still work. No-op when unset.
+    """
+    overpass_url = os.getenv("GPXSHEET_OVERPASS_URL")
+    if overpass_url:
+        ox.settings.overpass_url = overpass_url
+
+
 class _Run(NamedTuple):
     """A durable road-name run: contiguous stretch on one named road."""
     start_m: float
@@ -276,6 +292,7 @@ def enrich_route(
     import shapely.geometry as sg
 
     _configure_osm_cache(ox)
+    _configure_overpass_url(ox)
 
     total_m = route.length_m
     n = max(2, int(total_m / sample_spacing_m) + 1)

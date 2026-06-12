@@ -26,6 +26,14 @@ mount a persistent volume. When that var is set, `/readyz` verifies the dir is
 writable (503 otherwise) and startup logs an error if not — so a misconfigured cache
 fails loudly instead of silently degrading every render to geometry-only.
 
+`overpass-api.de` round-robins across several mirrors, and osmnx pins one IP per
+process; if that mirror is down, every Overpass query fails and enrichment silently
+degrades to geometry-only (which floods twisty roads with false turns). Set
+`GPXSHEET_OVERPASS_URL` to point osmnx at a healthy endpoint — another public mirror
+(e.g. `https://overpass.kumi.systems/api`) or a self-hosted instance — when the
+default is flaky. It governs all Overpass traffic (the road graph and the fuel/feature
+queries); unset, osmnx's default `https://overpass-api.de/api` stands.
+
 ## Hugging Face Space (reference deployment)
 
 The free CPU tier (2 vCPU / 16 GB RAM) handles the geo stack
