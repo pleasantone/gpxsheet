@@ -524,8 +524,12 @@ def analyze_core(route: Route, *, osm: bool = True) -> Route:
     reassurance, hazard visibility) are layered on by :func:`derive_products`.
     Mutates and returns ``route``.
     """
-    _geometry_baseline(route)
-    osm_ran = _osm_enrich_pass(route, osm)
+    from . import perf
+
+    with perf.span("geometry"):
+        _geometry_baseline(route)
+    with perf.span("enrich"):
+        osm_ran = _osm_enrich_pass(route, osm)
     if not osm_ran:
         # Geometry-only: GPX fuel waypoints are the only fuel source (no OSM).
         route.fuel_stops = detect_fuel_stops(route)
@@ -564,12 +568,16 @@ def derive_products(
         pois=[],
         reassurance_markers=[],
     )
+    from . import perf
+
     out.fuel_report = analyze_fuel(out, fuel_range) if prof.include_fuel else None
-    out.pois = detect_pois(out) if prof.include_reassurance else []
-    out.reassurance_markers = (
-        generate_reassurance_markers(out, prof.reassurance_interval_miles)
-        if prof.include_reassurance else []
-    )
+    with perf.span("derive.pois"):
+        out.pois = detect_pois(out) if prof.include_reassurance else []
+    with perf.span("derive.reassurance"):
+        out.reassurance_markers = (
+            generate_reassurance_markers(out, prof.reassurance_interval_miles)
+            if prof.include_reassurance else []
+        )
     return out
 
 

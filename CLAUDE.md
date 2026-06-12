@@ -91,6 +91,21 @@ image (Hugging Face Space) sets `GPXSHEET_BACKGROUND_RENDER=1`. Concurrency stay
 1 (`GPXSHEET_RENDER_CONCURRENCY`): the renderers use global matplotlib `pyplot`,
 which is not thread-safe, so renders serialize.
 
+**Perf instrumentation.** Each web job logs one `gpxsheet.perf` INFO line with a
+phase breakdown — e.g. `perf job:render 2.34s [bytes=1.7MB points=30909
+cache=miss] load=… geometry=… enrich=… derive.pois=… derive.reassurance=…
+render=…`. `cache=hit|miss` is the analysis-core cache (`service/analysis_cache.py`,
+keyed on `(gpx, osm)`). Instrument new hot paths with `gpxsheet.perf`: `with
+perf.span("name")` inside a `perf.track(...)` (set per job in `service/render.py`);
+`perf.annotate(k=v)` adds context. Spans outside a track are ~free.
+
+**Heavy analysis is cached + OSM-free per request.** `analysis.analyze_core`
+(geometry + OSM enrich, always fuel+hazards) is the cacheable part; the cheap
+`analysis.derive_products` (profile threshold, fuel report, POIs, reassurance,
+hazard visibility) runs per request from the cached core without mutating it. Keep
+expensive/OSM work in `analyze_core`; keep `derive_products` cheap (watch for
+O(points) loops — reassurance/POIs precompute waypoint projections once).
+
 Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
 `git submodule update --init` to populate it.
 

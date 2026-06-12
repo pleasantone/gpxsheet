@@ -39,13 +39,16 @@ _keylocks: dict[_Key, threading.Lock] = {}
 
 
 def _compute(gpx_bytes: bytes, osm: bool) -> Route:
+    from gpxsheet import perf
     from gpxsheet.analysis import analyze_core
     from gpxsheet.gpx import load_route
 
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "route.gpx"
         path.write_bytes(gpx_bytes)
-        return analyze_core(load_route(str(path)), osm=osm)
+        with perf.span("load"):
+            route = load_route(str(path))
+        return analyze_core(route, osm=osm)
 
 
 def get_core(gpx_bytes: bytes, *, osm: bool) -> Route:
@@ -54,11 +57,14 @@ def get_core(gpx_bytes: bytes, *, osm: bool) -> Route:
     Callers must treat the returned core as read-only (derive a fresh Route via
     :func:`gpxsheet.analysis.derive_products`); it is shared across requests.
     """
+    from gpxsheet import perf
+
     key: _Key = (hashlib.sha256(gpx_bytes).hexdigest(), osm)
     with _lock:
         hit = _cache.get(key)
         if hit is not None:
             _cache.move_to_end(key)
+            perf.annotate(cache="hit", points=len(hit.points))
             return hit
         keylock = _keylocks.setdefault(key, threading.Lock())
 
@@ -68,8 +74,11 @@ def get_core(gpx_bytes: bytes, *, osm: bool) -> Route:
             hit = _cache.get(key)
             if hit is not None:
                 _cache.move_to_end(key)
+                perf.annotate(cache="hit", points=len(hit.points))
                 return hit
+        perf.annotate(cache="miss")
         route = _compute(gpx_bytes, osm)
+        perf.annotate(points=len(route.points))
         with _lock:
             _cache[key] = route
             _cache.move_to_end(key)
