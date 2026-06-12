@@ -792,9 +792,9 @@ Detects:
 ⚠ Ferry crossing present
 ```
 
-(Fuel-gap, unpaved, and ferry checks are implemented; the seasonal-closure check
-is not yet implemented — it currently emits an informational "not checked yet"
-note. See TODO.md.)
+(Fuel-gap, unpaved, ferry, and seasonal-closure checks are all implemented. The
+seasonal check is a hybrid of a curated seasonal-road list and OSM seasonal/
+conditional tags; see `gpxsheet.seasonal`.)
 
 ---
 
@@ -933,10 +933,11 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
   frontend`; built files are gitignored (reproducible from source).
 
 `validate` (CLI, library `gpxsheet.validate`, and `/v1/validate`) reports fuel-gap,
-unpaved, and ferry findings as a `ValidationReport`; the seasonal-closure check is
-still a placeholder ("not checked yet"). Planned work — including the seasonal
-check and future service hardening (auth/API keys, metrics, distributed rate
-limiting) — is in TODO.md.
+unpaved, ferry, and seasonal-closure findings as a `ValidationReport`. The
+seasonal check is hybrid: a curated list of well-known seasonal roads (Sierra/
+Cascade passes) matched on OSM road names, plus an OSM-tag supplement
+(`seasonal` / `*:conditional` / `snowmobile`) — see `gpxsheet.seasonal`. Future
+service hardening (auth/API keys, metrics, distributed rate limiting) is in TODO.md.
 
 ## Decision Point Engine — as built
 

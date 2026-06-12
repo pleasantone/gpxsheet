@@ -52,6 +52,7 @@ from .profiles import (
     SCORE_ROAD_NAME_CHANGE,
     SCORE_STATE_HWY_JUNCTION,
 )
+from .seasonal import curated_closures, is_seasonal_edge
 
 log = logging.getLogger(__name__)
 
@@ -86,6 +87,20 @@ def _configure_overpass_url(ox) -> None:
     overpass_url = os.getenv("GPXSHEET_OVERPASS_URL")
     if overpass_url:
         ox.settings.overpass_url = overpass_url
+
+
+# OSM way tags that flag a seasonally-restricted road. osmnx keeps only
+# ``settings.useful_tags_way`` when building the graph, so we must opt these in to
+# read them off the edges. This filters at *parse* time, not in the Overpass query,
+# so it does not change the request (the committed test cache stays valid).
+_SEASONAL_WAY_TAGS = ("seasonal", "access:conditional", "motor_vehicle:conditional", "snowmobile")
+
+
+def _configure_useful_tags(ox) -> None:
+    """Ensure osmnx keeps the seasonal-closure tags on graph edges."""
+    missing = [t for t in _SEASONAL_WAY_TAGS if t not in ox.settings.useful_tags_way]
+    if missing:
+        ox.settings.useful_tags_way = [*ox.settings.useful_tags_way, *missing]
 
 
 class _Run(NamedTuple):
@@ -293,6 +308,7 @@ def enrich_route(
 
     _configure_osm_cache(ox)
     _configure_overpass_url(ox)
+    _configure_useful_tags(ox)
 
     total_m = route.length_m
     n = max(2, int(total_m / sample_spacing_m) + 1)
@@ -303,6 +319,7 @@ def enrich_route(
     speeds: list[float | None] = [None] * len(sample_m)  # mph per sample, from OSM
     node_seq: list[int | None] = [None] * len(sample_m)  # nearest OSM node per sample
     graphs: list[_GraphChunk] = []  # (i0, i1, graph) for the topology pass
+    seasonal_tag_names: set[str] = set()  # road names of OSM seasonally-tagged edges
 
     chunks = _chunk_ranges(route)
     for i0, i1 in chunks:
@@ -323,10 +340,18 @@ def enrich_route(
         keys = ox.distance.nearest_edges(graph, xs, ys)
         for k, key in zip(idxs, keys, strict=True):
             edge = tuple(key)
-            names[k] = _edge_name(edges_gdf, edge)
+            name = _edge_name(edges_gdf, edge)
+            names[k] = name
             highway = _edge_value(edges_gdf, edge, "highway")
             unpaved[k] = _is_unpaved(_edge_value(edges_gdf, edge, "surface"), highway)
             speeds[k] = _edge_speed_mph(_edge_value(edges_gdf, edge, "maxspeed"), highway)
+            if name and is_seasonal_edge(
+                _edge_value(edges_gdf, edge, "seasonal"),
+                _edge_value(edges_gdf, edge, "access:conditional"),
+                _edge_value(edges_gdf, edge, "motor_vehicle:conditional"),
+                _edge_value(edges_gdf, edge, "snowmobile"),
+            ):
+                seasonal_tag_names.add(name)
             # Nearest node = the closer endpoint of the nearest edge. (Avoids
             # ox.distance.nearest_nodes, which needs the scikit-learn extra.)
             node_seq[k] = _closer_endpoint(graph, edge, coords[k])
@@ -367,6 +392,12 @@ def enrich_route(
             route.spans = sorted([*route.spans, *ferry_spans], key=lambda s: s.start_mile)
         except Exception:  # noqa: BLE001 - degrade to no ferries on any failure
             log.exception("ferry detection failed; skipping hazards")
+        # Seasonal closures: curated passes matched on the OSM road names, plus any
+        # edges OSM-tagged seasonal that the curated list didn't already cover. Pure
+        # (no extra Overpass call), so it always assesses when OSM ran.
+        closures = set(curated_closures(s.name for s in route.segments))
+        closures.update(n for n in seasonal_tag_names if not curated_closures([n]))
+        route.seasonal_closures = sorted(closures)
     return route
 
 

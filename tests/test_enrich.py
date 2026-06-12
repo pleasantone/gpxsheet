@@ -365,3 +365,18 @@ def test_fuel_query_failure_keeps_osm_enrichment(enrich_route_file, monkeypatch)
     # Road-name segments/decisions survive -> the route is still OSM-enriched.
     assert route.segments and all(not s.name.startswith("Leg ") for s in route.segments)
     assert route.decision_points and all("onto" in d.instruction for d in route.decision_points)
+
+
+def test_seasonal_closures_assessed_clear_on_suburban_route(enrich_route_file):
+    """OSM enrichment assesses seasonal closures; a suburban clip has none.
+
+    Confirms the extra ``useful_tags_way`` don't change the Overpass query (the
+    committed cache still hits) and that ``seasonal_closures`` is an empty list
+    (assessed-and-clear), not None (not assessed) or a false positive.
+    """
+    from gpxsheet import load_route
+    from gpxsheet.analysis import analyze_route
+
+    route = load_route(str(enrich_route_file))
+    analyze_route(route, profile="sport-touring", include_hazards=True)
+    assert route.seasonal_closures == []

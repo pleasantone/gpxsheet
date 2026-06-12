@@ -143,6 +143,7 @@ fill in as the engine runs. Miles are statute miles; `mile`/`start_mile`/
 | `fuel_report` | `FuelReport \| None` | fuel-gap analysis; `None` when not computed for the profile |
 | `unpaved_miles` | `float \| None` | total unpaved/track miles; **`None` = not assessed** (no OSM/hazard run) |
 | `ferry_crossings` | `list[str] \| None` | ferry names crossed; **`None` = not assessed** |
+| `seasonal_closures` | `list[str] \| None` | seasonal-closure risks (curated passes + OSM seasonal/conditional tags), each a label with its typical window; **`None` = not assessed** |
 | `speed_samples_mph` | `list[tuple[float, float]] \| None` | OSM speed-limit profile as `(start_mile, mph)` breakpoints; drives variable ETAs; `None` = not assessed |
 | `day_breaks` | `list[int]` | point indices where a new `<trk>` (≈ a new day) begins, excluding 0; empty for single-track / plain `<rte>` |
 | `day_names` | `list[str]` | one name per day (`len(day_breaks) + 1` entries); an entry may be `""` if its track was unnamed; empty when there are no breaks |
@@ -214,7 +215,9 @@ float` (the longest distance between fuel opportunities), `recommended: list[str
 
 Each `Finding` (`gpxsheet.Finding`) is `level: str` (`"warning"` | `"info"`),
 `code: str` (`"fuel"` | `"unpaved"` | `"ferry"` | `"seasonal"`), `message: str`.
-A clean route within range yields only `info` notes; gaps, unpaved miles, or a
-ferry surface `warning`s. The `unpaved`/`ferry` checks need OSM hazard data —
-when it's unavailable they emit an `info` "skipped (no OSM data)" note instead of
-a verdict.
+A clean route within range yields only `info` notes; gaps, unpaved miles, a
+ferry, or a seasonal pass surface `warning`s. The `unpaved`/`ferry`/`seasonal`
+checks need OSM hazard data — when it's unavailable they emit an `info` "skipped
+(no OSM data)" note instead of a verdict. The `seasonal` check is a hybrid of a
+curated seasonal-road list and OSM `seasonal`/`*:conditional` tags
+(`gpxsheet.seasonal`).

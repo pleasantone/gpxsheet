@@ -82,5 +82,22 @@ def test_ferry_none_present_no_warning():
     assert "ferry" not in _warnings(validate_route(_route(ferry_crossings=[])))
 
 
-def test_seasonal_always_noted_as_info():
-    assert any(f.code == "seasonal" and f.level == INFO for f in validate_route(_route()))
+def test_seasonal_skipped_without_osm():
+    findings = validate_route(_route())  # seasonal_closures is None
+    assert any(f.code == "seasonal" and f.level == INFO for f in findings)
+    assert "seasonal" not in _warnings(findings)
+
+
+def test_seasonal_none_present_no_warning():
+    findings = validate_route(_route(seasonal_closures=[]))
+    assert "seasonal" not in _warnings(findings)
+    # [] means assessed-and-clear, so not even an info note
+    assert not any(f.code == "seasonal" for f in findings)
+
+
+def test_seasonal_warns_when_present():
+    route = _route(seasonal_closures=["Tioga Pass (CA-120) — typically closed Nov–May"])
+    findings = validate_route(route)
+    assert "seasonal" in _warnings(findings)
+    msg = next(f.message for f in findings if f.code == "seasonal")
+    assert "Tioga Pass" in msg and "Verify" in msg
