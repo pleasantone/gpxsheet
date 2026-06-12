@@ -189,6 +189,14 @@ class Route:
     # Hazard data from OSM enrichment; None means "not assessed" (no OSM run).
     unpaved_miles: float | None = None
     ferry_crossings: list[str] | None = None
+    # Piecewise-constant speed limit profile from OSM (coalesced ``(start_mile,
+    # mph)`` breakpoints); None means "not assessed" (no OSM run). Drives variable
+    # ETAs in the route table; a user-supplied fixed speed overrides it.
+    speed_samples_mph: list[tuple[float, float]] | None = None
+    # Point indices where a new ``<trk>`` (≈ a new day) begins, excluding 0. Empty
+    # for single-track routes and plain ``<rte>``s. Lets the route table render
+    # per-day sections.
+    day_breaks: list[int] = field(default_factory=list)
 
     @property
     def length_m(self) -> float:

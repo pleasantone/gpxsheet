@@ -108,6 +108,22 @@ def test_no_osm_skips_enrichment(enrich_route_file):
     assert route.fuel_stops == []
 
 
+def test_osm_speed_profile_drives_variable_eta(analyzed):
+    # Inject an OSM speed profile: first half 60 mph, second half 20 mph.
+    half = analyzed.length_miles / 2
+    analyzed.speed_samples_mph = [(0.0, 60.0), (round(half, 2), 20.0)]
+    depart, tz = parse_departure("9:00 AM", "US/Pacific")
+    md = build_table_markdown(analyzed, departure=depart, tz=tz)
+    assert "* Speed: OSM limits (avg" in md  # variable-speed header
+
+
+def test_user_speed_overrides_osm_profile(analyzed):
+    analyzed.speed_samples_mph = [(0.0, 60.0), (5.0, 10.0)]
+    md = build_table_markdown(analyzed, speed=30.0)  # explicit --speed wins
+    assert "* Default speed: 30.00 mph" in md
+    assert "OSM limits" not in md
+
+
 def test_parse_departure_optional():
     assert parse_departure(None, None) == (None, None)
 

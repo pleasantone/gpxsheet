@@ -2,12 +2,13 @@
 
 The temporal layer GPXsheet's analysis pipeline lacks. Pure functions over an
 ordered list of stops (cumulative distance + layover + fuel-reset), producing per
--stop arrival times, distance-since-fuel and total distance. The model mirrors
-GPXtable's (a single flat travel speed; the first and last stop take no layover)
-so the native table matches GPXtable's ETAs.
+-stop arrival times, distance-since-fuel and total distance. The first and last
+stop take no layover (matching GPXtable).
 
-Per-segment speed from OSM ``maxspeed``/road class is a deliberate later
-enhancement -- :data:`compute_timings` takes one ``speed_kph`` for now.
+Travel time comes from a :class:`SpeedProfile`: either a single flat speed
+(GPXtable's model, or a user-supplied ``--speed``) or a piecewise-constant
+profile built from OSM speed limits (:data:`Route.speed_samples_mph`), giving
+variable ETAs across a mixed interstate/backroad route.
 """
 
 from __future__ import annotations
@@ -15,12 +16,71 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 
+from .geo import meters_to_miles
+
 
 def travel_time(distance_m: float, speed_kph: float) -> timedelta:
     """Time to cover ``distance_m`` metres at ``speed_kph`` (km/h)."""
     if speed_kph <= 0:
         return timedelta()
     return timedelta(minutes=distance_m / 1000.0 / speed_kph * 60.0)
+
+
+@dataclass(frozen=True, slots=True)
+class SpeedProfile:
+    """Piecewise-constant travel speed along the route, in **mph** over miles.
+
+    ``breakpoints`` are ``(start_mile, mph)`` sorted ascending, the first at mile
+    0; each holds until the next. A flat profile is a single breakpoint.
+    """
+
+    breakpoints: tuple[tuple[float, float], ...]
+
+    @classmethod
+    def flat(cls, mph: float) -> SpeedProfile:
+        return cls(((0.0, max(mph, 0.0)),))
+
+    @classmethod
+    def from_breakpoints_mph(cls, bps: list[tuple[float, float]]) -> SpeedProfile:
+        """Build a profile from ``(mile, mph)`` pairs, ensuring mile-0 coverage."""
+        pts = sorted((float(m), float(s)) for m, s in bps if s and s > 0)
+        if not pts:
+            return cls.flat(0.0)
+        if pts[0][0] > 0.0:
+            pts = [(0.0, pts[0][1]), *pts]
+        return cls(tuple(pts))
+
+    def time_to(self, mile: float) -> timedelta:
+        """Travel time from the start to ``mile`` (integrating 1/speed)."""
+        if mile <= 0:
+            return timedelta()
+        hours = 0.0
+        bps = self.breakpoints
+        for i, (start, mph) in enumerate(bps):
+            end = bps[i + 1][0] if i + 1 < len(bps) else float("inf")
+            lo, hi = max(start, 0.0), min(end, mile)
+            if hi > lo and mph > 0:
+                hours += (hi - lo) / mph
+        return timedelta(hours=hours)
+
+    def average_mph(self, length_miles: float) -> float:
+        """Overall average mph across ``length_miles`` (0 if it takes no time)."""
+        hours = self.time_to(length_miles).total_seconds() / 3600.0
+        return length_miles / hours if hours > 0 else 0.0
+
+    def slice(self, start_mile: float, end_mile: float) -> SpeedProfile:
+        """The sub-profile over ``[start_mile, end_mile]`` rebased to mile 0.
+
+        Used to give a per-day route slice its own day-relative speed profile.
+        """
+        out: list[tuple[float, float]] = []
+        bps = self.breakpoints
+        for i, (start, mph) in enumerate(bps):
+            seg_end = bps[i + 1][0] if i + 1 < len(bps) else float("inf")
+            if seg_end <= start_mile or start >= end_mile:
+                continue
+            out.append((max(start - start_mile, 0.0), mph))
+        return SpeedProfile.from_breakpoints_mph(out) if out else SpeedProfile.flat(0.0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,13 +116,15 @@ def compute_timings(
     stops: list[StopInput],
     *,
     departure: datetime | None,
-    speed_kph: float,
+    speed: SpeedProfile,
 ) -> list[StopTiming]:
     """Resolve arrival/layover/fuel-distance for an ordered list of stops.
 
-    Arrival at stop *i* is ``departure + travel_time(total_i) + (sum of layovers
+    Arrival at stop *i* is ``departure + speed.time_to(total_i) + (sum of layovers
     of stops before i)``. The first and last stop take no layover (matching
-    GPXtable). ``since_gas_m`` resets to 0 after a ``fuel_reset`` stop.
+    GPXtable). ``since_gas_m`` resets to 0 after a ``fuel_reset`` stop. Distances
+    are measured from the start of ``stops`` (a per-day slice rebases its own
+    distances + speed profile to 0).
     """
     n = len(stops)
     cumulative_layover = timedelta()
@@ -71,10 +133,9 @@ def compute_timings(
     for i, stop in enumerate(stops):
         is_edge = i == 0 or i == n - 1
         layover = timedelta() if is_edge else stop.delay
+        ride = speed.time_to(meters_to_miles(stop.distance_m))
         arrival = (
-            departure + travel_time(stop.distance_m, speed_kph) + cumulative_layover
-            if departure is not None
-            else None
+            departure + ride + cumulative_layover if departure is not None else None
         )
         out.append(
             StopTiming(

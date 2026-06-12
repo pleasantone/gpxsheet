@@ -6,7 +6,9 @@ from datetime import datetime, timedelta
 
 import dateutil.tz
 
+from gpxsheet.geo import miles_to_meters
 from gpxsheet.timing import (
+    SpeedProfile,
     StopInput,
     compute_timings,
     format_sun_line,
@@ -15,6 +17,7 @@ from gpxsheet.timing import (
 )
 
 PACIFIC = dateutil.tz.gettz("US/Pacific")
+FLAT60 = SpeedProfile.flat(60.0)  # 60 mph -> 1 mile/min
 
 
 def test_travel_time_one_hour_at_speed():
@@ -26,36 +29,64 @@ def test_travel_time_zero_speed_is_zero():
     assert travel_time(1000.0, 0.0) == timedelta()
 
 
+def test_flat_profile_time_to():
+    assert SpeedProfile.flat(60.0).time_to(30.0) == timedelta(minutes=30)
+
+
+def test_variable_profile_integrates_segments():
+    # 0-10 mi @ 60 mph (10 min), 10-20 mi @ 30 mph (20 min).
+    profile = SpeedProfile.from_breakpoints_mph([(0.0, 60.0), (10.0, 30.0)])
+    assert profile.time_to(10.0) == timedelta(minutes=10)
+    assert profile.time_to(20.0) == timedelta(minutes=30)
+    assert round(profile.average_mph(20.0), 1) == 40.0
+
+
+def test_profile_slice_rebases_to_zero():
+    profile = SpeedProfile.from_breakpoints_mph([(0.0, 60.0), (10.0, 30.0)])
+    day2 = profile.slice(10.0, 20.0)  # the 30 mph stretch, rebased to mile 0
+    assert day2.time_to(10.0) == timedelta(minutes=20)
+
+
 def test_no_departure_gives_no_arrivals():
-    stops = [StopInput(0.0), StopInput(1000.0)]
-    timings = compute_timings(stops, departure=None, speed_kph=48.0)
+    stops = [StopInput(0.0), StopInput(miles_to_meters(10))]
+    timings = compute_timings(stops, departure=None, speed=FLAT60)
     assert all(t.arrival is None for t in timings)
 
 
 def test_arrivals_accumulate_distance_and_layover():
     depart = datetime(2023, 7, 30, 9, 0, tzinfo=PACIFIC)
-    speed = 60.0  # km/h -> 1 km/min
     stops = [
         StopInput(0.0),
-        StopInput(60_000.0, delay=timedelta(minutes=30)),  # +60 min ride
-        StopInput(120_000.0),
+        StopInput(miles_to_meters(60), delay=timedelta(minutes=30)),  # +60 min ride
+        StopInput(miles_to_meters(120)),
     ]
-    t = compute_timings(stops, departure=depart, speed_kph=speed)
+    t = compute_timings(stops, departure=depart, speed=FLAT60)
     assert t[0].arrival == depart
-    # 60 km at 1 km/min = 60 min after departure (no prior layover).
+    # 60 mi at 1 mi/min = 60 min after departure (no prior layover).
     assert t[1].arrival == depart + timedelta(minutes=60)
     assert t[1].layover == timedelta(minutes=30)
-    # 120 km ride + the 30-min layover at stop 1.
+    # 120 mi ride + the 30-min layover at stop 1.
     assert t[2].arrival == depart + timedelta(minutes=120 + 30)
+
+
+def test_user_speed_overrides_via_flat_profile():
+    # A flat profile (what a user --speed produces) ignores any variable data.
+    depart = datetime(2023, 7, 30, 9, 0, tzinfo=PACIFIC)
+    t = compute_timings(
+        [StopInput(0.0), StopInput(miles_to_meters(30))],
+        departure=depart,
+        speed=SpeedProfile.flat(30.0),  # 30 mph -> 30 mi in 60 min
+    )
+    assert t[1].arrival == depart + timedelta(minutes=60)
 
 
 def test_first_and_last_take_no_layover():
     stops = [
         StopInput(0.0, delay=timedelta(minutes=99)),
-        StopInput(1000.0, delay=timedelta(minutes=20)),
-        StopInput(2000.0, delay=timedelta(minutes=99)),
+        StopInput(miles_to_meters(1), delay=timedelta(minutes=20)),
+        StopInput(miles_to_meters(2), delay=timedelta(minutes=99)),
     ]
-    t = compute_timings(stops, departure=None, speed_kph=48.0)
+    t = compute_timings(stops, departure=None, speed=FLAT60)
     assert t[0].layover == timedelta()
     assert t[1].layover == timedelta(minutes=20)
     assert t[2].layover == timedelta()
@@ -67,7 +98,7 @@ def test_since_gas_resets_after_fuel():
         StopInput(50_000.0, fuel_reset=True),  # fill up here
         StopInput(80_000.0),
     ]
-    t = compute_timings(stops, departure=None, speed_kph=48.0)
+    t = compute_timings(stops, departure=None, speed=FLAT60)
     assert t[1].since_gas_m == 50_000.0  # distance to the fuel stop
     assert t[2].since_gas_m == 30_000.0  # since the fill-up
     assert t[2].total_m == 80_000.0

@@ -23,6 +23,7 @@ from typing import Any
 from .geo import meters_to_miles, miles_to_meters
 from .models import Route
 from .timing import (
+    SpeedProfile,
     StopInput,
     compute_timings,
     format_sun_line,
@@ -78,11 +79,30 @@ def _collect_rows(route: Route) -> list[_Row]:
     return rows
 
 
-def _resolve_speed_kph(speed: float, imperial: bool) -> float:
-    """Travel speed in km/h: ``speed`` (mph if imperial) or the 30 mph default."""
-    if speed <= 0:
-        return DEFAULT_SPEED_MPH / KM_TO_MILES
-    return speed / KM_TO_MILES if imperial else speed
+def _fmt_speed_mph(mph: float, imperial: bool) -> str:
+    return f"{mph:.2f} mph" if imperial else f"{mph / KM_TO_MILES:.2f} km/h"
+
+
+def _resolve_speed_profile(
+    route: Route, speed: float, imperial: bool
+) -> tuple[SpeedProfile, str]:
+    """Pick the table's speed profile and its header line.
+
+    A user-supplied ``speed`` (mph imperial, kph metric) wins and forces a flat
+    profile -- the explicit override of OSM speeds. Otherwise, when OSM provided a
+    speed-limit profile, use it (variable ETAs); else fall back to a flat 30 mph.
+    """
+    if speed > 0:
+        mph = speed if imperial else speed * KM_TO_MILES
+        return SpeedProfile.flat(mph), f"* Default speed: {_fmt_speed_mph(mph, imperial)}"
+    if route.speed_samples_mph:
+        profile = SpeedProfile.from_breakpoints_mph(route.speed_samples_mph)
+        avg = profile.average_mph(route.length_miles)
+        return profile, f"* Speed: OSM limits (avg {_fmt_speed_mph(avg, imperial)})"
+    return (
+        SpeedProfile.flat(DEFAULT_SPEED_MPH),
+        f"* Default speed: {_fmt_speed_mph(DEFAULT_SPEED_MPH, imperial)}",
+    )
 
 
 def _fmt_length(meters: float, imperial: bool, units: bool = False) -> str:
@@ -92,12 +112,6 @@ def _fmt_length(meters: float, imperial: bool, units: bool = False) -> str:
     else:
         value, suffix = round(meters / 1000.0), " km"
     return f"{value}{suffix if units else ''}"
-
-
-def _fmt_speed(speed_kph: float, imperial: bool) -> str:
-    return (
-        f"{speed_kph * KM_TO_MILES:.2f} mph" if imperial else f"{speed_kph:.2f} km/h"
-    )
 
 
 def _fmt_layover(layover: timedelta) -> str:
@@ -121,7 +135,7 @@ def build_table_markdown(
     and the sunrise/sunset almanac line.
     """
     rows = _collect_rows(route)
-    speed_kph = _resolve_speed_kph(speed, imperial)
+    profile, speed_line = _resolve_speed_profile(route, speed, imperial)
     classes = [classify(r.name, r.symbol, classifier) for r in rows]
     timings = compute_timings(
         [
@@ -129,14 +143,14 @@ def build_table_markdown(
             for r, c in zip(rows, classes, strict=True)
         ],
         departure=departure,
-        speed_kph=speed_kph,
+        speed=profile,
     )
 
     lines: list[str] = [f"## Route: {route.name}"]
     if departure is not None:
         lines.append(f"* Departure at {departure.astimezone(tz):%c %Z}")
     lines.append(f"* Total distance: {_fmt_length(route.length_m, imperial, True)}")
-    lines.append(f"* Default speed: {_fmt_speed(speed_kph, imperial)}")
+    lines.append(speed_line)
     lines.append("")
     if display_coordinates:
         lines.append(f"{_LLP_HDR}{_OUT_HDR}")
