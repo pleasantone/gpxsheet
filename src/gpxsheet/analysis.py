@@ -270,7 +270,7 @@ def generate_reassurance_markers(
     while mile < route.length_miles - END_MARKER_BUFFER_MILES:
         idx = _index_at_mile(route, mile)
         pt = route.points[idx]
-        label, reason = _label_near(pt, route.distances_m[idx], landmarks)
+        label, reason = _label_near(mile, route.distances_m[idx], landmarks)
         markers.append(
             ReassuranceMarker(
                 mile=round(mile, 1), label=label, lat=pt.lat, lon=pt.lon, reason=reason
@@ -293,8 +293,8 @@ def _index_at_mile(route: Route, mile: float) -> int:
     return lo
 
 
-def _landmark_candidates(route: Route) -> list[tuple[str, float, float]]:
-    """``(name, lat, lon)`` for named waypoints not already shown as POIs.
+def _landmark_candidates(route: Route) -> list[tuple[str, float]]:
+    """``(name, along-route mile)`` for named waypoints not already shown as POIs.
 
     Each waypoint is projected to the route once here (the expensive O(points)
     step) so :func:`_label_near` can stay a cheap per-marker nearest lookup.
@@ -302,29 +302,32 @@ def _landmark_candidates(route: Route) -> list[tuple[str, float, float]]:
     reassurance label at the same place.
     """
     poi_miles = {p.mile for p in route.pois}
-    out: list[tuple[str, float, float]] = []
+    out: list[tuple[str, float]] = []
     for wp in route.waypoints:
         if not wp.name:
             continue
         mile, _ = _project_to_route(route, wp.lat, wp.lon)
         if mile in poi_miles:
             continue
-        out.append((wp.name, wp.lat, wp.lon))
+        out.append((wp.name, mile))
     return out
 
 
 def _label_near(
-    pt: GeoPoint,
+    marker_mile: float,
     distance_m: float,
-    landmarks: list[tuple[str, float, float]],
+    landmarks: list[tuple[str, float]],
     max_miles: float = 1.0,
 ) -> tuple[str, str]:
-    """Label a marker by the nearest precomputed landmark, else its mileage."""
-    from .geo import haversine
+    """Label a marker by the nearest landmark *along the route*, else its mileage.
 
-    best_name, best_d = None, miles_to_meters(max_miles)
-    for name, lat, lon in landmarks:
-        d = haversine(pt.lat, pt.lon, lat, lon)
+    Matching on along-route mileage (``|marker_mile - landmark_mile|``) rather than
+    straight-line distance avoids borrowing a town's name for a marker that passes
+    near it as the crow flies but is many route-miles away (switchbacks, loops).
+    """
+    best_name, best_d = None, max_miles
+    for name, mile in landmarks:
+        d = abs(marker_mile - mile)
         if d < best_d:
             best_name, best_d = name, d
     if best_name:
