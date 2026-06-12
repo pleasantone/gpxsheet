@@ -107,16 +107,6 @@ export default function App() {
       .catch(() => {});
   }
 
-  // Table mode is cheap + offline, so it regenerates live (debounced) whenever the
-  // file or any table option changes — no need to press Generate to see e.g. a new
-  // departure time. (Sheet rendering stays manual; it's matplotlib/OSM heavy.)
-  useEffect(() => {
-    if (mode !== "table" || !ready?.file) return;
-    const file = ready.file;
-    const id = setTimeout(() => runTable(file, tableOpts), 400);
-    return () => clearTimeout(id);
-  }, [mode, ready?.file, tableOpts]);
-
   function handleFile(file: File) {
     setSubmitError(null);
     setIsGenerating(false);
@@ -140,19 +130,31 @@ export default function App() {
     gpxStartLocal(file).then((dep) => {
       if (dep) setTableOpts((prev) => ({ ...prev, departure: dep }));
     });
-    if (mode === "sheet") runSheet(file); // table mode regenerates via the effect
+    // Sheet kicks off its analyze + preview on drop; table waits for Generate.
+    if (mode === "sheet") runSheet(file);
   }
 
   function switchMode(m: Mode) {
     if (m === mode) return;
     setMode(m);
     setSubmitError(null);
-    // Sheet needs its analyze + preview kicked off; table regenerates via the effect.
+    // Sheet needs its analyze + preview kicked off; table waits for Generate.
     if (m === "sheet" && ready?.file && !ready.analyzeJobId) runSheet(ready.file);
   }
 
+  // The Generate button: render the Sheet, or (re)generate the Table.
+  function onGenerate() {
+    if (!ready) return;
+    if (mode === "table") {
+      setSubmitError(null);
+      runTable(ready.file, tableOpts);
+    } else {
+      void handleGenerate();
+    }
+  }
+
   async function handleGenerate() {
-    if (!ready) return; // sheet-only: the table view regenerates live (no button)
+    if (!ready) return;
     setSubmitError(null);
     setIsGenerating(true);
     setRenderSubmitting(true);
@@ -304,24 +306,22 @@ export default function App() {
             ) : (
               <TableOptionsPanel opts={tableOpts} onChange={setTableOpts} disabled={generating} />
             )}
-            {/* Sheet rendering is manual; the table regenerates live, so it has no button. */}
-            {mode === "sheet" && (
-              <button
-                data-testid="btn-generate"
-                onClick={handleGenerate}
-                disabled={generating || !ready}
-                className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {generating ? (
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Spinner className="w-4 h-4" />
-                    {renderSubmitting ? "Submitting…" : "Generating…"}
-                  </span>
-                ) : (
-                  "Generate"
-                )}
-              </button>
-            )}
+            {/* Both modes generate on demand via this button. */}
+            <button
+              data-testid="btn-generate"
+              onClick={onGenerate}
+              disabled={generating || !ready}
+              className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {generating ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Spinner className="w-4 h-4" />
+                  {renderSubmitting || tableSubmitting ? "Submitting…" : "Generating…"}
+                </span>
+              ) : (
+                "Generate"
+              )}
+            </button>
           </div>
         </div>
       </main>
