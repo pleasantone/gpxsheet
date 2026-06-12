@@ -259,12 +259,18 @@ def generate_reassurance_markers(
     if interval_miles <= 0 or route.length_miles <= interval_miles:
         return []
 
+    # Precompute the candidate landmarks ONCE: named waypoints not already shown as
+    # POIs. Each waypoint's route projection is O(points), so doing it here instead
+    # of per-marker turns an O(markers·waypoints·points) blowup into O(waypoints·
+    # points) + O(markers·waypoints) -- seconds -> milliseconds on long routes.
+    landmarks = _landmark_candidates(route)
+
     markers: list[ReassuranceMarker] = []
     mile = interval_miles
     while mile < route.length_miles - END_MARKER_BUFFER_MILES:
         idx = _index_at_mile(route, mile)
         pt = route.points[idx]
-        label, reason = _label_near(route, idx)
+        label, reason = _label_near(pt, route.distances_m[idx], landmarks)
         markers.append(
             ReassuranceMarker(
                 mile=round(mile, 1), label=label, lat=pt.lat, lon=pt.lon, reason=reason
@@ -287,30 +293,43 @@ def _index_at_mile(route: Route, mile: float) -> int:
     return lo
 
 
-def _label_near(route: Route, idx: int, max_miles: float = 1.0) -> tuple[str, str]:
-    """Best label for a point: nearest named waypoint, else the mileage.
+def _landmark_candidates(route: Route) -> list[tuple[str, float, float]]:
+    """``(name, lat, lon)`` for named waypoints not already shown as POIs.
 
-    Waypoints with a name are always shown as dedicated POI markers, so they are
-    excluded here to avoid a duplicate reassurance label at the same location.
+    Each waypoint is projected to the route once here (the expensive O(points)
+    step) so :func:`_label_near` can stay a cheap per-marker nearest lookup.
+    Waypoints already rendered as POI markers are excluded to avoid a duplicate
+    reassurance label at the same place.
     """
-    pt = route.points[idx]
-    best_name, best_d = None, miles_to_meters(max_miles)
-    from .geo import haversine
-
     poi_miles = {p.mile for p in route.pois}
-
+    out: list[tuple[str, float, float]] = []
     for wp in route.waypoints:
         if not wp.name:
             continue
         mile, _ = _project_to_route(route, wp.lat, wp.lon)
         if mile in poi_miles:
-            continue  # already shown as a POI marker
-        d = haversine(pt.lat, pt.lon, wp.lat, wp.lon)
+            continue
+        out.append((wp.name, wp.lat, wp.lon))
+    return out
+
+
+def _label_near(
+    pt: GeoPoint,
+    distance_m: float,
+    landmarks: list[tuple[str, float, float]],
+    max_miles: float = 1.0,
+) -> tuple[str, str]:
+    """Label a marker by the nearest precomputed landmark, else its mileage."""
+    from .geo import haversine
+
+    best_name, best_d = None, miles_to_meters(max_miles)
+    for name, lat, lon in landmarks:
+        d = haversine(pt.lat, pt.lon, lat, lon)
         if d < best_d:
-            best_name, best_d = wp.name, d
+            best_name, best_d = name, d
     if best_name:
         return best_name, "landmark"
-    return f"{meters_to_miles(route.distances_m[idx]):.0f} mi", "interval"
+    return f"{meters_to_miles(distance_m):.0f} mi", "interval"
 
 
 def _project_to_route(route: Route, lat: float, lon: float) -> tuple[float, float]:
