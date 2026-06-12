@@ -3,11 +3,12 @@ import { fetchResultJson, submitAnalyze, submitRender, submitTable } from "./api
 import { DropZone } from "./components/DropZone";
 import { Footer } from "./components/Footer";
 import { IntroGuide } from "./components/IntroGuide";
-import { JobProgress } from "./components/JobProgress";
+import { JobProgress, type ProgressPhase } from "./components/JobProgress";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { ResultPane } from "./components/ResultPane";
 import { RouteInfo } from "./components/RouteInfo";
 import { SettingsPopover } from "./components/SettingsPopover";
+import { Spinner } from "./components/Spinner";
 import { TableInfo } from "./components/TableInfo";
 import { TableOptionsPanel } from "./components/TableOptionsPanel";
 import { TableResultPane } from "./components/TableResultPane";
@@ -39,6 +40,10 @@ export default function App() {
   const [ready, setReady] = useState<ReadyState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  // True while a submit POST is in flight (uploading + waiting for the 202),
+  // before a job id exists to poll — drives the "submitting…" feedback.
+  const [renderSubmitting, setRenderSubmitting] = useState(false);
+  const [tableSubmitting, setTableSubmitting] = useState(false);
 
   // Polling hooks
   const analyzeJobId = ready?.analyzeJobId ?? null;
@@ -92,9 +97,11 @@ export default function App() {
 
   function runTable(file: File, tblOpts: TableOptions) {
     setReady((prev) => (prev ? { ...prev, tableHtmlJobId: null, tableMdJobId: null } : prev));
+    setTableSubmitting(true);
     submitTable(file, tblOpts, "html")
       .then((job) => setReady((prev) => (prev ? { ...prev, tableHtmlJobId: job.id } : prev)))
-      .catch((e) => setSubmitError(e instanceof Error ? e.message : "table failed"));
+      .catch((e) => setSubmitError(e instanceof Error ? e.message : "table failed"))
+      .finally(() => setTableSubmitting(false));
     submitTable(file, tblOpts, "markdown")
       .then((job) => setReady((prev) => (prev ? { ...prev, tableMdJobId: job.id } : prev)))
       .catch(() => {});
@@ -148,6 +155,7 @@ export default function App() {
     if (!ready) return; // sheet-only: the table view regenerates live (no button)
     setSubmitError(null);
     setIsGenerating(true);
+    setRenderSubmitting(true);
     setReady((prev) => (prev ? { ...prev, renderJobId: null, renderFilename: null } : prev));
     try {
       const job = await submitRender(ready.file, opts);
@@ -160,6 +168,8 @@ export default function App() {
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "generate failed");
       setIsGenerating(false);
+    } finally {
+      setRenderSubmitting(false);
     }
   }
 
@@ -170,9 +180,38 @@ export default function App() {
     }
   }, [renderStatus, renderError]);
 
-  const sheetGenerating = isGenerating || renderPolling;
-  const tableGenerating = tableHtmlPolling || (!!tableHtmlJobId && !tableHtml && !tableHtmlError);
+  const sheetGenerating = isGenerating || renderSubmitting || renderPolling;
+  const tableGenerating =
+    tableSubmitting || tableHtmlPolling || (!!tableHtmlJobId && !tableHtml && !tableHtmlError);
   const generating = mode === "table" ? tableGenerating : sheetGenerating;
+
+  // Progress phase per job line: a submit in flight, then processing (after the
+  // 202), then done — so there's continuous spinner + status, never a dead gap.
+  const previewPhase: ProgressPhase | null = previewError
+    ? "error"
+    : previewBlobUrl
+      ? "done"
+      : previewJobId
+        ? "processing"
+        : null;
+  const renderPhase: ProgressPhase | null = renderError
+    ? "error"
+    : renderBlobUrl
+      ? "done"
+      : renderSubmitting
+        ? "submitting"
+        : renderJobId
+          ? "processing"
+          : null;
+  const tablePhase: ProgressPhase | null = tableHtmlError
+    ? "error"
+    : tableHtml
+      ? "done"
+      : tableSubmitting
+        ? "submitting"
+        : tableHtmlJobId
+          ? "processing"
+          : null;
 
   if (phase === "idle") {
     return (
@@ -225,14 +264,14 @@ export default function App() {
                 <div className="space-y-1">
                   <JobProgress
                     label="Preview"
-                    isPolling={previewPolling}
-                    jobStatus={previewStatus}
+                    phase={previewPhase}
+                    queuePosition={previewStatus?.queue_position}
                     error={previewError}
                   />
                   <JobProgress
-                    label="Generating"
-                    isPolling={renderPolling}
-                    jobStatus={renderStatus}
+                    label="Sheet"
+                    phase={renderPhase}
+                    queuePosition={renderStatus?.queue_position}
                     error={renderError}
                   />
                   {submitError && <p className="text-sm text-red-600">{submitError}</p>}
@@ -249,8 +288,8 @@ export default function App() {
                 />
                 <JobProgress
                   label="Table"
-                  isPolling={tableHtmlPolling}
-                  jobStatus={tableHtmlStatus}
+                  phase={tablePhase}
+                  queuePosition={tableHtmlStatus?.queue_position}
                   error={tableHtmlError}
                 />
                 {submitError && <p className="text-sm text-red-600">{submitError}</p>}
@@ -273,7 +312,14 @@ export default function App() {
                 disabled={generating || !ready}
                 className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {generating ? "Generating…" : "Generate"}
+                {generating ? (
+                  <span className="inline-flex items-center justify-center gap-2">
+                    <Spinner className="w-4 h-4" />
+                    {renderSubmitting ? "Submitting…" : "Generating…"}
+                  </span>
+                ) : (
+                  "Generate"
+                )}
               </button>
             )}
           </div>
