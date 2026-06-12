@@ -116,9 +116,11 @@ kept initially, then removed — see below.)
 - ✅ Dropped the `gpxtable` runtime dependency.
 
 ## Still open (genuinely not done)
-- Nothing required. Possible future polish: per-track day *names* in day headers
-  (Route only stores `day_breaks` indices, so days are labelled "Day N"); smarter
-  day-boundary assignment for a waypoint sitting exactly on a track break.
+- ✅ Per-track day *names* in day headers — `Route.day_names`, headers read
+  "Day N: <track name>".
+- ✅ A waypoint on a day boundary now appears in BOTH days (overnight stop:
+  end of one, start of the next) via a tolerance band in `_in_day`.
+- Nothing else outstanding.
 - Dropping the `gpxtable` runtime dependency.
 
 ## Verification
