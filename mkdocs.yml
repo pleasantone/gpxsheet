@@ -62,5 +62,4 @@ nav:
   - Development:
       - Workflow: dev-workflow.md
       - Garmin BaseCamp routes: basecamp-routes.md
-      - Overpass API notes: overpass-api-notes.md
   - Design notes: product.md
