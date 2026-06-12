@@ -125,8 +125,6 @@ Non-obvious structural facts (module purpose is derivable from filenames/docstri
   strip `MIN_SEGMENT_LEN=2.6`, `DIST_SCALE=1.0`, stylized angles 10/30/55°.
 - **Decisions/segments come from OSM**, falling back to the geometry baseline
   automatically (with a warning) on `looks_sparse` routes or Overpass failure.
-  Layout default is **portrait** for both the library `render` and the CLI;
-  `portrait`/`landscape`/`preview`/`strip` are peer layouts.
 - OSM = live Overpass; slow in dense urban (~140s/5mi SF) vs ~3s rural. **Tests
   are deterministic + offline:** `conftest` points osmnx at a committed response
   cache (`tests/fixtures/osm_cache`) and replays cache-only (a miss raises, never
