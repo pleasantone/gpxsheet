@@ -327,3 +327,75 @@ def test_enrich_route_against_cached_osm(enrich_route_file):
     # The point of the tuning: decisions track real road changes, not the road's
     # curvature, so the count stays bounded (no per-curve flood).
     assert len(route.decision_points) / route.length_miles < 1.0
+
+
+# -- Overpass DNS failover (pure; no network) --------------------------------
+
+
+def _fake_infos(*ips):
+    import socket
+
+    return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", (ip, 443)) for ip in ips]
+
+
+def test_healthy_overpass_ip_fails_over_when_default_down(monkeypatch):
+    import socket
+
+    from gpxsheet import enrich
+
+    # osmnx's gethostbyname pick (10.0.0.1) is down; another IPv4 (10.0.0.2) is up.
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "10.0.0.1")
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: _fake_infos("10.0.0.1", "10.0.0.2"))
+    monkeypatch.setattr(enrich, "_reachable", lambda ip, port, t: ip == "10.0.0.2")
+    assert enrich._healthy_overpass_ip("overpass-api.de", 1.0) == "10.0.0.2"
+
+
+def test_healthy_overpass_ip_noop_when_default_up(monkeypatch):
+    import socket
+
+    from gpxsheet import enrich
+
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "10.0.0.1")
+    monkeypatch.setattr(enrich, "_reachable", lambda ip, port, t: True)
+    # osmnx's pick reachable -> leave DNS alone (no getaddrinfo probe needed).
+    assert enrich._healthy_overpass_ip("overpass-api.de", 1.0) is None
+
+
+def test_healthy_overpass_ip_none_when_all_down(monkeypatch):
+    import socket
+
+    from gpxsheet import enrich
+
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "10.0.0.1")
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: _fake_infos("10.0.0.1", "10.0.0.2"))
+    monkeypatch.setattr(enrich, "_reachable", lambda ip, port, t: False)
+    assert enrich._healthy_overpass_ip("overpass-api.de", 1.0) is None
+
+
+def test_install_overpass_pin_redirects_only_target_host(monkeypatch):
+    import socket
+
+    from gpxsheet import enrich
+
+    # Register both for monkeypatch restoration before _install reassigns them.
+    monkeypatch.setattr(socket, "gethostbyname", lambda h: "1.2.3.4")
+    monkeypatch.setattr(socket, "getaddrinfo", socket.getaddrinfo)
+
+    enrich._install_overpass_pin("overpass-api.de", "9.9.9.9")
+    assert socket.gethostbyname("overpass-api.de") == "9.9.9.9"
+    assert socket.gethostbyname("example.com") == "1.2.3.4"  # other hosts untouched
+
+
+def test_pin_healthy_overpass_host_skipped_under_pytest(monkeypatch):
+    import socket
+    from types import SimpleNamespace
+
+    from gpxsheet import enrich
+
+    # "pytest" is in sys.modules during the suite, so this must be a no-op and
+    # never probe the network or alter resolution.
+    monkeypatch.setattr(enrich, "_overpass_pin_done", False)
+    before = socket.gethostbyname
+    ox = SimpleNamespace(settings=SimpleNamespace(overpass_url="https://overpass-api.de/api"))
+    enrich._pin_healthy_overpass_host(ox)
+    assert socket.gethostbyname is before
