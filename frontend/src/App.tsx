@@ -131,25 +131,32 @@ export default function App() {
       tableMdJobId: null,
     });
     setPhase("ready");
-    // Prefill the Table departure from the GPX's first track/route point time so the
-    // box and the rendered table agree. If the GPX has no point times, keep whatever
-    // is already in the box (don't clear it).
-    gpxStartLocal(file).then((dep) => {
-      if (dep) setTableOpts((prev) => ({ ...prev, departure: dep }));
-    });
-    // Warm analysis immediately in both modes; Sheet also shows a live preview.
-    // The render/table itself still waits for Generate.
+    // Prefill the Table departure from the GPX's start time (so the box and the
+    // table agree), then auto-generate the table when dropping straight onto the
+    // Table tab. Sheet kicks off its analyze + preview below.
+    gpxStartLocal(file)
+      .then((dep) => {
+        const next = dep ? { ...tableOpts, departure: dep } : tableOpts;
+        if (dep) setTableOpts(next);
+        if (mode === "table") runTable(file, next);
+      })
+      .catch(() => {
+        if (mode === "table") runTable(file, tableOpts);
+      });
     if (mode === "sheet") runSheet(file);
-    else warmAnalysis(file);
   }
 
   function switchMode(m: Mode) {
     if (m === mode) return;
     setMode(m);
     setSubmitError(null);
-    // Sheet needs its preview kicked off (analyze is already warm); the analyze
-    // re-submit is deduped by the backend job cache.
+    // Entering a tab auto-produces its output once (Sheet: analyze + preview;
+    // Table: the table). The Generate button re-runs after option changes. Backend
+    // job + analysis caches keep the re-submits cheap.
     if (m === "sheet" && ready?.file && !ready.previewJobId) runSheet(ready.file);
+    else if (m === "table" && ready?.file && !ready.tableHtmlJobId) {
+      runTable(ready.file, tableOpts);
+    }
   }
 
   // The Generate button: render the Sheet, or (re)generate the Table.

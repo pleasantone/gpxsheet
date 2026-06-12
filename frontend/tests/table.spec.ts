@@ -8,9 +8,9 @@ test("table: switch to Table tab, see inline table + copy buttons", async ({ pag
   await page.goto("/");
   await page.getByTestId("drop-zone").locator('input[type="file"]').setInputFiles(GPX);
 
-  // Switch to the Table tab and generate (manual, like Sheet mode).
+  // Switching to the Table tab auto-generates the table (the Generate button is
+  // there to re-run after option changes).
   await page.getByTestId("tab-table").click();
-  await page.getByTestId("btn-generate").click();
 
   // The table renders inline (no iframe) and matches the app shell.
   const out = page.getByTestId("table-output");
