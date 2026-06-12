@@ -148,9 +148,13 @@ Non-obvious structural facts (module purpose is derivable from filenames/docstri
 
 - **Lazy imports are intentional** in `strip.py`, `pdf.py`, `paginate.py` —
   keeps matplotlib out of the import path for non-rendering use.
-- **`analyze_route` is three steps:** `_geometry_baseline` → `_osm_enrich_pass`
-  (replaces decisions+segments; falls back to geometry-only w/ warning+log if
-  `looks_sparse` or Overpass fails) → `_apply_profile` (threshold, fuel, reassurance).
+- **`analyze_route` = `analyze_core` then `derive_products`.** `analyze_core`
+  (cacheable, profile-independent) is `_geometry_baseline` → `_osm_enrich_pass`
+  (replaces decisions+segments, **always** computing fuel+hazards; falls back to
+  geometry-only w/ warning+log if `looks_sparse` or Overpass fails).
+  `derive_products` then applies the cheap per-request gating (profile threshold,
+  fuel report, POIs, reassurance, hazard visibility) onto a fresh copy — see the
+  cache note above. (There is no `_apply_profile`.)
 - **`decisions_per_lane=0`** is the universal default for `render()`, CLI, web,
   and all `pdf.py` renderer functions — means auto-fit via `paginate.plan_pages()`.
   Positive value → fixed cap. All render-knob defaults live in `defaults.py`.

@@ -43,7 +43,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Milestone 5 web service: FastAPI API + Dramatiq/Redis job queue + MinIO storage.
+# Web service extra: FastAPI API + Dramatiq/Redis job queue + MinIO storage.
 service = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",

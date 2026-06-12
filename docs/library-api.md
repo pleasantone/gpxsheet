@@ -1,17 +1,9 @@
 # Library API
 
-The public Python API mirrors the [web API](web-api.md): three entry points —
-`render`, `analyze`, `validate` — that take the same names and arguments (but run
-synchronously). Import everything from the top-level `gpxsheet` package.
-
-**Breaking changes in v0.3.0:**
-
-- `render()`: `decisions_per_lane` is now `int = 0` (was `int | None = None`); `None`
-  is no longer a valid value — pass `0` for auto-fit.
-- `analyze()`: the `reassurance_interval` parameter has been removed; the interval
-  is now controlled entirely by the profile (`Profile.reassurance_interval_miles`).
-  To use a custom interval, construct a `Profile` and pass it to `analyze_route()`.
-- CLI: `gpxsheet analyze --reassurance-interval` flag is removed.
+The public Python API mirrors the [web API](web-api.md): the entry points —
+`render`, `analyze`, `validate` — take the same names and arguments (but run
+synchronously). Import them from the top-level `gpxsheet` package. The route
+**table** lives in `gpxsheet.routetable` (see [Route table](#route-table) below).
 
 ```python
 import gpxsheet
@@ -52,6 +44,27 @@ else → `"pdf"`).
 ::: gpxsheet.ValidationReport
 
 ::: gpxsheet.Finding
+
+## Route table
+
+A markdown/HTML route table (waypoints, distances, fuel/lunch markers, ETAs,
+sunrise/sunset) rendered from the same analysis graph, so it inherits OSM
+enrichment (auto-discovered fuel, road names, road-snapped distance) and adds a
+timing layer. It lives in `gpxsheet.routetable` (not the top-level namespace):
+
+```python
+from gpxsheet.routetable import render_table, parse_departure
+
+depart, tz = parse_departure("9:00 AM", "US/Pacific")  # natural-language or ISO
+render_table("route.gpx", "route.md", fmt="markdown", departure=depart, tz=tz)
+# OSM is on by default; pass osm=False for a fast, fully offline table.
+# ETAs need a departure; show_cue=True appends a turn-by-turn cue sheet.
+```
+
+`render_table` analyzes `gpx_source` and writes `html` or `markdown`;
+`build_table_markdown(route, …)` renders an already-analyzed `Route`.
+
+::: gpxsheet.routetable.render_table
 
 ## Lower-level helpers
 
