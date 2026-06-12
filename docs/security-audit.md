@@ -1,7 +1,7 @@
 # GPXSheet security audit
 
 Scope: the GPXSheet library, CLI, and especially the FastAPI web service
-(`src/gpxsheet/service/`), reviewed against the Phase 2 audit checklist in
+(`src/gpxsheet/service/`), reviewed against the security audit checklist in
 [TODO.md](https://github.com/pleasantone/gpxsheet/blob/main/TODO.md) ahead of
 public-internet exposure.
 

@@ -16,6 +16,8 @@ The service takes that GPX and produces:
 - a **roadbook-style PDF** (or PNG) — the route broken into a sequence of
   schematic "strips," each showing the shape of the road, the decision points
   (where you actually have to do something), road names, and fuel;
+- a **route table** (markdown or HTML) — waypoints, cumulative distance,
+  fuel/lunch markers, ETAs and sunrise/sunset, for a glanceable trip plan;
 - a **structured analysis** of the route (decision points, segments, fuel
   stops) as JSON, so a UI can render its own view;
 - a **validation report** flagging fuel-range gaps, unpaved stretches, and ferry
@@ -31,8 +33,8 @@ asynchronous job**.
 Every operation works the same way:
 
 1. **Submit** a job: `POST` the GPX plus parameters to a typed endpoint
-   (`/v1/render`, `/v1/analyze`, or `/v1/validate`). You get back a job `{id,
-   status, ...}` and a `Location` header pointing at the job.
+   (`/v1/render`, `/v1/table`, `/v1/analyze`, or `/v1/validate`). You get back a
+   job `{id, status, ...}` and a `Location` header pointing at the job.
 2. **Poll** the job: `GET /v1/jobs/{id}` until `status` is `done` or `error`.
 3. **Fetch** the result: `GET /v1/jobs/{id}/result` — a PDF/PNG download or a
    JSON report.
@@ -97,6 +99,30 @@ format.
 
 Returns a job (see [Job lifecycle](#job-lifecycle)). The finished result's
 `content_type` is `application/pdf` or `image/png`.
+
+### `POST /v1/table` — route table (markdown or HTML)
+
+A glanceable trip-planning table: each named waypoint with cumulative distance,
+a `G`/`L`/`GL` fuel/lunch marker, ETA, and the symbol; plus a sunrise/sunset
+line. Multi-track GPX renders one section per day. Built on the same analysis as
+`/v1/render`, so OSM enrichment adds auto-discovered fuel, a Road column and
+road-snapped distance.
+
+Form fields (all optional except `gpx`):
+
+| field | type | default | values / meaning |
+|-------|------|---------|------------------|
+| `gpx` | file | — | the `.gpx` upload (**required**) |
+| `format` | string | `html` | `html` or `markdown` |
+| `departure` | string | — | natural-language or ISO time ("9:00 AM", "July 4 2pm"); **required for the ETA column** |
+| `timezone` | string | — | IANA zone for displayed times (e.g. `US/Pacific`) |
+| `speed` | number ≥ 0 | `0` | average speed (mph imperial / kph metric); **`0` = auto** — OSM per-segment speed limits, else 30 mph. A positive value overrides OSM speeds with a flat speed |
+| `units` | string | `imperial` | `imperial` or `metric` |
+| `coordinates` | bool | `false` | add latitude/longitude columns |
+| `cue` | bool | `false` | append a turn-by-turn cue sheet from the decision points |
+| `osm` | bool | `true` | OSM enrichment (auto fuel, road names, road-snapped distance); `false` is fast and fully offline |
+
+Returns a job whose result `content_type` is `text/html` or `text/markdown`.
 
 ### `POST /v1/analyze` — structured route analysis (JSON)
 
@@ -293,6 +319,10 @@ curl -sL https://gpxsheet.example.com/v1/jobs/$id/result -o route.png
 
 # A JSON report
 curl -s -F gpx=@route.gpx https://gpxsheet.example.com/v1/analyze   # then poll + fetch as above
+
+# A markdown route table with ETAs (poll + fetch as above)
+curl -s -F gpx=@route.gpx -F format=markdown -F 'departure=9:00 AM' \
+        https://gpxsheet.example.com/v1/table
 ```
 
 ## Interactive reference

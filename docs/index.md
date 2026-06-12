@@ -18,14 +18,16 @@ turns.
 
 - **Generate** a roadbook-style **PDF** (or PNG) of a route — schematic strips
   showing road shape, decision points, names, and fuel.
+- **Table** a route into a markdown/HTML trip-plan — waypoints, distances,
+  fuel/lunch markers, ETAs and sunrise/sunset (per-day for multi-day GPX).
 - **Analyze** a route into structured data (decision points, segments, fuel
   stops) for your own tooling.
 - **Validate** a route for fuel-range gaps, unpaved stretches, and ferries.
 
 Three ways to use it:
 
-- **CLI** — `gpxsheet generate route.gpx -o route.pdf` (also `analyze`, `strip`,
-  `preview`, `validate`).
+- **CLI** — `gpxsheet generate route.gpx -o route.pdf` (also `table`, `analyze`,
+  `strip`, `preview`, `validate`).
 - **Python library** — see the [Library API](library-api.md).
 - **Web service** — a FastAPI app exposing the engine over REST; see the
   [Web API guide](web-api.md) and the [API reference](web-api-reference.md).

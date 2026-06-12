@@ -2,8 +2,14 @@
 
 > Motorcycle sport-touring route awareness generator.
 
+[![PyPI](https://img.shields.io/pypi/v/gpxsheet.svg)](https://pypi.org/project/gpxsheet/)
+[![Python versions](https://img.shields.io/pypi/pyversions/gpxsheet.svg)](https://pypi.org/project/gpxsheet/)
+[![CI](https://github.com/pleasantone/gpxsheet/actions/workflows/ci.yml/badge.svg)](https://github.com/pleasantone/gpxsheet/actions/workflows/ci.yml)
+[![Docs](https://readthedocs.org/projects/gpxsheet/badge/?version=latest)](https://gpxsheet.readthedocs.io/en/latest/)
+[![License](https://img.shields.io/badge/License-AGPL%203.0--or--later-blue.svg)](https://github.com/pleasantone/gpxsheet/blob/main/LICENSE)
+
 GPXSheet is a Python command-line application and reusable library that converts
-GPX routes into highly **glanceable, map-centric** motorcycle navigation PDFs
+GPX routes into highly **glanceable, map-centric** motorcycle navigation aids
 optimized for tank-bag use.
 
 It is **not** a rally roadbook and **not** a GPS replacement. The goal is route
@@ -15,25 +21,33 @@ within the overall route.
 **Documentation:** [gpxsheet.readthedocs.io](https://gpxsheet.readthedocs.io) —
 library API, web API guide + interactive reference, and deployment notes.
 
-## Status
+<p align="center">
+  <img alt="Example tank-bag PDF roadbook" height="320"
+       src="https://raw.githubusercontent.com/pleasantone/gpxsheet/main/frontend/public/guide/example-sheet.png">
+  &nbsp;&nbsp;
+  <img alt="Example route table" height="320"
+       src="https://raw.githubusercontent.com/pleasantone/gpxsheet/main/frontend/public/guide/example-table.png">
+</p>
 
-v0.1.0 — **Phase 1 complete:** analysis engine, schematic strip,
-tank-bag PDF, and a publish-ready package.
+## Features
 
 - **Route analysis** — GPX (track/route/waypoints) → decision points, fuel,
-  reassurance markers, road segments; `analyze` text output.
-- **Decision detection is two-tier.** A geometry baseline (honest, but
-  over-detects on twisty roads — it can't tell a curve from a junction) and an
-  OSM mode that derives decisions from *durable road-name changes*, so a 22 mi
-  switchback climb collapses to one clean segment ("onto Mount Hamilton Road").
-- **Schematic map strip** — stylized (default) or faithful turns, collision-placed
-  labels with dashed leaders, and the road-name ribbon.
-- **Tank-bag PDF** — route-aware pagination; **portrait** roadbook (stacked strip
-  lanes, the default) or **landscape** (one strip/page); page mileage in the
-  header, progress bar.
+  reassurance markers, and road segments. Route *structure* comes from
+  OpenStreetMap road topology rather than raw geometry, so twisty roads don't
+  flood with false turns. `analyze` text output.
+- **Schematic map strip** — a stylized (or faithful) map ribbon showing the
+  road-name segments, decisions, fuel, and waypoints.
+- **Tank-bag PDF** — route-aware pagination; a **portrait** roadbook (stacked
+  strip lanes, the default) or **landscape** (one strip per page).
+- **Route table** — a markdown/HTML trip plan (waypoints, distances, fuel/lunch
+  markers, ETAs, sunrise/sunset; per-day sections for multi-day GPX); `table` CLI.
 - **Packaged** for `pip install gpxsheet`; PEP 561 typed.
 - **Web service** — a FastAPI app exposing the engine over REST (async jobs);
-  see the [Web service](#web-service) section and [docs/web-api.md](docs/web-api.md).
+  see [Web service](#web-service) and [docs/web-api.md](docs/web-api.md).
+
+How it works internally — the two-tier decision detection, schematic layout
+engine, pagination, and OSM enrichment — is documented in
+[docs/product.md](docs/product.md).
 
 ## Installation
 
@@ -65,112 +79,46 @@ make infra && make dev-api-full && make dev-worker && make dev-ui
 
 ## Usage
 
-Decisions and segments come from OpenStreetMap road topology (durable road-name
-changes, named roads, fuel). It degrades to the geometry baseline *automatically*
-(with a warning) when the route is too sparse to follow roads or the live
-Overpass query fails. The portrait roadbook layout is the default; pass
-`--landscape` for one strip/page.
+### CLI
 
 ```bash
 gpxsheet generate route.gpx -o route.pdf            # portrait roadbook (default)
 gpxsheet generate route.gpx --landscape -o route.pdf
 #   layout knobs: --lane-decisions M (decisions per page; default auto-fit); --lanes N (portrait lanes/page)
 
+gpxsheet table   route.gpx --departure 9am -o route.md   # route table (html|md)
+gpxsheet table   route.gpx --no-osm -o route.md          # fast, fully offline
 gpxsheet analyze route.gpx                           # text analysis
 gpxsheet strip   route.gpx -o route_strip.png        # single schematic strip PNG
 ```
 
-OSM queries the live Overpass API (seconds for rural routes, up to minutes for
-dense urban; cached by `osmnx`). The test suite is deterministic and offline: it
-replays committed Overpass responses from `tests/fixtures/osm_cache` (re-record
-with `GPXSHEET_RECORD_OSM=1`; see `tests/fixtures/README.md`).
-
 ### Library
 
-The library mirrors the web API — `render`, `analyze`, `validate` — but runs
-synchronously:
+`render`, `analyze`, and `validate` run synchronously, mirroring the web API; the
+route table lives in `gpxsheet.routetable`. Full reference and examples: the
+**[Library API](docs/library-api.md)**.
 
-```python
-import gpxsheet
+### Web service
 
-gpxsheet.render("route.gpx", "route.pdf", layout="portrait")   # also landscape/preview/strip, format=pdf|png
-route = gpxsheet.analyze("route.gpx", fuel_range=180)
-report = gpxsheet.validate("route.gpx", fuel_range=180)         # report.findings
-```
+A FastAPI service exposes the engine over REST and ships a built-in browser UI.
 
-## Web service
+**Web UI** — drop a GPX onto the page, see a live strip preview and route stats,
+adjust options, and download the PDF/PNG or route table. Build it once
+(`make frontend`), then run `uvicorn gpxsheet.service.asgi:app` (UI at `/`,
+Swagger at `/docs`); for the hot-reload dev modes see
+[docs/dev-workflow.md](docs/dev-workflow.md).
 
-A FastAPI service exposes the engine over REST — and ships a built-in browser UI.
-
-### Web UI
-
-Drop a GPX file onto the page, see a live strip preview and route stats (distance,
-turns, fuel stops), adjust options, and download the final PDF or PNG. No account
-needed; an optional API key field is in the settings popover.
-
-The UI is a React + Vite SPA bundled with the service. Build it once before
-starting the server:
-
-```bash
-pip install -e ".[service]"
-cd frontend && npm ci && npm run build && cd ..
-uvicorn gpxsheet.service.asgi:app
-# -> http://localhost:8000/  (UI)
-# -> http://localhost:8000/docs  (Swagger)
-```
-
-Or use `make build` (builds frontend + installs Python) and `make dev-api` /
-`make dev-ui` for a hot-reload dev workflow (Vite on :5173 proxies `/v1/` to
-uvicorn on :8000).
-
-### REST API
-
-Every operation is a background job (Dramatiq + Redis) with results in object
-storage (MinIO): POST to a typed endpoint (GPX + params as multipart form
-fields), then poll and fetch via the shared job URLs. `/v1/render` takes a
-`layout` (`portrait`/`landscape`/`preview`/`strip`) and `format` (`pdf`/`png`);
-`/v1/analyze` and `/v1/validate` return JSON reports.
-
-Self-hosted stack (API + worker + Redis + MinIO):
-
-```bash
-docker compose up --build
-#   API   -> http://localhost:8000/
-#   MinIO -> http://localhost:9001  (minioadmin / minioadmin)
-
-# render a portrait PDF (the defaults); the 202 response's Location header is the job
-curl -F gpx=@route.gpx http://localhost:8000/v1/render                       # -> {id, status}
-curl http://localhost:8000/v1/jobs/<id>                 # poll until status=done
-curl -L http://localhost:8000/v1/jobs/<id>/result -o route.pdf
-
-# other examples (same poll -> fetch flow):
-curl -F gpx=@route.gpx -F layout=preview -F format=png http://localhost:8000/v1/render
-curl -F gpx=@route.gpx -F layout=landscape -F paper=a4 http://localhost:8000/v1/render
-curl -F gpx=@route.gpx http://localhost:8000/v1/analyze                      # JSON report
-```
-
-Endpoints: `POST /v1/render`, `POST /v1/analyze`, `POST /v1/validate` (each
-uploads a GPX + params → `202` job with a `Location` header, or `200` if an
-identical request is already done); `GET /v1/jobs/{id}` (status, incl.
-`content_type` when done), `GET /v1/jobs/{id}/result` (streams the artifact with
-an immutable `ETag`, or 303 → presigned URL; `425` until ready, `409` if failed);
-`GET /healthz` (liveness) and `GET /readyz` (Redis/MinIO reachable). When API
-keys are configured, jobs are visible only to the key that created them.
-
-Config is env-driven (`GPXSHEET_REDIS_URL` switches on the prod path; see
+**REST API** — every operation is an async job (submit → poll → fetch) over
+`/v1/render`, `/v1/table`, `/v1/analyze`, and `/v1/validate`. The full reference —
+every endpoint, parameter, auth, and browser `fetch`/curl examples — is the
+**[Web API guide](docs/web-api.md)** (live OpenAPI at `/docs`). Config is
+env-driven (`GPXSHEET_REDIS_URL` switches the prod path; see
 `gpxsheet/service/settings.py`).
 
-**Building on the API?** See the front-end integration guide:
-[docs/web-api.md](docs/web-api.md) (submit → poll → fetch flow, every endpoint,
-auth, and browser `fetch` examples). Live OpenAPI docs are served at `/docs`.
-
-**Before exposing the service to the public internet, read
-[docs/security-audit.md](docs/security-audit.md).** Key hardening knobs:
-`GPXSHEET_API_KEYS` (comma-separated; enables `X-API-Key`/`Bearer` auth + per-key
-rate limits), `GPXSHEET_RATE_LIMIT_PER_MIN`, `GPXSHEET_MAX_UPLOAD_BYTES`,
-`GPXSHEET_MAX_POINTS`, `GPXSHEET_CORS_ORIGINS`, `GPXSHEET_ENABLE_HSTS`, and the MinIO
-credentials (the prod path refuses to boot on the `minioadmin` defaults). The
-service must run behind a TLS-terminating reverse proxy.
+**Self-hosting & hardening** — run the single Docker image or the full
+Redis/MinIO stack; see [docs/deploy.md](docs/deploy.md), and read
+[docs/security-audit.md](docs/security-audit.md) **before exposing the service to
+the public internet**.
 
 ## License
 
