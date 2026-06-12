@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
+from pathlib import Path
 from typing import Any
 
 from .geo import meters_to_miles, miles_to_meters
@@ -197,3 +198,45 @@ def markdown_to_html(md: str) -> str:
     from .table import markdown_to_html as _to_html
 
     return _to_html(md)
+
+
+# Output formats the native renderer accepts, and their file extensions.
+TABLE_FORMATS = ("html", "markdown")
+EXTENSIONS = {"html": "html", "markdown": "md"}
+
+
+def render_table(
+    gpx_source: str | Path,
+    output_path: str | Path,
+    *,
+    fmt: str = "html",
+    imperial: bool = True,
+    speed: float = 0.0,
+    depart_at: datetime | None = None,
+    tz: tzinfo | None = None,
+    display_coordinates: bool = False,
+    osm: bool = True,
+) -> Path:
+    """Analyze ``gpx_source`` and write its native route table to ``output_path``.
+
+    Runs the full analysis (OSM on by default, ``osm=False`` for a fast offline
+    table) under the default sport-touring profile so waypoints and fuel are
+    populated, then renders ``html`` or ``markdown``.
+    """
+    if fmt not in TABLE_FORMATS:
+        raise ValueError(f"fmt must be one of {TABLE_FORMATS}, got {fmt!r}")
+    from . import analyze
+
+    route = analyze(str(gpx_source), osm=osm)
+    md = build_table_markdown(
+        route,
+        imperial=imperial,
+        speed=speed,
+        departure=depart_at,
+        tz=tz,
+        display_coordinates=display_coordinates,
+    )
+    text = markdown_to_html(md) if fmt == "html" else md
+    out = Path(output_path)
+    out.write_text(text, encoding="utf-8")
+    return out

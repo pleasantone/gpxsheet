@@ -101,13 +101,15 @@ def analyze(
     profile: str = defaults.DEFAULT_PROFILE,
     fuel_range: float | None = None,
     include_hazards: bool = False,
+    osm: bool = True,
 ) -> Route:
     """Run the route analysis engine on a GPX file.
 
     Loads the GPX, runs decision-point detection, reassurance-marker placement,
     fuel analysis and segmentation, and returns the populated :class:`Route`.
-    ``include_hazards`` adds OSM hazard data for validation. See the ``analyze``
-    output mode in ``docs/product.md``.
+    ``include_hazards`` adds OSM hazard data for validation; ``osm=False`` forces
+    a fast, fully offline geometry-only analysis. See the ``analyze`` output mode
+    in ``docs/product.md``.
     """
     from .analysis import analyze_route as _analyze_route
     from .gpx import load_route as _load_route
@@ -118,6 +120,7 @@ def analyze(
         profile=profile,
         fuel_range=fuel_range,
         include_hazards=include_hazards,
+        osm=osm,
     )
 
 

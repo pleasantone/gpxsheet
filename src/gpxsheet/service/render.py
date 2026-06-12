@@ -93,26 +93,33 @@ def _render_result(gpx_bytes: bytes, params: RenderParams) -> JobResult:
 
 
 def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
-    """A GPXtable route table as HTML or markdown (no OSM pipeline involved)."""
-    from gpxsheet import table
+    """A native route table (analysis graph) as HTML or markdown.
+
+    Runs the analysis (OSM on by default; ``--no-osm`` for a fast offline table)
+    so the table inherits auto-discovered fuel and road-snapped distance.
+    """
+    from gpxsheet import analyze, table
+    from gpxsheet.routetable import build_table_markdown, markdown_to_html
 
     depart_at, tz = table.parse_departure(params.departure, params.timezone)
-    gpx = table.parse_gpx(gpx_bytes)
-    md = table.build_table_markdown(
-        gpx,
+    with tempfile.TemporaryDirectory() as tmp:
+        gpx_path = Path(tmp) / "route.gpx"
+        gpx_path.write_bytes(gpx_bytes)
+        route = analyze(str(gpx_path), osm=params.osm)
+    md = build_table_markdown(
+        route,
         imperial=(params.units == "imperial"),
         speed=params.speed,
-        depart_at=depart_at,
-        ignore_times=params.ignore_times,
-        display_coordinates=params.coordinates,
+        departure=depart_at,
         tz=tz,
+        display_coordinates=params.coordinates,
     )
     if params.format == "html":
-        data, ext = table.markdown_to_html(md).encode(), "html"
+        data, ext = markdown_to_html(md).encode(), "html"
     else:
         data, ext = md.encode(), "md"
     content_type = _CONTENT_TYPES["html" if params.format == "html" else "markdown"]
-    return data, content_type, ext, _safe_filename(table.route_title(gpx), ext)
+    return data, content_type, ext, _safe_filename(route.name, ext)
 
 
 def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):

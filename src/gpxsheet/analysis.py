@@ -448,14 +448,20 @@ def _geometry_baseline(route: Route) -> None:
     route.segments = build_segments(route)
 
 
-def _osm_enrich_pass(route: Route, prof: Profile, include_hazards: bool) -> bool:
+def _osm_enrich_pass(
+    route: Route, prof: Profile, include_hazards: bool, osm: bool = True
+) -> bool:
     """Step 2: replace geometry decisions with OSM road-name decisions.
 
     Skips sparse routes (waypoint-only <rte>) and falls back gracefully on any
-    Overpass/network failure. Returns True if OSM ran successfully.
+    Overpass/network failure. Returns True if OSM ran successfully. ``osm=False``
+    skips enrichment outright (a caller-level opt-out, like the env var but
+    without a warning), keeping a fast, fully offline analysis.
     """
     from .enrich import enrich_route
 
+    if not osm:
+        return False
     if os.getenv("GPXSHEET_DISABLE_OSM", "").lower() in ("1", "true", "yes"):
         # Opt-out for air-gapped / Overpass-rate-limited deployments (and CI smoke
         # tests): skip enrichment entirely, with no network call, and use the
@@ -512,6 +518,7 @@ def analyze_route(
     profile: str | Profile = "sport-touring",
     fuel_range: float | None = None,
     include_hazards: bool = False,
+    osm: bool = True,
 ) -> Route:
     """Run the full analysis, populating ``route`` in place.
 
@@ -519,11 +526,12 @@ def analyze_route(
     named roads), falling back to the geometry baseline (with a warning) when the
     route is too sparse to sample or the Overpass query fails. ``include_hazards``
     adds OSM hazard data (ferry crossings; unpaved mileage is captured whenever the
-    OSM pass runs) for :func:`gpxsheet.validate.validate_route`. Returns the same
+    OSM pass runs) for :func:`gpxsheet.validate.validate_route`. ``osm=False``
+    forces a fast, fully offline geometry-only analysis. Returns the same
     :class:`Route` for convenience.
     """
     prof = profile if isinstance(profile, Profile) else get_profile(profile)
     _geometry_baseline(route)
-    osm_ran = _osm_enrich_pass(route, prof, include_hazards)
+    osm_ran = _osm_enrich_pass(route, prof, include_hazards, osm)
     _apply_profile(route, prof, fuel_range, osm_ran)
     return route

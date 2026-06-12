@@ -164,18 +164,22 @@ def table(
     coordinates: bool = typer.Option(
         False, "--coordinates", help="Include latitude/longitude columns."
     ),
-    ignore_times: bool = typer.Option(
-        False, "--ignore-times", help="Ignore timestamps in the GPX track."
+    osm: bool = typer.Option(
+        True, "--osm/--no-osm",
+        help="Enrich via OSM (auto fuel, road-snapped distance); --no-osm is fast/offline.",
     ),
     timezone: str | None = typer.Option(
         None, "--timezone", help="IANA timezone for displayed times, e.g. US/Pacific."
     ),
 ) -> None:
-    """Generate a route table (markdown or HTML) via GPXtable.
+    """Generate a route table (markdown or HTML) from the analysis graph.
 
-    Independent of the OSM pipeline: works offline straight from the GPX waypoints.
+    Built natively on GPXsheet's analysis: OSM enrichment is on by default (auto
+    fuel, road-snapped distance); pass ``--no-osm`` for a fast, fully offline
+    table. ETAs require ``--departure``.
     """
-    from .table import parse_departure, render_table
+    from .routetable import render_table
+    from .table import parse_departure
 
     if output is None:
         output = Path("route_table.md" if fmt == "markdown" else "route_table.html")
@@ -190,9 +194,9 @@ def table(
             imperial=not metric,
             speed=speed,
             depart_at=depart_at,
-            ignore_times=ignore_times,
             display_coordinates=coordinates,
             tz=tz,
+            osm=osm,
         )
     except ValueError as exc:
         typer.echo(f"Error: {exc}", err=True)
