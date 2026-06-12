@@ -69,15 +69,16 @@ def _json_result(payload: dict, name: str | None) -> JobResult:
 
 
 def _render_result(gpx_bytes: bytes, params: RenderParams) -> JobResult:
-    from gpxsheet import analyze
+    from gpxsheet.analysis import derive_products
     from gpxsheet.pdf import render_layout
 
+    from .analysis_cache import get_core
+
+    core = get_core(gpx_bytes, osm=True)
+    route = derive_products(core, profile=params.profile, fuel_range=params.fuel_range)
     ext = params.format  # "pdf" | "png"
     with tempfile.TemporaryDirectory() as tmp:
-        gpx_path = Path(tmp) / "route.gpx"
         out_path = Path(tmp) / f"out.{ext}"
-        gpx_path.write_bytes(gpx_bytes)
-        route = analyze(str(gpx_path), profile=params.profile, fuel_range=params.fuel_range)
         render_layout(
             route,
             out_path,
@@ -98,18 +99,17 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
     Runs the analysis (OSM on by default; ``--no-osm`` for a fast offline table)
     so the table inherits auto-discovered fuel and road-snapped distance.
     """
-    from gpxsheet import analyze
+    from gpxsheet.analysis import derive_products
     from gpxsheet.routetable import (
         build_table_markdown,
         markdown_to_html,
         parse_departure,
     )
 
+    from .analysis_cache import get_core
+
     depart_at, tz = parse_departure(params.departure, params.timezone)
-    with tempfile.TemporaryDirectory() as tmp:
-        gpx_path = Path(tmp) / "route.gpx"
-        gpx_path.write_bytes(gpx_bytes)
-        route = analyze(str(gpx_path), osm=params.osm)
+    route = derive_products(get_core(gpx_bytes, osm=params.osm))
     md = build_table_markdown(
         route,
         imperial=(params.units == "imperial"),
@@ -128,17 +128,16 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
 
 
 def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):
-    from gpxsheet import analyze
+    from gpxsheet.analysis import derive_products
 
-    with tempfile.TemporaryDirectory() as tmp:
-        gpx_path = Path(tmp) / "route.gpx"
-        gpx_path.write_bytes(gpx_bytes)
-        return analyze(
-            str(gpx_path),
-            profile=params.profile,
-            fuel_range=params.fuel_range,
-            include_hazards=include_hazards,
-        )
+    from .analysis_cache import get_core
+
+    return derive_products(
+        get_core(gpx_bytes, osm=True),
+        profile=params.profile,
+        fuel_range=params.fuel_range,
+        include_hazards=include_hazards,
+    )
 
 
 def _analyze_dict(gpx_bytes: bytes, params: ReportParams) -> tuple[dict, str | None]:
