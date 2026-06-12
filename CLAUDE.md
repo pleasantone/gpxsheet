@@ -32,6 +32,24 @@ offline). Backend seam: `src/gpxsheet/table.py`; web op `"table"` → `/v1/table
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.
 
+### Running commands here (Bash gotchas)
+
+- **Foreground `sleep` is blocked.** The harness rejects `sleep N && <check>`
+  and `sleep`-based polling. To wait on a condition, use `Monitor` with an
+  `until <check>; do sleep 2; done` loop, or start the work with
+  `run_in_background: true` and wait for the completion notification.
+- **Don't use rtk in this repo.** Its output compaction silently swallows
+  results (e.g. `grep` over `tests/` reported "0 matches in 0 files" for
+  patterns that *did* match), which sends you down false trails. Run commands
+  raw (`rtk run <cmd>`) or bypass rtk entirely; trust unfiltered output here.
+- **Live OSM/Overpass needs FOREGROUND + `dangerouslyDisableSandbox`.**
+  Background Bash (`run_in_background: true`) runs sandboxed with **no network**,
+  so Overpass calls fail with `Connection refused` and fall back to
+  geometry-only (no branches/decisions). Foreground + `dangerouslyDisableSandbox`
+  reaches `overpass-api.de` fine. Mind the 10-min foreground cap — a full route
+  (e.g. `basecamp-route.gpx`, ~195 mi) won't finish; clip to ~30 mi for live
+  renders. `cd`/cwd does not persist between Bash calls, so use absolute paths.
+
 ### Frontend + dev server modes
 
 The web UI lives in `frontend/` and builds to `src/gpxsheet/service/static/`
