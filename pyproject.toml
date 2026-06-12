@@ -32,10 +32,12 @@ classifiers = [
 # GPX parsing, the schematic renderer, the CLI, and OSM enrichment (osmnx pulls
 # in the geopandas/networkx geo stack; shapely is used directly by enrich.py).
 dependencies = [
+    "astral>=3.2",          # sunrise/sunset for the route table
     "gpxpy>=1.6",
-    "gpxtable>=2.2",  # route-table output (markdown/HTML); pulls markdown2 + astral + dateutil
+    "markdown2>=2.5",       # route-table markdown -> HTML
     "matplotlib>=3.8",
     "osmnx>=2.0",
+    "python-dateutil>=2.9",  # natural-language departure-time parsing
     "shapely>=2.0",
     "typer>=0.12",
 ]

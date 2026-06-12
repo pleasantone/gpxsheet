@@ -8,12 +8,12 @@ and offline.
 from __future__ import annotations
 
 import warnings
+from datetime import datetime
 
 import pytest
 
 from gpxsheet import analyze
-from gpxsheet.routetable import build_table_markdown, markdown_to_html
-from gpxsheet.table import parse_departure
+from gpxsheet.routetable import build_table_markdown, markdown_to_html, parse_departure
 
 
 @pytest.fixture
@@ -106,3 +106,23 @@ def test_no_osm_skips_enrichment(enrich_route_file):
     # --no-osm stays fully offline: no Overpass call, no discovered fuel.
     route = analyze(str(enrich_route_file), osm=False)
     assert route.fuel_stops == []
+
+
+def test_parse_departure_optional():
+    assert parse_departure(None, None) == (None, None)
+
+
+def test_parse_departure_returns_datetime_and_tz():
+    depart_at, tz = parse_departure("9:00 AM", "US/Pacific")
+    assert isinstance(depart_at, datetime)
+    assert tz is not None
+
+
+def test_parse_departure_bad_time():
+    with pytest.raises(ValueError, match="invalid departure time"):
+        parse_departure("not-a-time", None)
+
+
+def test_parse_departure_bad_timezone():
+    with pytest.raises(ValueError, match="unknown timezone"):
+        parse_departure(None, "Mars/Olympus_Mons")

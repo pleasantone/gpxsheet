@@ -98,10 +98,14 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
     Runs the analysis (OSM on by default; ``--no-osm`` for a fast offline table)
     so the table inherits auto-discovered fuel and road-snapped distance.
     """
-    from gpxsheet import analyze, table
-    from gpxsheet.routetable import build_table_markdown, markdown_to_html
+    from gpxsheet import analyze
+    from gpxsheet.routetable import (
+        build_table_markdown,
+        markdown_to_html,
+        parse_departure,
+    )
 
-    depart_at, tz = table.parse_departure(params.departure, params.timezone)
+    depart_at, tz = parse_departure(params.departure, params.timezone)
     with tempfile.TemporaryDirectory() as tmp:
         gpx_path = Path(tmp) / "route.gpx"
         gpx_path.write_bytes(gpx_bytes)

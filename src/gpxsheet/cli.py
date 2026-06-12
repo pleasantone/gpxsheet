@@ -176,8 +176,7 @@ def table(
     table. Output format follows the ``-o`` extension (``.md`` → markdown, else
     HTML). ETAs require ``--departure``.
     """
-    from .routetable import render_table
-    from .table import parse_departure
+    from .routetable import parse_departure, render_table
 
     if output is None:
         output = Path("route_table.html")

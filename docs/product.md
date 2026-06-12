@@ -202,18 +202,19 @@ route = gpxsheet.analyze("route.gpx", fuel_range=180)
 report = gpxsheet.validate("route.gpx", fuel_range=180)
 ```
 
-A fourth output, the **route table**, wraps the separate
-[GPXtable](https://github.com/pleasantone/GPXtable) library (`gpxtable` on PyPI) to
-produce a markdown/HTML table of waypoints, distances, fuel/lunch markers and ETAs. It
-reads the GPX waypoints directly and is independent of the OSM `analyze` pipeline (fully
-offline). See `src/gpxsheet/table.py` and the `gpxsheet table` CLI command.
+A fourth output, the **route table**, renders a markdown/HTML table of waypoints,
+distances, fuel/lunch markers and ETAs natively from the `analyze` pipeline, so it
+inherits OSM enrichment (auto-discovered fuel, road-snapped distance). OSM is on by
+default with a `--no-osm` fast offline path; ETAs need `--departure`. See
+`src/gpxsheet/routetable.py` (plus `waypoints.py` for stop classification and
+`timing.py` for ETA/sun) and the `gpxsheet table` CLI command.
 
 ---
 
 ## Web Service (built)
 
 Implemented as a FastAPI app (the `service` extra). Each operation is an async job
-created by a typed POST — `/v1/render` (a map), `/v1/table` (a GPXtable route table,
+created by a typed POST — `/v1/render` (a map), `/v1/table` (a route table,
 HTML/markdown), `/v1/analyze` and `/v1/validate` (JSON reports) — with the GPX and
 parameters as multipart form fields. Submit
 returns a job (`202` + `Location`, or `200` if already cached); poll

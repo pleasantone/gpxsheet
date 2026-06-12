@@ -35,11 +35,12 @@ Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`); the SPA exposes i
 under a **Table** tab (vs the **Sheet** tab).
 
 `src/gpxsheet/gpx.py` lifts named, non-shaping plain `<rtept>`s to waypoints (not
-just Garmin ViaPoints), so plain `<rte>` stops drive POIs / the table. The old
-`gpxtable`-wrapping path (`src/gpxsheet/table.py`) is **retained** as a parity
-oracle and for `parse_departure` / the shared markdown2→HTML styling; `gpxtable`
-stays a core dep for now. Distances are corrected vs GPXtable, whose route path
-lags distance by one point (drops the final leg).
+just Garmin ViaPoints), so plain `<rte>` stops drive POIs / the table. The
+`gpxtable` runtime dependency is **gone** — the table is fully native; `astral`,
+`markdown2` and `python-dateutil` are now direct deps. `routetable.py` carries
+`parse_departure` + `markdown_to_html` (the HTML table keeps the `gpxtable` CSS
+class the SPA styles). Distances are correct, unlike GPXtable's route path, which
+lags by one point (drops the final leg).
 
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.

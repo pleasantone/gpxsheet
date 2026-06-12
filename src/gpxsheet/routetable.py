@@ -194,10 +194,45 @@ def _sun_line(
 
 
 def markdown_to_html(md: str) -> str:
-    """Convert table markdown to HTML (delegates to the shared GPXtable styling)."""
-    from .table import markdown_to_html as _to_html
+    """Convert table markdown to HTML, with a ``gpxtable`` CSS class on the table
+    (the SPA styles ``.gpxtable``) and raw HTML escaped."""
+    import markdown2
 
-    return _to_html(md)
+    return markdown2.markdown(
+        md,
+        extras={"tables": None, "html-classes": {"table": "gpxtable"}},
+        safe_mode="escape",
+    )
+
+
+def parse_departure(
+    departure: str | None, timezone: str | None
+) -> tuple[datetime | None, tzinfo | None]:
+    """Turn the API/CLI ``departure`` + ``timezone`` strings into ``(depart_at, tz)``.
+
+    Both are optional. ``departure`` accepts natural language ("9:00 AM",
+    "July 4 2pm") or ISO, defaulting unspecified fields to today at the top of the
+    hour. Raises ``ValueError`` on an unparseable date or unknown timezone.
+    """
+    import dateutil.parser
+    import dateutil.tz
+
+    tz: tzinfo | None = None
+    if timezone:
+        tz = dateutil.tz.gettz(timezone)
+        if tz is None:
+            raise ValueError(f"unknown timezone {timezone!r}")
+
+    depart_at: datetime | None = None
+    if departure:
+        default = datetime.now(tz or dateutil.tz.tzlocal()).replace(
+            minute=0, second=0, microsecond=0
+        )
+        try:
+            depart_at = dateutil.parser.parse(departure, default=default)
+        except (ValueError, OverflowError) as exc:
+            raise ValueError(f"invalid departure time {departure!r}: {exc}") from exc
+    return depart_at, tz
 
 
 # Output formats the native renderer accepts, and their file extensions.
