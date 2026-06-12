@@ -13,6 +13,7 @@ These map directly onto the Route Graph Model in docs/product.md::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from .geo import meters_to_miles
 
@@ -28,12 +29,20 @@ class GeoPoint:
 
 @dataclass(frozen=True, slots=True)
 class Waypoint:
-    """A named point of interest from the GPX (<wpt>) or OSM enrichment."""
+    """A named point of interest from the GPX (<wpt>) or OSM enrichment.
+
+    ``arrival_time``/``departure_time`` are best-effort, display-only metadata
+    carried by Garmin BaseCamp route via points (``trp:ViaPoint``); they are
+    optional, frequently absent, and never feed distance/ETA math. See
+    docs/basecamp-routes.md.
+    """
 
     lat: float
     lon: float
     name: str | None = None
     symbol: str | None = None
+    arrival_time: datetime | None = None
+    departure_time: datetime | None = None
 
 
 class DecisionKind:

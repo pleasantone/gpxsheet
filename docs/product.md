@@ -107,12 +107,25 @@ The rider should never need to ask:
 <wpt>
 ```
 
+### GPX Route (Garmin BaseCamp / Trip Planner)
+
+```xml
+<rte> + gpxx:RoutePointExtension/gpxx:rpt + trp:ViaPoint
+```
+
+A BaseCamp route stores its real road-snapped geometry inside per-`<rtept>`
+`gpxx:RoutePointExtension`/`gpxx:rpt` extensions (not the sparse `<rtept>` list),
+and tags announced stops with `trp:ViaPoint`. The loader reconstructs the dense
+track from the `rpt` children and lifts via points to waypoints (shaping points
+excluded); optional via arrival/departure times are kept as display-only metadata.
+See [basecamp-routes.md](basecamp-routes.md).
+
 ---
 
 ## Future Support
 
 * Kurviger exports
-* Garmin BaseCamp exports
+* Furkot exports
 * REVER exports
 * Combined route/track files
 
@@ -830,7 +843,8 @@ without needing to interpret a traditional map, tulip diagram, or turn-by-turn G
 ## Milestone progress
 
 * **Milestone 1 — Route analysis engine: ✅ complete.**
-  GPX loading (track/route/waypoint), geometry cleanup (RDP), decision-point
+  GPX loading (track/route/waypoint, incl. Garmin BaseCamp routes — see
+  [basecamp-routes.md](basecamp-routes.md)), geometry cleanup (RDP), decision-point
   detection, reassurance markers, fuel analysis, segmentation, `analyze` text
   output, and OSM enrichment — all implemented and tuned against real tracks.
 * **Milestone 2 — Schematic map-strip renderer: ✅ complete.**
