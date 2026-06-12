@@ -108,6 +108,33 @@ Return values:
 
 ::: gpxsheet.routetable.render_table
 
+## Day cards
+
+A per-day, read-ahead briefing (distance, climb, sunset / riding-after-dark,
+passes, scenic stops, and cautions) — distinct from the tank-bag table/sheet. Lives
+in `gpxsheet.daycard` (not the top-level namespace):
+
+```python
+from gpxsheet.daycard import render_day_cards, build_day_cards
+from gpxsheet.routetable import parse_departure
+
+depart, tz = parse_departure("Sat 8am", "US/Pacific")
+render_day_cards("route.gpx", "cards.md", fmt="markdown", departure=depart, tz=tz)
+# fmt is "markdown" | "html" | "json"; the sun/after-dark sections need a departure.
+```
+
+Return values:
+
+- `render_day_cards(gpx_source, output_path, …)` → `pathlib.Path` — analyzes and
+  writes md/HTML/JSON cards.
+- `build_day_cards(route, …)` → `list[DayCard]` — builds the cards from an already
+  analyzed [`Route`](#route). Each `DayCard` has `index`, `name`, `date`, `miles`,
+  `moving_time`, `arrive`, `elevation_gain_ft`, `passes`, `scenic`, `gravel`,
+  `no_services`, a `sun` summary, and a `warnings` list of [`Finding`](#validationreport-and-finding)
+  (`.to_dict()` gives the JSON view). See
+  [day-cards-design.md](day-cards-design.md) for the roadmap (live weather/smoke/
+  wildfire/cell are later phases).
+
 ## Lower-level helpers
 
 `load_route` returns an un-analyzed [`Route`](#route) (geometry + raw waypoints

@@ -62,4 +62,5 @@ nav:
   - Development:
       - Workflow: dev-workflow.md
       - Garmin BaseCamp routes: basecamp-routes.md
+      - Day cards (design): day-cards-design.md
   - Design notes: product.md

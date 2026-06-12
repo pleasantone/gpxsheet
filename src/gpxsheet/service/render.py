@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from .models import RenderParams, ReportParams, TableParams
+from .models import DayCardParams, RenderParams, ReportParams, TableParams
 
 _CONTENT_TYPES = {
     "pdf": "application/pdf",
@@ -56,6 +56,9 @@ def run_job(op: str, gpx_bytes: bytes, params: BaseModel) -> JobResult:
         if op == "table":
             assert isinstance(params, TableParams)
             return _table_result(gpx_bytes, params)
+        if op == "daycard":
+            assert isinstance(params, DayCardParams)
+            return _daycard_result(gpx_bytes, params)
         raise ValueError(f"unknown job op {op!r}")
 
 
@@ -141,6 +144,50 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
     else:
         data, ext = md.encode(), "md"
     content_type = _CONTENT_TYPES["html" if params.format == "html" else "markdown"]
+    return data, content_type, ext, _safe_filename(route.name, ext)
+
+
+def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
+    """Per-day read-ahead cards as markdown / HTML / JSON (for ``/v1/daycard``)."""
+    from gpxsheet import perf
+    from gpxsheet.analysis import derive_products
+    from gpxsheet.daycard import (
+        build_day_cards,
+        build_day_cards_json,
+        build_day_cards_markdown,
+    )
+    from gpxsheet.routetable import markdown_to_html, parse_departure
+
+    from .analysis_cache import get_core
+
+    perf.annotate(fmt=params.format, osm=params.osm, profile=params.profile)
+    depart_at, tz = parse_departure(params.departure, params.timezone)
+    imperial = params.units == "imperial"
+    core = get_core(gpx_bytes, osm=params.osm)
+    route = derive_products(
+        core, profile=params.profile, fuel_range=params.fuel_range, include_hazards=True
+    )
+    with perf.span("daycard.build"):
+        cards = build_day_cards(
+            route,
+            departure=depart_at,
+            tz=tz,
+            imperial=imperial,
+            speed=params.speed,
+            fuel_range=params.fuel_range,
+            osm=params.osm,
+        )
+    if params.format == "json":
+        data, ext = build_day_cards_json(cards).encode(), "json"
+    elif params.format == "html":
+        md = build_day_cards_markdown(cards, imperial=imperial, tz=tz)
+        data, ext = markdown_to_html(md).encode(), "html"
+    else:
+        md = build_day_cards_markdown(cards, imperial=imperial, tz=tz)
+        data, ext = md.encode(), "md"
+    content_type = _CONTENT_TYPES[
+        {"json": "json", "html": "html", "markdown": "markdown"}[params.format]
+    ]
     return data, content_type, ext, _safe_filename(route.name, ext)
 
 

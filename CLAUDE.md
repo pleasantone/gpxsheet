@@ -53,6 +53,15 @@ from `decision_points`), and **per-day sections** for multi-`<trk>` routes
 Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`/`cue`); the SPA
 exposes it under a **Table** tab (vs the **Sheet** tab).
 
+`src/gpxsheet/daycard.py` is the **day card** — a per-day, *read-ahead* briefing
+(distance/climb, sunset + riding-after-dark, passes/scenic, gravel/construction/
+wildlife, no-services gaps), distinct from the tank-bag sheet/table. Built on the
+analyzed `Route` + a best-effort OSM POI query; warnings reuse `validate.Finding`.
+CLI `daycard`, web op `"daycard"` → `/v1/daycard` (`DayCardParams`; md/HTML/JSON),
+lib `daycard.render_day_cards`/`build_day_cards`. **Phase 1 is offline**; live
+conditions (weather/smoke/wildfire/cell) are Phase 2/3 — design + provider plan in
+[docs/day-cards-design.md](docs/day-cards-design.md).
+
 `src/gpxsheet/gpx.py` lifts named, non-shaping plain `<rtept>`s to waypoints (not
 just Garmin ViaPoints), so plain `<rte>` stops drive POIs / the table. The
 `gpxtable` runtime dependency is **gone** — the table is fully native; `astral`,

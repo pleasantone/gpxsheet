@@ -798,6 +798,19 @@ conditional tags; see `gpxsheet.seasonal`.)
 
 ---
 
+## Day cards
+
+A per-day, **read-ahead** briefing (`gpxsheet.daycard`; CLI `daycard`,
+`/v1/daycard`) — distinct from the tank-bag sheet/table the rider glances at while
+moving. Each card summarizes the day's distance and moving time, climb, sunset and
+whether you'll be **riding after dark**, passes and scenic stops, and cautions
+(gravel, construction, wildlife, no-services gaps), as markdown / HTML / JSON. Phase
+1 is computed from the analyzed route + OSM; live conditions (weather, smoke/AQI,
+wildfire, cell coverage) are planned — see
+[day-cards-design.md](day-cards-design.md).
+
+---
+
 # Technology Stack (as built)
 
 | Concern            | Library              | Notes                                    |

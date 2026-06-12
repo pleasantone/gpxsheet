@@ -240,6 +240,29 @@ def test_table_invalid_format_rejected(client, l_route_file):
     assert _post(client, "/v1/table", l_route_file, format="pdf").status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("fmt", "content_type", "needle"),
+    [
+        ("markdown", "text/markdown", b"## Day"),
+        ("html", "text/html", b"<h2"),
+        ("json", "application/json", b'"warnings"'),
+    ],
+)
+def test_daycard_job(client, l_route_file, fmt, content_type, needle):
+    r = _post(client, "/v1/daycard", l_route_file, format=fmt, departure="8:00 AM")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "done"
+    assert body["content_type"] == content_type
+    res = client.get(f"/v1/jobs/{body['id']}/result")
+    assert res.status_code == 200
+    assert needle in res.content
+
+
+def test_daycard_invalid_format_rejected(client, l_route_file):
+    assert _post(client, "/v1/daycard", l_route_file, format="pdf").status_code == 422
+
+
 def test_table_bad_gpx_errors_job(client):
     bad = b'<gpx version="1.1"><trk><trkseg></trk></gpx>'  # mismatched tag
     r = client.post("/v1/table", files={"gpx": ("bad.gpx", bad, "application/gpx+xml")})

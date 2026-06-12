@@ -31,6 +31,8 @@ from .jobs import (
     prod_components,
 )
 from .models import (
+    DayCardForm,
+    DayCardParams,
     JobState,
     JobStatus,
     RenderForm,
@@ -422,6 +424,18 @@ def create_app(
     ) -> JobStatus:
         """Render a route table (HTML or markdown) as a job."""
         return submit_job("table", body.gpx, _to_params(body, TableParams), identity, response)
+
+    @app.post(
+        "/v1/daycard", status_code=202, response_model=JobStatus,
+        responses=_JOB_RESPONSES, dependencies=[Depends(rate_limited)],
+    )
+    def daycard(
+        body: Annotated[DayCardForm, Form()],
+        response: Response,
+        identity: str = Depends(client_identity),
+    ) -> JobStatus:
+        """Build per-day read-ahead cards (markdown / HTML / JSON) as a job."""
+        return submit_job("daycard", body.gpx, _to_params(body, DayCardParams), identity, response)
 
     @app.post(
         "/v1/analyze", status_code=202, response_model=JobStatus,

@@ -79,8 +79,31 @@ class TableParams(BaseModel):
     timezone: str | None = None
 
 
+class DayCardParams(ReportParams):
+    """Params for ``/v1/daycard`` (per-day read-ahead briefing).
+
+    Inherits ``profile``/``fuel_range`` from :class:`ReportParams`; ``departure``
+    (+24h per day) drives the sun / golden-hour / after-dark sections and is
+    optional (without it those are skipped). ``format`` is markdown/HTML/JSON.
+    """
+
+    format: str = Field("markdown", pattern="^(markdown|html|json)$")
+    departure: str | None = None
+    timezone: str | None = None
+    units: str = Field("imperial", pattern="^(imperial|metric)$")
+    speed: float = Field(0.0, ge=0)
+    osm: bool = True
+
+
 class ReportForm(ReportParams):
     """Multipart body for the report endpoints: the GPX upload plus the params."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    gpx: UploadFile
+
+
+class DayCardForm(DayCardParams):
+    """Multipart body for ``/v1/daycard``: the GPX upload plus the params."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     gpx: UploadFile
