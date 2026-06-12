@@ -22,11 +22,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-import socket
-import sys
 from dataclasses import replace
 from typing import NamedTuple
-from urllib.parse import urlsplit
 
 from .analysis import (
     CONTINUE_MAX_ANGLE_DEG,
@@ -75,99 +72,20 @@ def _configure_osm_cache(ox) -> None:
         ox.settings.cache_folder = cache_dir
 
 
-# Set once we've probed the Overpass host for this process (probe at most once).
-_overpass_pin_done = False
+def _configure_overpass_url(ox) -> None:
+    """Point osmnx at a different Overpass server when GPXSHEET_OVERPASS_URL is set.
 
-
-def _reachable(ip: str, port: int, timeout: float) -> bool:
-    """True if a TCP connection to ``ip:port`` succeeds within ``timeout`` seconds."""
-    try:
-        with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except OSError:
-        return False
-
-
-def _healthy_overpass_ip(host: str, timeout: float) -> str | None:
-    """An alternate reachable IPv4 for ``host`` when osmnx's default pick is down.
-
-    osmnx pins DNS via :func:`socket.gethostbyname` (IPv4 only), so the decision is
-    based on that address -- not ``getaddrinfo``'s order, which may lead with an
-    IPv6 record osmnx never uses. Returns ``None`` when the default already answers,
-    when resolution fails, or when no other IPv4 answers -- so a non-None result
-    always means "osmnx's IP is down but this other one is up".
+    ``overpass-api.de`` round-robins across mirrors and osmnx pins one IP per
+    process (``osmnx._http._config_dns``); when that mirror is down, every query
+    fails with ``ConnectionError`` and enrichment silently degrades to
+    geometry-only. osmnx exposes the endpoint as ``settings.overpass_url``, so the
+    fix is to point it at a healthy mirror (e.g. ``https://overpass.kumi.systems/api``)
+    or a self-hosted instance. Overriding by URL keeps a real hostname, so TLS SNI
+    and certificate validation still work. No-op when unset.
     """
-    try:
-        default = socket.gethostbyname(host)
-    except OSError:
-        return None
-    if _reachable(default, 443, timeout):
-        return None  # osmnx's pick is fine; leave DNS alone
-    try:
-        infos = socket.getaddrinfo(host, 443, family=socket.AF_INET, type=socket.SOCK_STREAM)
-    except OSError:
-        return None
-    candidates: list[str] = []
-    for info in infos:  # other IPv4s, deduped
-        ip = str(info[4][0])
-        if ip != default and ip not in candidates:
-            candidates.append(ip)
-    return next((ip for ip in candidates if _reachable(ip, 443, timeout)), None)
-
-
-def _install_overpass_pin(host: str, ip: str) -> None:
-    """Force socket name resolution of ``host`` to ``ip`` for this process.
-
-    osmnx pins DNS via :func:`socket.gethostbyname`; patch that (and
-    ``getaddrinfo`` for completeness) so only ``host`` is redirected, leaving the
-    hostname intact for TLS SNI / the HTTP ``Host`` header.
-    """
-    orig_gethostbyname = socket.gethostbyname
-    orig_getaddrinfo = socket.getaddrinfo
-
-    def gethostbyname(h: str) -> str:
-        return ip if h == host else orig_gethostbyname(h)
-
-    def getaddrinfo(h, *args, **kwargs):  # type: ignore[no-untyped-def]
-        return orig_getaddrinfo(ip if h == host else h, *args, **kwargs)
-
-    socket.gethostbyname = gethostbyname  # type: ignore[assignment]
-    socket.getaddrinfo = getaddrinfo  # type: ignore[assignment]
-
-
-def _pin_healthy_overpass_host(ox) -> None:
-    """Fail over Overpass DNS when round-robin hands out an unreachable mirror.
-
-    ``overpass-api.de`` resolves to several IPs; when one mirror is down, osmnx can
-    latch onto the dead IP and every query fails with ``ConnectionError``, silently
-    degrading enrichment to geometry-only (which floods twisty roads with false
-    turns). Probe the host once per process and, if its default IP is unreachable
-    but another answers, pin the reachable one.
-
-    Best-effort and side-effect-free on the happy path: skipped under pytest (keeps
-    the suite offline) and via ``GPXSHEET_NO_OVERPASS_PIN``; any probe failure
-    leaves resolution untouched.
-    """
-    global _overpass_pin_done
-    if (
-        _overpass_pin_done
-        or "pytest" in sys.modules
-        or os.getenv("GPXSHEET_NO_OVERPASS_PIN")
-    ):
-        return
-    _overpass_pin_done = True  # probe at most once, even if it fails
-    host = urlsplit(ox.settings.overpass_url).hostname
-    if not host:
-        return
-    timeout = float(os.getenv("GPXSHEET_OVERPASS_PROBE_TIMEOUT", "1.5"))
-    try:
-        ip = _healthy_overpass_ip(host, timeout)
-    except Exception:  # noqa: BLE001 - never let a probe error break enrichment
-        log.debug("Overpass host probe failed for %s", host, exc_info=True)
-        return
-    if ip:
-        log.info("Overpass host %s: default IP unreachable, pinning %s", host, ip)
-        _install_overpass_pin(host, ip)
+    overpass_url = os.getenv("GPXSHEET_OVERPASS_URL")
+    if overpass_url:
+        ox.settings.overpass_url = overpass_url
 
 
 class _Run(NamedTuple):
@@ -374,7 +292,7 @@ def enrich_route(
     import shapely.geometry as sg
 
     _configure_osm_cache(ox)
-    _pin_healthy_overpass_host(ox)
+    _configure_overpass_url(ox)
 
     total_m = route.length_m
     n = max(2, int(total_m / sample_spacing_m) + 1)
