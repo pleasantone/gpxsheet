@@ -38,10 +38,6 @@ geopandas; install fine on 3.14). Add `,service` for the web-service stack.
   and `sleep`-based polling. To wait on a condition, use `Monitor` with an
   `until <check>; do sleep 2; done` loop, or start the work with
   `run_in_background: true` and wait for the completion notification.
-- **Don't use rtk in this repo.** Its output compaction silently swallows
-  results (e.g. `grep` over `tests/` reported "0 matches in 0 files" for
-  patterns that *did* match), which sends you down false trails. Run commands
-  raw (`rtk run <cmd>`) or bypass rtk entirely; trust unfiltered output here.
 - **Live OSM/Overpass needs FOREGROUND + `dangerouslyDisableSandbox`.**
   Background Bash (`run_in_background: true`) runs sandboxed with **no network**,
   so Overpass calls fail with `Connection refused` and fall back to
