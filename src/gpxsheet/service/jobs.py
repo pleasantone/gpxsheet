@@ -73,6 +73,10 @@ class JobStore(Protocol):
     def update(self, job_id: str, **fields) -> None: ...
     def get_cached(self, cache_key: str) -> JobRecord | None: ...
     def ready(self) -> bool: ...
+    def jobs_ahead(self, job_id: str) -> int | None:
+        """Count still-pending jobs (queued/running) created before ``job_id``, or
+        None if the store can't order its queue. Used to report queue position."""
+        ...
 
 
 class InMemoryJobStore:
@@ -116,6 +120,17 @@ class InMemoryJobStore:
 
     def ready(self) -> bool:
         return True
+
+    def jobs_ahead(self, job_id: str) -> int | None:
+        # Insertion-ordered dict == creation order; count pending jobs before the
+        # target. Snapshot the items so a concurrent create() can't resize mid-scan.
+        ahead = 0
+        for jid, rec in list(self._jobs.items()):
+            if jid == job_id:
+                return ahead
+            if rec.status in ("queued", "running"):
+                ahead += 1
+        return None  # job_id not found
 
 
 class RedisJobStore:
@@ -165,6 +180,11 @@ class RedisJobStore:
         except Exception:  # noqa: BLE001 - any connectivity failure -> not ready
             return False
 
+    def jobs_ahead(self, job_id: str) -> int | None:
+        # The Dramatiq/Redis path has no cheap per-job queue ordering, so don't
+        # report a position here (the SPA simply omits it).
+        return None
+
 
 def process_job(
     store: JobStore, storage: Storage, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel
@@ -204,6 +224,43 @@ class EagerRunner:
 
     def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel) -> None:
         process_job(self._store, self._storage, job_id, op, gpx_bytes, params)
+
+
+class ThreadedRunner:
+    """Runs the render off the request path on an in-process thread pool.
+
+    A single-container alternative to the Dramatiq path: ``submit`` schedules the
+    render and returns immediately (so the HTTP request isn't held for the whole
+    render), while polling reads the evolving job state. ``concurrency`` defaults
+    to 1 because the renderers use matplotlib's non-thread-safe global pyplot, so
+    a one-worker pool serializes renders into a FIFO queue.
+    """
+
+    def __init__(self, store: JobStore, storage: Storage, concurrency: int = 1) -> None:
+        from concurrent.futures import ThreadPoolExecutor
+
+        self._store = store
+        self._storage = storage
+        self._pool = ThreadPoolExecutor(
+            max_workers=max(1, concurrency), thread_name_prefix="gpxrender"
+        )
+
+    def submit(self, job_id: str, op: str, gpx_bytes: bytes, params: BaseModel) -> None:
+        future = self._pool.submit(
+            process_job, self._store, self._storage, job_id, op, gpx_bytes, params
+        )
+        # process_job records its own failures on the job; this only catches an
+        # unexpected escape (e.g. the executor itself erroring) so it isn't swallowed.
+        future.add_done_callback(self._on_done)
+
+    @staticmethod
+    def _on_done(future) -> None:
+        exc = future.exception()
+        if exc is not None:
+            log.exception("background render task crashed", exc_info=exc)
+
+    def shutdown(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)
 
 
 class DramatiqRunner:

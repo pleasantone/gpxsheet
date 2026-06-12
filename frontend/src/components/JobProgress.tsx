@@ -23,10 +23,20 @@ export function JobProgress({ label, isPolling, jobStatus, error }: JobProgressP
   }
 
   if (isPolling || jobStatus?.status === "queued" || jobStatus?.status === "running") {
+    const ahead = jobStatus?.queue_position ?? 0;
+    const queued = jobStatus?.status === "queued" && ahead > 0;
     return (
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <Spinner className="w-4 h-4 text-brand shrink-0" />
-        <span>{label}…</span>
+        <span>
+          {label}…
+          {queued && (
+            <span className="text-slate-400">
+              {" "}
+              waiting — {ahead} {ahead === 1 ? "job" : "jobs"} ahead
+            </span>
+          )}
+        </span>
       </div>
     );
   }

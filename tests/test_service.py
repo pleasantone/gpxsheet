@@ -12,7 +12,7 @@ pytest.importorskip("dramatiq")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from gpxsheet.service.app import create_app  # noqa: E402
-from gpxsheet.service.jobs import EagerRunner, InMemoryJobStore  # noqa: E402
+from gpxsheet.service.jobs import EagerRunner, InMemoryJobStore, ThreadedRunner  # noqa: E402
 from gpxsheet.service.models import RenderParams  # noqa: E402
 from gpxsheet.service.storage import LocalStorage  # noqa: E402
 
@@ -112,6 +112,64 @@ def test_queued_job_returns_202_then_425(tmp_path, l_route_file):
     res = client.get(f"/v1/jobs/{r.json()['id']}/result")
     assert res.status_code == 425
     assert res.headers["retry-after"]
+
+
+def test_background_runner_renders_off_request_path(tmp_path, l_route_file):
+    # ThreadedRunner returns from submit immediately, so the POST comes back 202
+    # (queued/running) rather than a synchronous 200; polling then reaches done.
+    import time
+
+    store = InMemoryJobStore()
+    storage = LocalStorage(tmp_path / "results")
+    runner = ThreadedRunner(store, storage, concurrency=1)
+    client = TestClient(create_app(store, storage, runner))
+    try:
+        r = _post(client, "/v1/render", l_route_file, layout="landscape")
+        assert r.status_code == 202, r.text
+        body = r.json()
+        assert body["status"] in ("queued", "running")
+        assert r.headers["location"] == f"/v1/jobs/{body['id']}"
+        job_id = body["id"]
+
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            status = client.get(f"/v1/jobs/{job_id}").json()["status"]
+            if status in ("done", "error"):
+                break
+            time.sleep(0.05)
+        assert status == "done"
+
+        res = client.get(f"/v1/jobs/{job_id}/result")
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "application/pdf"
+        assert res.content[:4] == PDF_MAGIC
+    finally:
+        runner.shutdown()
+
+
+def test_queue_position_reports_jobs_ahead(tmp_path, l_route_file):
+    # With a runner that never drains the queue, successive jobs report how many
+    # pending jobs sit ahead of them (0, 1, 2 …).
+    class _NoopRunner:
+        def submit(self, *args, **kwargs):
+            pass
+
+    store = InMemoryJobStore()
+    client = TestClient(create_app(store, LocalStorage(tmp_path / "r"), _NoopRunner()))
+    ids = []
+    for layout in ("portrait", "landscape", "preview"):
+        r = _post(client, "/v1/render", l_route_file, layout=layout)
+        assert r.status_code == 202
+        ids.append(r.json()["id"])
+    for expected, job_id in enumerate(ids):
+        assert client.get(f"/v1/jobs/{job_id}").json()["queue_position"] == expected
+
+
+def test_done_job_has_no_queue_position(client, l_route_file):
+    # The eager path completes in-request, so a finished job carries no position.
+    r = _post(client, "/v1/render", l_route_file)
+    assert r.json()["status"] == "done"
+    assert r.json()["queue_position"] is None
 
 
 def test_render_auto_fit_accepted(client, l_route_file):

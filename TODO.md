@@ -3,14 +3,6 @@
 Planned work, queued. As-built status lives in [docs/product.md](docs/product.md);
 architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
-## Features (requested)
-
-- **Front end for the service** — a small, secure web UI (upload GPX → choose
-  profile/orientation/paper/OSM → live preview image → download PDF). Must be
-  hardened for **public internet exposure** (ties into the security audit: auth,
-  CSRF, CSP, rate limits, no creds in the browser, served behind TLS/reverse
-  proxy). Decide SPA vs server-rendered; keep deps minimal.
-
 ## Analysis (open)
 
 - **Seasonal-closure risk check** — `validate.validate_route` only emits an INFO

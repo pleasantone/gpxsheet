@@ -6,6 +6,9 @@ export interface JobStatus {
   error?: string;
   result_url?: string;
   content_type?: string;
+  // Jobs ahead of this one in the worker queue while it waits (null/omitted once
+  // it starts or finishes, or when the backend can't order the queue).
+  queue_position?: number | null;
 }
 
 export interface DecisionPoint {

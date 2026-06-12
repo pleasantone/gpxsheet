@@ -52,6 +52,14 @@ make infra-down     # stop containers
 Non-obvious: `service/static/` must exist for the SPA to be served at `/`.
 Without the build, `/` falls through to Swagger at `/docs`.
 
+Runner selection (in `default_components`): `GPXSHEET_REDIS_URL` → Dramatiq/Redis;
+else `GPXSHEET_BACKGROUND_RENDER=1` → in-process thread pool (submit returns at
+once, client polls — keeps a slow render from holding the request past a proxy
+timeout); else the synchronous `EagerRunner` (the dev/test default). The Docker
+image (Hugging Face Space) sets `GPXSHEET_BACKGROUND_RENDER=1`. Concurrency stays
+1 (`GPXSHEET_RENDER_CONCURRENCY`): the renderers use global matplotlib `pyplot`,
+which is not thread-safe, so renders serialize.
+
 Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
 `git submodule update --init` to populate it.
 

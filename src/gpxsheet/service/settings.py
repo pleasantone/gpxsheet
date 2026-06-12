@@ -14,6 +14,22 @@ def redis_url() -> str | None:
     return os.getenv("GPXSHEET_REDIS_URL") or None
 
 
+def background_render() -> bool:
+    """Run renders off the request path on an in-process worker thread (single
+    container, no Redis/queue). Lets ``submit`` return immediately so long renders
+    don't hold the HTTP connection past a proxy timeout (e.g. Hugging Face).
+    Ignored when a Redis URL is set (the Dramatiq path takes precedence). Off by
+    default so dev/tests keep the deterministic synchronous EagerRunner."""
+    return os.getenv("GPXSHEET_BACKGROUND_RENDER", "").lower() in ("1", "true", "yes")
+
+
+def render_concurrency() -> int:
+    """Background-render worker threads. Keep at 1: the renderers use matplotlib's
+    global pyplot state, which is not thread-safe, so renders must serialize.
+    Raising this requires porting the renderers to the matplotlib OO API."""
+    return int(os.getenv("GPXSHEET_RENDER_CONCURRENCY", "1"))
+
+
 def results_dir() -> str:
     return os.getenv("GPXSHEET_RESULTS_DIR", "/tmp/gpxsheet-results")
 

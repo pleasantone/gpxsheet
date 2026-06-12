@@ -8,6 +8,8 @@ import logging
 import secrets
 import time
 from collections import defaultdict
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -25,6 +27,7 @@ from .jobs import (
     JobRecord,
     JobStore,
     TaskRunner,
+    ThreadedRunner,
     prod_components,
 )
 from .models import (
@@ -200,12 +203,16 @@ def _to_params(form: BaseModel, model: type[BaseModel]) -> BaseModel:
 
 
 def default_components() -> tuple[JobStore, Storage, TaskRunner]:
-    """Prod path (Redis + MinIO + Dramatiq) if a Redis URL is set, else dev path."""
+    """Prod path (Redis + MinIO + Dramatiq) if a Redis URL is set; else a single-
+    process path that renders either in-request (EagerRunner) or off the request
+    path on a thread pool (ThreadedRunner) when GPXSHEET_BACKGROUND_RENDER is set."""
     if settings.redis_url():
         store, storage = prod_components()
         return store, storage, DramatiqRunner()
     mem = InMemoryJobStore()
     local = LocalStorage(settings.results_dir())
+    if settings.background_render():
+        return mem, local, ThreadedRunner(mem, local, settings.render_concurrency())
     return mem, local, EagerRunner(mem, local)
 
 
@@ -251,7 +258,23 @@ def create_app(
     if cache_problem:
         log.error("%s — OSM enrichment will degrade to geometry-only", cache_problem)
 
-    app = FastAPI(title="GPXSheet", version="0.1.0", summary="GPX → tank-bag navigation PDFs")
+    # Let an in-process runner (ThreadedRunner) drain its thread pool on shutdown
+    # so a reload/stop doesn't hang on an in-flight render.
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            shutdown = getattr(runner, "shutdown", None)
+            if callable(shutdown):
+                shutdown()
+
+    app = FastAPI(
+        title="GPXSheet",
+        version="0.1.0",
+        summary="GPX → tank-bag navigation PDFs",
+        lifespan=_lifespan,
+    )
     app.add_middleware(_SecurityHeadersMiddleware, hsts=hsts, frame_ancestors=frames)
     if origins:
         app.add_middleware(
@@ -305,12 +328,16 @@ def create_app(
         result_url = None
         if rec.status == "done" and rec.result_key:
             result_url = storage.url(rec.result_key) or f"/v1/jobs/{rec.id}/result"
+        # While the job is still waiting/working, tell the client how many jobs are
+        # ahead of it in the (single-worker) queue, so a backlog is visible.
+        queue_position = store.jobs_ahead(rec.id) if rec.status in ("queued", "running") else None
         return JobStatus(
             id=rec.id,
             status=JobState(rec.status),
             error=rec.error,
             result_url=result_url,
             content_type=rec.content_type,
+            queue_position=queue_position,
         )
 
     def submit_job(
