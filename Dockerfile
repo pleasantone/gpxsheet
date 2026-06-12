@@ -14,9 +14,14 @@ RUN npm run build
 # Stage 2: the Python service.
 FROM python:3.14-slim
 
+# GPXSHEET_BACKGROUND_RENDER renders off the request path on an in-process thread
+# (single container, no queue) so long renders don't hold the HTTP connection past
+# a proxy timeout (e.g. Hugging Face). Overridden by GPXSHEET_REDIS_URL when the
+# full Dramatiq/Redis path is configured (compose), which takes precedence.
 ENV PYTHONUNBUFFERED=1 \
     GPXSHEET_RESULTS_DIR=/tmp/gpxsheet-results \
-    GPXSHEET_OSM_CACHE_DIR=/tmp/gpxsheet-osm-cache
+    GPXSHEET_OSM_CACHE_DIR=/tmp/gpxsheet-osm-cache \
+    GPXSHEET_BACKGROUND_RENDER=1
 
 WORKDIR /app
 

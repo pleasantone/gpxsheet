@@ -106,3 +106,7 @@ class JobStatus(BaseModel):
     error: str | None = None
     result_url: str | None = None
     content_type: str | None = None  # of the result artifact, once done
+    # Number of still-pending jobs (queued or running) ahead of this one in the
+    # worker queue, while this job is itself waiting. None once it starts/finishes,
+    # or when the backend can't order the queue (e.g. the Dramatiq/Redis path).
+    queue_position: int | None = None
