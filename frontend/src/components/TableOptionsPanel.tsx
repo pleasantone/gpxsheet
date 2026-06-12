@@ -76,6 +76,20 @@ export function TableOptionsPanel({ opts, onChange, disabled }: TableOptionsPane
       <Row label="Options">
         <div className="space-y-2">
           <Checkbox
+            testId="tbl-osm"
+            checked={opts.osm}
+            onChange={(v) => set("osm", v)}
+            label="OSM enrichment (auto fuel, road names)"
+            disabled={disabled}
+          />
+          <Checkbox
+            testId="tbl-cue"
+            checked={opts.cue}
+            onChange={(v) => set("cue", v)}
+            label="Turn-by-turn cue sheet"
+            disabled={disabled}
+          />
+          <Checkbox
             testId="tbl-coordinates"
             checked={opts.coordinates}
             onChange={(v) => set("coordinates", v)}

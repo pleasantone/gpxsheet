@@ -111,6 +111,8 @@ export function submitTable(
     units: opts.units,
     speed: String(opts.speed),
     coordinates: String(opts.coordinates),
+    osm: String(opts.osm),
+    cue: String(opts.cue),
     ...(opts.departure ? { departure: opts.departure } : {}),
     ...(opts.timezone ? { timezone: opts.timezone } : {}),
   });
