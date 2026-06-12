@@ -117,6 +117,7 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
         departure=depart_at,
         tz=tz,
         display_coordinates=params.coordinates,
+        show_cue=params.cue,
     )
     if params.format == "html":
         data, ext = markdown_to_html(md).encode(), "html"

@@ -108,6 +108,28 @@ def test_no_osm_skips_enrichment(enrich_route_file):
     assert route.fuel_stops == []
 
 
+def test_cue_sheet_section(analyzed):
+    from gpxsheet.models import Branch, DecisionPoint
+
+    analyzed.decision_points = [
+        DecisionPoint(
+            mile=5.0, instruction="Right onto Skyline Blvd", significance=50,
+            lat=38.1, lon=-122.05,
+            branches=(Branch("left", -90.0, "Kings Mountain Rd"),),
+        ),
+    ]
+    depart, tz = parse_departure("9:00 AM", "US/Pacific")
+    md = build_table_markdown(analyzed, departure=depart, tz=tz, show_cue=True)
+    assert "## Turn-by-turn" in md
+    assert "Right onto Skyline Blvd" in md
+    assert "skip Kings Mountain Rd" in md  # named road not taken
+    assert "| Mile |  ETA  | Cue" in md
+
+
+def test_cue_sheet_absent_by_default(analyzed):
+    assert "## Turn-by-turn" not in build_table_markdown(analyzed)
+
+
 def test_road_column_appears_with_osm_names(analyzed):
     from gpxsheet.models import Segment
 

@@ -161,6 +161,9 @@ def table(
     coordinates: bool = typer.Option(
         False, "--coordinates", help="Include latitude/longitude columns."
     ),
+    cue: bool = typer.Option(
+        False, "--cue", help="Append a turn-by-turn cue sheet from decision points."
+    ),
     osm: bool = typer.Option(
         True, "--osm/--no-osm",
         help="Enrich via OSM (auto fuel, road-snapped distance); --no-osm is fast/offline.",
@@ -192,6 +195,7 @@ def table(
             speed=speed,
             departure=depart_at,
             display_coordinates=coordinates,
+            show_cue=cue,
             tz=tz,
             osm=osm,
         )

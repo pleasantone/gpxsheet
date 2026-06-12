@@ -74,6 +74,7 @@ class TableParams(BaseModel):
     speed: float = Field(0.0, ge=0)
     units: str = Field("imperial", pattern="^(imperial|metric)$")
     coordinates: bool = False
+    cue: bool = False
     osm: bool = True
     timezone: str | None = None
 

@@ -131,6 +131,56 @@ def _fmt_layover(layover: timedelta) -> str:
     return f" (+{str(layover)[:-3]})" if layover else ""
 
 
+def _fmt_mile(mile: float, imperial: bool) -> str:
+    """A one-decimal distance marker (miles imperial, km metric), no unit."""
+    return f"{mile:.1f}" if imperial else f"{mile / KM_TO_MILES:.1f}"
+
+
+def _layover_before(mile: float, rows: list[_Row], classes: list) -> timedelta:
+    """Total layover of interior stops reached before ``mile`` (for cue ETAs)."""
+    total = timedelta()
+    last = len(rows) - 1
+    for i, (row, cls) in enumerate(zip(rows, classes, strict=True)):
+        if 0 < i < last and meters_to_miles(row.distance_m) < mile:
+            total += timedelta(minutes=cls.delay)
+    return total
+
+
+def _cue_lines(
+    route: Route,
+    rows: list[_Row],
+    classes: list,
+    *,
+    imperial: bool,
+    departure: datetime | None,
+    tz: tzinfo | None,
+    profile: SpeedProfile,
+) -> list[str]:
+    """A ``## Turn-by-turn`` cue table from the route's decision points.
+
+    Columns are ``Mile | [ETA] | Cue``; the ETA column appears only with a
+    departure. The cue is the decision instruction plus any named roads not taken.
+    """
+    eta_on = departure is not None
+    lines = ["", "## Turn-by-turn"]
+    lines.append("| Mile |  ETA  | Cue" if eta_on else "| Mile | Cue")
+    lines.append("| ---: | ----: | :--" if eta_on else "| ---: | :--")
+    for d in route.decision_points:
+        cue = d.instruction
+        skipped = [b.name for b in d.branches if b.name]
+        if skipped:
+            cue += f" — skip {', '.join(skipped)}"
+        mile = _fmt_mile(d.mile, imperial)
+        if eta_on:
+            assert departure is not None
+            arrival = departure + profile.time_to(d.mile) + _layover_before(d.mile, rows, classes)
+            eta = arrival.astimezone(tz).strftime("%H:%M")
+            lines.append(f"| {mile:>4} | {eta:>5} | {cue}")
+        else:
+            lines.append(f"| {mile:>4} | {cue}")
+    return lines
+
+
 def _road_at(route: Route, mile: float) -> str | None:
     """The OSM road name covering ``mile`` (None for a gap or a 'Leg N' segment)."""
     for seg in route.segments:
@@ -192,12 +242,14 @@ def build_table_markdown(
     departure: datetime | None = None,
     tz: tzinfo | None = None,
     display_coordinates: bool = False,
+    show_cue: bool = False,
     classifier: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render ``route`` to GPXtable's markdown table format.
 
     ``speed`` of 0 uses the 30 mph default. ``departure`` enables the ETA column
-    and the sunrise/sunset almanac line.
+    and the sunrise/sunset almanac line. ``show_cue`` appends a turn-by-turn cue
+    table from the route's decision points.
     """
     rows = _collect_rows(route)
     profile, speed_line = _resolve_speed_profile(route, speed, imperial)
@@ -227,6 +279,11 @@ def build_table_markdown(
     almanac = _sun_line(route, rows, timings, tz)
     if almanac:
         lines += ["", f"* {almanac}"]
+    if show_cue and route.decision_points:
+        lines += _cue_lines(
+            route, rows, classes,
+            imperial=imperial, departure=departure, tz=tz, profile=profile,
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -305,6 +362,7 @@ def render_table(
     departure: datetime | None = None,
     tz: tzinfo | None = None,
     display_coordinates: bool = False,
+    show_cue: bool = False,
     osm: bool = True,
 ) -> Path:
     """Analyze ``gpx_source`` and write its native route table to ``output_path``.
@@ -325,6 +383,7 @@ def render_table(
         departure=departure,
         tz=tz,
         display_coordinates=display_coordinates,
+        show_cue=show_cue,
     )
     text = markdown_to_html(md) if fmt == "html" else md
     out = Path(output_path)
