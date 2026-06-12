@@ -19,6 +19,17 @@ from datetime import datetime, timedelta, tzinfo
 from .geo import meters_to_miles
 
 
+def observer(lat: float, lon: float):
+    """An :mod:`astral` observer at ``(lat, lon)`` (no name/region/elevation).
+
+    The one place the almanac observer is built, shared by the route table's
+    :func:`sun_times` and the day card's sunrise/sunset/golden-hour lookups.
+    """
+    import astral
+
+    return astral.LocationInfo("", "", "", lat, lon).observer
+
+
 def travel_time(distance_m: float, speed_kph: float) -> timedelta:
     """Time to cover ``distance_m`` metres at ``speed_kph`` (km/h)."""
     if speed_kph <= 0:
@@ -167,11 +178,7 @@ def sun_times(
     """
     if start_time is None or end_time is None:
         return None
-    import astral
     import astral.sun
-
-    def observer(lat: float, lon: float):
-        return astral.LocationInfo("", "", "", lat, lon).observer
 
     sun_start = astral.sun.sun(observer(start_lat, start_lon), date=start_time)
     sun_end = astral.sun.sun(observer(end_lat, end_lon), date=end_time)

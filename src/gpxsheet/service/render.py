@@ -160,7 +160,7 @@ def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
 
     from .analysis_cache import get_core
 
-    perf.annotate(fmt=params.format, osm=params.osm, profile=params.profile)
+    perf.annotate(fmt=params.format, osm=params.osm, live=params.live, profile=params.profile)
     depart_at, tz = parse_departure(params.departure, params.timezone)
     imperial = params.units == "imperial"
     core = get_core(gpx_bytes, osm=params.osm)
@@ -176,6 +176,7 @@ def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
             speed=params.speed,
             fuel_range=params.fuel_range,
             osm=params.osm,
+            live=params.live,
         )
     if params.format == "json":
         data, ext = build_day_cards_json(cards).encode(), "json"
@@ -185,10 +186,8 @@ def _daycard_result(gpx_bytes: bytes, params: DayCardParams) -> JobResult:
     else:
         md = build_day_cards_markdown(cards, imperial=imperial, tz=tz)
         data, ext = md.encode(), "md"
-    content_type = _CONTENT_TYPES[
-        {"json": "json", "html": "html", "markdown": "markdown"}[params.format]
-    ]
-    return data, content_type, ext, _safe_filename(route.name, ext)
+    # format is validated to markdown|html|json, all keys of _CONTENT_TYPES.
+    return data, _CONTENT_TYPES[params.format], ext, _safe_filename(route.name, ext)
 
 
 def _analyzed_route(gpx_bytes: bytes, params: ReportParams, *, include_hazards: bool = False):

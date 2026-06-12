@@ -120,7 +120,9 @@ from gpxsheet.routetable import parse_departure
 
 depart, tz = parse_departure("Sat 8am", "US/Pacific")
 render_day_cards("route.gpx", "cards.md", fmt="markdown", departure=depart, tz=tz)
-# fmt is "markdown" | "html" | "json"; the sun/after-dark sections need a departure.
+# fmt is "markdown" | "html" | "json"; the sun/after-dark and weather/air sections
+# need a departure. Pass live=False (or set GPXSHEET_DISABLE_LIVE=1, or the umbrella
+# GPXSHEET_OFFLINE=1) for a fully offline card with no network lookups.
 ```
 
 Return values:
@@ -130,10 +132,35 @@ Return values:
 - `build_day_cards(route, …)` → `list[DayCard]` — builds the cards from an already
   analyzed [`Route`](#route). Each `DayCard` has `index`, `name`, `date`, `miles`,
   `moving_time`, `arrive`, `elevation_gain_ft`, `passes`, `scenic`, `gravel`,
-  `no_services`, a `sun` summary, and a `warnings` list of [`Finding`](#validationreport-and-finding)
-  (`.to_dict()` gives the JSON view). See
-  [day-cards-design.md](day-cards-design.md) for the roadmap (live weather/smoke/
-  wildfire/cell are later phases).
+  `no_services`, a `sun` summary, the live `weather` / `air` / `fire` /
+  `elevation_profile` (when `live=True` and a source is reachable), and a
+  `warnings` list of [`Finding`](#validationreport-and-finding) (`.to_dict()`
+  gives the JSON view).
+
+The live data comes from keyless, cached, **graceful** providers
+(`gpxsheet.live`): Open-Meteo (`weather` with per-sample **crosswind**,
+`air` quality / smoke, an `elevation_profile` DEM fallback when the GPX lacks
+elevation) and NIFC (`fire` perimeters near the corridor). Any source that's
+unavailable is omitted — the rest of the card still builds. Gate everything with
+`live=` (and `GPXSHEET_DISABLE_LIVE=1`); weather/air also need a `departure` for
+ETAs. The nested live types:
+
+- **`WeatherInfo`** (`weather`) — `source`, `as_of`, `note` (e.g. beyond the
+  ~16-day forecast horizon), and `samples: list[WeatherSample]`. Each
+  **`WeatherSample`** is `mile`, `time`, `temp_f`, `feels_f`, `wind_mph`,
+  `gust_mph`, `wind_dir_deg`, `crosswind_mph`, `precip_prob`, `precip_in`,
+  `visibility_mi`, `code` (WMO). Values are imperial; metric is a render-time
+  conversion.
+- **`AirInfo`** (`air`) — `max_aqi`, `max_pm25`, `smoke` (bool), `source`, `as_of`.
+- **`Fire`** (`fire: list[Fire]`) — `name`, `dist_mi`, `status`, `url`.
+- **`ElevationProfile`** (`elevation_profile`) — `min_ft`, `max_ft`, `gain_ft`,
+  `source` (`"gpx"` or the DEM fallback); only set when the DEM filled in for a
+  GPX with no usable elevation.
+
+New warning `code`s alongside the Phase-1 ones: `heat`, `cold`, `wind` (sustained,
+gust, or crosswind), `precip`, `smoke`, and `fire`. See
+[day-cards-design.md](day-cards-design.md) for the roadmap (key-gated AirNow/
+OpenWeather and cell-coverage dead zones are Phase 3).
 
 ## Lower-level helpers
 

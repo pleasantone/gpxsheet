@@ -35,7 +35,14 @@ from .analysis import (
     turn_angle_at_mile,
     turn_word,
 )
-from .geo import METERS_PER_DEG_LAT, bearing, haversine, meters_to_miles, miles_to_meters
+from .geo import (
+    KM_PER_MILE,
+    METERS_PER_DEG_LAT,
+    bearing,
+    haversine,
+    meters_to_miles,
+    miles_to_meters,
+)
 from .junctions import branches_not_taken, direction_word, relative_angle, roundabout_exit_number
 from .models import (
     Branch,
@@ -74,7 +81,7 @@ def _configure_osm_cache(ox) -> None:
 
 
 def _configure_overpass_url(ox) -> None:
-    """Point osmnx at a different Overpass server when GPXSHEET_OVERPASS_URL is set.
+    """Point osmnx at a different Overpass server when GPXSHEET_OVERPASS_BASE_URL is set.
 
     ``overpass-api.de`` round-robins across mirrors and osmnx pins one IP per
     process (``osmnx._http._config_dns``); when that mirror is down, every query
@@ -82,9 +89,10 @@ def _configure_overpass_url(ox) -> None:
     geometry-only. osmnx exposes the endpoint as ``settings.overpass_url``, so the
     fix is to point it at a healthy mirror (e.g. ``https://overpass.kumi.systems/api``)
     or a self-hosted instance. Overriding by URL keeps a real hostname, so TLS SNI
-    and certificate validation still work. No-op when unset.
+    and certificate validation still work. No-op when unset. This is the OSM
+    source's ``*_BASE_URL`` override (see gpxsheet.sources).
     """
-    overpass_url = os.getenv("GPXSHEET_OVERPASS_URL")
+    overpass_url = os.getenv("GPXSHEET_OVERPASS_BASE_URL")
     if overpass_url:
         ox.settings.overpass_url = overpass_url
 
@@ -190,7 +198,7 @@ def _parse_maxspeed_mph(value: str | None) -> float | None:
     if not match:
         return None
     num = float(match.group(1))
-    return num if "mph" in value.lower() else num * (1.0 / 1.609344)
+    return num if "mph" in value.lower() else num / KM_PER_MILE
 
 
 def _edge_speed_mph(maxspeed: str | None, highway: str | None) -> float | None:

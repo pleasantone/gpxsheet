@@ -279,6 +279,24 @@ def test_disable_osm_env_skips_enrichment_without_network(l_route_file, monkeypa
     assert all(s.name.startswith("Leg ") for s in route.segments)
 
 
+def test_offline_umbrella_skips_osm_enrichment(l_route_file, monkeypatch):
+    """The umbrella GPXSHEET_OFFLINE implies GPXSHEET_DISABLE_OSM (geometry-only)."""
+    import pytest
+
+    import gpxsheet
+    import gpxsheet.enrich as enrich
+
+    def boom(*args, **kwargs):
+        raise AssertionError("enrich_route must not be called when offline")
+
+    monkeypatch.setattr(enrich, "enrich_route", boom)
+    monkeypatch.delenv("GPXSHEET_DISABLE_OSM", raising=False)
+    monkeypatch.setenv("GPXSHEET_OFFLINE", "1")
+    with pytest.warns(UserWarning, match="OSM enrichment disabled"):
+        route = gpxsheet.analyze(str(l_route_file))
+    assert all(s.name.startswith("Leg ") for s in route.segments)
+
+
 def test_analyze_report_renders(l_route_file):
     from gpxsheet.report import format_analysis
 

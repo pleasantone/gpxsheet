@@ -40,11 +40,11 @@ def test_configure_overpass_url_honors_env(monkeypatch):
 
     ox = SimpleNamespace(settings=SimpleNamespace(overpass_url="https://overpass-api.de/api"))
     # Unset -> no-op (osmnx's default endpoint stands).
-    monkeypatch.delenv("GPXSHEET_OVERPASS_URL", raising=False)
+    monkeypatch.delenv("GPXSHEET_OVERPASS_BASE_URL", raising=False)
     _configure_overpass_url(ox)
     assert ox.settings.overpass_url == "https://overpass-api.de/api"
     # Set -> points osmnx at the override mirror.
-    monkeypatch.setenv("GPXSHEET_OVERPASS_URL", "https://overpass.kumi.systems/api")
+    monkeypatch.setenv("GPXSHEET_OVERPASS_BASE_URL", "https://overpass.kumi.systems/api")
     _configure_overpass_url(ox)
     assert ox.settings.overpass_url == "https://overpass.kumi.systems/api"
 

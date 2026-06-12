@@ -20,6 +20,7 @@ import pytest
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 OSM_CACHE_DIR = FIXTURES_DIR / "osm_cache"
+LIVE_CACHE_DIR = FIXTURES_DIR / "live_cache"
 RECORDING_OSM = os.environ.get("GPXSHEET_RECORD_OSM") == "1"
 
 
@@ -71,6 +72,44 @@ def _osm_cache():
         yield
     finally:
         _overpass._overpass_request = original
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _live_cache():
+    """Wire the day-card live providers to the committed cache (cache-only).
+
+    Mirrors ``_osm_cache``: point the live providers' on-disk cache at a committed
+    fixture dir and, unless recording, replace the single network seam
+    (``live.base._http_get_json``) with a cache-only stand-in that returns
+    ``None`` on a miss -- so the suite is deterministic and offline (a missing
+    fixture just omits that section). Record with ``GPXSHEET_RECORD_LIVE=1``.
+    Also clears ``GPXSHEET_DISABLE_LIVE`` / ``GPXSHEET_OFFLINE`` so the committed
+    cache is consulted (the disable switches are exercised in their own tests).
+    """
+    from gpxsheet.live import base
+    from gpxsheet.sources import recording_live
+
+    LIVE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    prev_dir = os.environ.get("GPXSHEET_LIVE_CACHE_DIR")
+    prev_disable = os.environ.pop("GPXSHEET_DISABLE_LIVE", None)
+    prev_offline = os.environ.pop("GPXSHEET_OFFLINE", None)
+    os.environ["GPXSHEET_LIVE_CACHE_DIR"] = str(LIVE_CACHE_DIR)
+
+    original = base._http_get_json
+    if not recording_live():
+        base._http_get_json = lambda url, params: None  # cache-only; miss -> skip
+    try:
+        yield
+    finally:
+        base._http_get_json = original
+        if prev_dir is None:
+            os.environ.pop("GPXSHEET_LIVE_CACHE_DIR", None)
+        else:
+            os.environ["GPXSHEET_LIVE_CACHE_DIR"] = prev_dir
+        if prev_disable is not None:
+            os.environ["GPXSHEET_DISABLE_LIVE"] = prev_disable
+        if prev_offline is not None:
+            os.environ["GPXSHEET_OFFLINE"] = prev_offline
 
 
 @pytest.fixture

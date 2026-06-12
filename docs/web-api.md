@@ -167,13 +167,18 @@ come straight from OpenStreetMap, the speed from its `maxspeed` tags:
 A **planning-time** briefing, one card per day (`<trk>`), meant to be read the
 night before — *not* the tank-bag glance (that's `/v1/render` and `/v1/table`).
 Each card summarizes the day's distance and moving time, climb, sunset and whether
-you'll be **riding after dark**, mountain passes and scenic stops, and cautions
-(gravel, construction, wildlife, and long **no-services** gaps). Built on the same
-analysis as the other endpoints.
+you'll be **riding after dark**, mountain passes and scenic stops, cautions
+(gravel, construction, wildlife, and long **no-services** gaps), and keyless
+**live conditions** — weather at your ETA (with **crosswind**), air quality /
+smoke, and nearby wildfires. Built on the same analysis as the other endpoints.
 
-> **Phase 1.** Sections come from the analyzed route + OSM. Live conditions
-> (weather-at-ETA, smoke/AQI, wildfire, cell-coverage dead zones) are planned —
-> see [day-cards-design.md](day-cards-design.md).
+> **Live data (Phase 2).** Weather/air/elevation come from Open-Meteo and
+> wildfire perimeters from NIFC — all keyless, cached, and **graceful** (any
+> source that's down or unreachable is simply omitted). Set `live=false` (or the
+> server-side `GPXSHEET_DISABLE_LIVE=1`, or the umbrella `GPXSHEET_OFFLINE=1`) for a
+> fully offline card. Cell-coverage
+> dead zones and key-gated sources (AirNow/OpenWeather) are Phase 3 — see
+> [day-cards-design.md](day-cards-design.md).
 
 Form fields (all optional except `gpx`):
 
@@ -181,18 +186,25 @@ Form fields (all optional except `gpx`):
 |-------|------|---------|------------------|
 | `gpx` | file | — | the `.gpx` upload (**required**) |
 | `format` | string | `markdown` | `markdown`, `html`, or `json` |
-| `departure` | string | — | natural-language/ISO time (+24h per day); **required for the sun / golden-hour / after-dark sections** |
+| `departure` | string | — | natural-language/ISO time (+24h per day); **required for the sun / golden-hour / after-dark and weather/air sections** |
 | `timezone` | string | — | IANA zone for displayed times |
 | `units` | string | `imperial` | `imperial` or `metric` |
 | `speed` | number ≥ 0 | `0` | average speed; `0` = auto (OSM limits, else 30 mph) |
 | `profile` | string | `sport-touring` | `minimalist` / `sport-touring` / `rally` |
 | `fuel_range` | number | — | rider range in miles; tunes the no-services warnings |
 | `osm` | bool | `true` | OSM enrichment (passes, scenic, gravel); `false` is fast/offline |
+| `live` | bool | `true` | keyless live data (weather/air/elevation, wildfire); `false` skips the network |
 
 Returns a job whose result `content_type` is `text/markdown`, `text/html`, or
 `application/json`. The JSON is an array of day objects (`index`, `name`, `date`,
 `miles`, `moving_minutes`, `elevation_gain_ft`, `passes`, `scenic`, `gravel`,
-`no_services`, `sun`, and a `warnings` list of `{level, code, message}`).
+`no_services`, `sun`, and a `warnings` list of `{level, code, message}`). When
+live data is available each day also carries `weather` (`{source, as_of, note,
+samples:[{mile, time, temp_f, feels_f, wind_mph, gust_mph, wind_dir_deg,
+crosswind_mph, precip_prob, precip_in, visibility_mi, code}]}`), `air`
+(`{max_aqi, max_pm25, smoke, source, as_of}`), and `fire`
+(`[{name, dist_mi, status, url}]`); warning `code`s expand to include `heat`,
+`cold`, `wind`, `precip`, `smoke`, and `fire`.
 
 ### `POST /v1/analyze` — structured route analysis (JSON)
 

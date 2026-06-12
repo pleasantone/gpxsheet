@@ -803,10 +803,14 @@ conditional tags; see `gpxsheet.seasonal`.)
 A per-day, **read-ahead** briefing (`gpxsheet.daycard`; CLI `daycard`,
 `/v1/daycard`) — distinct from the tank-bag sheet/table the rider glances at while
 moving. Each card summarizes the day's distance and moving time, climb, sunset and
-whether you'll be **riding after dark**, passes and scenic stops, and cautions
-(gravel, construction, wildlife, no-services gaps), as markdown / HTML / JSON. Phase
-1 is computed from the analyzed route + OSM; live conditions (weather, smoke/AQI,
-wildfire, cell coverage) are planned — see
+whether you'll be **riding after dark**, passes and scenic stops, cautions
+(gravel, construction, wildlife, no-services gaps), and keyless **live conditions**
+— weather at your ETA with **crosswind**, air quality / smoke, and nearby
+wildfires — as markdown / HTML / JSON. Phases 1 (offline route + OSM) and 2
+(keyless live data: Open-Meteo weather/air/elevation + NIFC wildfire, behind a
+cached, graceful provider layer in `gpxsheet.live`, gated by `live=` /
+`GPXSHEET_DISABLE_LIVE`) are built; key-gated sources (AirNow/OpenWeather) and
+cell-coverage dead zones are Phase 3 — see
 [day-cards-design.md](day-cards-design.md).
 
 ---
