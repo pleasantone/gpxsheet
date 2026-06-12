@@ -34,6 +34,33 @@ degrades to geometry-only (which floods twisty roads with false turns). Set
 default is flaky. It governs all Overpass traffic (the road graph and the fuel/feature
 queries); unset, osmnx's default `https://overpass-api.de/api` stands.
 
+### Self-hosted Overpass
+
+For heavy or repeated enrichment — batch-processing many routes, an air-gapped
+deployment, or just escaping the public instance's slot/CPU rate limits — run the
+bundled **[`osm/`](https://github.com/pleasantone/gpxsheet/tree/main/osm)** Overpass
+stack and point gpxsheet at it. It's a self-contained Docker Compose service (the
+repo's `osm/` directory) that imports the Geofabrik California extract, keeps it
+current from Geofabrik diffs, and serves the standard Overpass API on a local port —
+no rate limits, so you can fire queries rapidly and skip the caching/polyline
+simplification the public API needs. Full guide:
+[`osm/README.md`](https://github.com/pleasantone/gpxsheet/blob/main/osm/README.md).
+
+```bash
+cd osm
+docker compose up -d     # first run imports California (~30–90 min); see osm/README.md
+```
+
+Then point gpxsheet at it. **osmnx wants the base `…/api`** (it appends
+`/interpreter` itself), so use the `/api` path, not `/api/interpreter`:
+
+```bash
+GPXSHEET_OVERPASS_URL=http://localhost:12345/api
+```
+
+That's the only wiring needed — `GPXSHEET_OVERPASS_URL` already governs all Overpass
+traffic, so no code or image change is required.
+
 ## Hugging Face Space (reference deployment)
 
 The free CPU tier (2 vCPU / 16 GB RAM) handles the geo stack
