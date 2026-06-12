@@ -90,6 +90,35 @@ def _garmin_route_dense_points(route: object) -> list[GeoPoint] | None:
     return dense if saw_extension else None
 
 
+def _is_shaping_point(name: str | None, extensions: list) -> bool:
+    """True for a route point that should not appear as a named stop.
+
+    Mirrors GPXtable's ``shaping_point()``: an unnamed point, a Garmin shaping
+    point (``...ShapingPoint`` extension), or a name flagged as a via/shaping
+    point (``"Via …"`` prefix or ``"(V)"`` suffix).
+    """
+    if not name:
+        return True
+    if name.startswith("Via ") or name.endswith("(V)"):
+        return True
+    return any("ShapingPoint" in getattr(ext, "tag", "") for ext in extensions)
+
+
+def _plain_route_named_waypoints(route: object) -> list[Waypoint]:
+    """Lift named, non-shaping ``<rtept>``s of a plain route to waypoints.
+
+    A non-Garmin ``<rte>`` (no ``RoutePointExtension``) carries its stops as named
+    route points rather than ``<wpt>``s. Surface them so they drive POIs / the
+    route table, skipping shaping/via points (see :func:`_is_shaping_point`).
+    """
+    out: list[Waypoint] = []
+    for rtept in route.points:  # type: ignore[attr-defined]
+        if _is_shaping_point(rtept.name, rtept.extensions):
+            continue
+        out.append(Waypoint(rtept.latitude, rtept.longitude, rtept.name, rtept.symbol))
+    return out
+
+
 def _garmin_route_via_waypoints(route: object) -> list[Waypoint]:
     """Promote a Garmin route's announced stops (``trp:ViaPoint``) to waypoints.
 
@@ -173,6 +202,7 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
                     points.append(
                         GeoPoint(rpt.latitude, rpt.longitude, rpt.elevation)
                     )
+                via_waypoints.extend(_plain_route_named_waypoints(route))
 
     if len(points) < 2:
         found = len(points)
