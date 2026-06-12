@@ -331,9 +331,15 @@ def enrich_route(
     if include_fuel:
         _add_fuel(route, ox, chunks, fuel_buffer_m)
     if include_hazards:
-        ferry_spans = _detect_ferries(route, ox, sg, road_buffer_m)
-        route.ferry_crossings = sorted({s.name for s in ferry_spans if s.name})
-        route.spans = sorted([*route.spans, *ferry_spans], key=lambda s: s.start_mile)
+        # Best-effort (like the junction-topology pass): the ferry query is an
+        # extra Overpass call, so a failure/timeout must not abort enrichment --
+        # it just leaves ferry_crossings None and the unpaved-only spans.
+        try:
+            ferry_spans = _detect_ferries(route, ox, sg, road_buffer_m)
+            route.ferry_crossings = sorted({s.name for s in ferry_spans if s.name})
+            route.spans = sorted([*route.spans, *ferry_spans], key=lambda s: s.start_mile)
+        except Exception:  # noqa: BLE001 - degrade to no ferries on any failure
+            log.exception("ferry detection failed; skipping hazards")
     return route
 
 
