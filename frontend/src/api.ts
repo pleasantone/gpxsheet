@@ -1,4 +1,12 @@
-import type { AnalyzeResult, JobStatus, RenderOptions, TableFormat, TableOptions } from "./types";
+import type {
+  AnalyzeResult,
+  DayCardFormat,
+  DayCardOptions,
+  JobStatus,
+  RenderOptions,
+  TableFormat,
+  TableOptions,
+} from "./types";
 
 const API_KEY_STORAGE = "gpxsheet-api-key";
 
@@ -118,6 +126,24 @@ export function submitTable(
   });
 }
 
+export function submitDaycard(
+  file: File,
+  opts: DayCardOptions,
+  format: DayCardFormat,
+): Promise<JobStatus> {
+  return postJob("v1/daycard", file, {
+    format,
+    units: opts.units,
+    speed: String(opts.speed),
+    profile: opts.profile,
+    osm: String(opts.osm),
+    live: String(opts.live),
+    ...(opts.departure ? { departure: opts.departure } : {}),
+    ...(opts.timezone ? { timezone: opts.timezone } : {}),
+    ...(opts.fuel_range !== null ? { fuel_range: String(opts.fuel_range) } : {}),
+  });
+}
+
 export async function pollJob(id: string): Promise<JobStatus> {
   const res = await fetch(`${BASE}v1/jobs/${id}`, { headers: authHeaders() });
   return (await checkResponse(res)).json();
@@ -136,9 +162,9 @@ export async function fetchResultBlob(id: string, resultUrl?: string | null): Pr
   return (await getResult(id, resultUrl)).blob();
 }
 
-export async function fetchResultJson(
+export async function fetchResultJson<T = AnalyzeResult>(
   id: string,
   resultUrl?: string | null,
-): Promise<AnalyzeResult> {
-  return JSON.parse(await (await getResult(id, resultUrl)).text()) as AnalyzeResult;
+): Promise<T> {
+  return JSON.parse(await (await getResult(id, resultUrl)).text()) as T;
 }

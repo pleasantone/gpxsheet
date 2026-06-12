@@ -39,6 +39,16 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 - **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
   `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
 
+## Service / API (open)
+
+- **`/v1/table` JSON format (structured-table parity with day cards)** — the
+  day-card API emits `json|html|markdown`, but the table API is `html|markdown`
+  only (`TableParams.format = ^(html|markdown)$`, `service.render._table_result`,
+  `routetable`). For parity — and so the SPA's **Table** tab could render a
+  structured table client-side the way the new **Day card** tab renders structured
+  cards — give `/v1/table` a `json` format: extend the pattern and emit a
+  structured table payload (rows: waypoint, mile, road, ETA, fuel/lunch markers).
+
 ## Rendering (open)
 
 - **Strip label de-collision** — alternating sides + repulsion is much better but
