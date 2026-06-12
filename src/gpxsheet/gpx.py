@@ -178,8 +178,10 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
 
     points: list[GeoPoint] = []
     gpx_name: str | None = None
-    # Point index where each track after the first begins (≈ one day per track).
+    # Point index where each track after the first begins (≈ one day per track),
+    # and the name of each track that contributes points (one per day).
     day_breaks: list[int] = []
+    track_names: list[str] = []
 
     # Prefer tracks; fall back to routes.
     for track in gpx.tracks:
@@ -188,8 +190,13 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
         for seg in track.segments:
             for pt in seg.points:
                 points.append(GeoPoint(pt.latitude, pt.longitude, pt.elevation))
-        if start_index > 0 and len(points) > start_index:
-            day_breaks.append(start_index)
+        if len(points) > start_index:  # this track contributed points -> a day
+            if start_index > 0:
+                day_breaks.append(start_index)
+            track_names.append(track.name or "")
+
+    # Only a genuinely multi-day route carries per-day names.
+    day_names = track_names if len(track_names) > 1 else []
 
     # Garmin BaseCamp routes hide their real road geometry inside per-rtept
     # extensions; harvest it as a dense track and lift announced stops to
@@ -230,4 +237,5 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
         distances_m=distances,
         waypoints=waypoints,
         day_breaks=day_breaks,
+        day_names=day_names,
     )

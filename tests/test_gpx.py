@@ -144,6 +144,7 @@ def test_multiple_tracks_record_day_breaks(tmp_path: Path) -> None:
     path.write_text(xml, encoding="utf-8")
     route = load_route(path)
     assert route.day_breaks == [2]  # track 2 starts at point index 2
+    assert route.day_names == ["D1", "D2"]  # one name per day (track names)
 
 
 _BASECAMP_SAMPLE = (

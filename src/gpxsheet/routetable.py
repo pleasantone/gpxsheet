@@ -244,6 +244,12 @@ def _table_lines(
     return lines
 
 
+def _day_title(route: Route, day: int) -> str:
+    """The ``## Day N`` heading, suffixed with the day's track name when known."""
+    name = route.day_names[day] if day < len(route.day_names) else ""
+    return f"## Day {day + 1}: {name}" if name else f"## Day {day + 1}"
+
+
 def _day_bounds_miles(route: Route) -> list[float]:
     """Mile boundaries ``[0, break1, …, length]`` from ``route.day_breaks``."""
     breaks = [meters_to_miles(route.distances_m[i]) for i in route.day_breaks]
@@ -251,17 +257,22 @@ def _day_bounds_miles(route: Route) -> list[float]:
 
 
 _DAY_EPS = 1e-6
+# A stop within this of a day boundary belongs to BOTH adjacent days: an overnight
+# stop is the end of one day and the start of the next.
+_DAY_BOUNDARY_TOL_MILES = 0.3
 
 
 def _in_day(mile: float, start_mi: float, end_mi: float, is_last: bool) -> bool:
-    """Whether ``mile`` falls in day ``[start_mi, end_mi)``.
+    """Whether ``mile`` falls in day ``[start_mi, end_mi]`` (boundary-inclusive).
 
-    The last day has no upper bound -- a stop's rounded mile can land just past
-    ``route.length_miles`` -- so the trailing stop is never dropped.
+    Both ends carry a tolerance band so a stop sitting on a day boundary is
+    counted in both adjacent days. The last day has no upper bound -- a stop's
+    rounded mile can land just past ``route.length_miles`` -- so the trailing stop
+    is never dropped.
     """
-    if is_last:
-        return mile >= start_mi - _DAY_EPS
-    return start_mi - _DAY_EPS <= mile < end_mi - _DAY_EPS
+    lo = start_mi - _DAY_BOUNDARY_TOL_MILES - _DAY_EPS
+    hi = float("inf") if is_last else end_mi + _DAY_BOUNDARY_TOL_MILES + _DAY_EPS
+    return lo <= mile <= hi
 
 
 def _render_section(
@@ -353,18 +364,18 @@ def build_table_markdown(
         day_rows = [
             _Row(
                 rows[i].name, rows[i].lat, rows[i].lon,
-                rows[i].distance_m - start_m, rows[i].symbol,
+                max(0.0, rows[i].distance_m - start_m), rows[i].symbol,
             )
             for i in sel
         ]
         day_decisions = [
-            (dp.mile - start_mi, dp.instruction, dp.branches)
+            (max(0.0, dp.mile - start_mi), dp.instruction, dp.branches)
             for dp in route.decision_points
             if _in_day(dp.mile, start_mi, end_mi, is_last)
         ]
         sections.append(
             _render_section(
-                title=f"## Day {day + 1}" if multiday else f"## Route: {route.name}",
+                title=_day_title(route, day) if multiday else f"## Route: {route.name}",
                 dist_label="Day distance" if multiday else "Total distance",
                 rows=day_rows,
                 classes=[classes[i] for i in sel],

@@ -191,10 +191,21 @@ def test_multiday_renders_per_day_sections(tmp_path):
     assert route.day_breaks  # a break at the start of track 2
     depart, tz = parse_departure("2023-07-30 09:00", "US/Pacific")
     md = build_table_markdown(route, departure=depart, tz=tz)
-    assert "## Day 1" in md
-    assert "## Day 2" in md
     assert md.count("## Day ") == 2
     assert "* Day distance:" in md
+    # Day sections are labelled with their <trk> names.
+    assert "## Day 1: Day One" in md
+    assert "## Day 2: Day Two" in md
+
+
+def test_boundary_waypoint_appears_in_both_days(tmp_path):
+    route = _multiday_route(tmp_path)
+    depart, tz = parse_departure("2023-07-30 09:00", "US/Pacific")
+    md = build_table_markdown(route, departure=depart, tz=tz)
+    day1, day2 = md.split("## Day 2")
+    # "Day2 Start" sits on the track boundary -> ends day 1 AND starts day 2.
+    assert "Day2 Start" in day1
+    assert "Day2 Start" in day2
 
 
 def test_multiday_day2_departs_24h_later(tmp_path):

@@ -197,6 +197,11 @@ class Route:
     # for single-track routes and plain ``<rte>``s. Lets the route table render
     # per-day sections.
     day_breaks: list[int] = field(default_factory=list)
+    # One name per day (``len(day_breaks) + 1`` entries) -- the source ``<trk>``
+    # names -- for labelling per-day sections. Empty for single-track/``<rte>``
+    # routes (the renderer falls back to "Day N"). An entry may be "" if its track
+    # was unnamed.
+    day_names: list[str] = field(default_factory=list)
 
     @property
     def length_m(self) -> float:
