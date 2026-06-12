@@ -11,7 +11,8 @@ from gpxsheet.enrich import (
 
 def test_parse_maxspeed_mph_units():
     assert _parse_maxspeed_mph("55 mph") == 55.0
-    assert round(_parse_maxspeed_mph("80"), 0) == 50.0  # 80 km/h ~= 49.7 mph
+    kmh = _parse_maxspeed_mph("80")  # 80 km/h ~= 49.7 mph
+    assert kmh is not None and round(kmh) == 50
     assert _parse_maxspeed_mph(None) is None
     assert _parse_maxspeed_mph("none") is None
     assert _parse_maxspeed_mph("signals") is None

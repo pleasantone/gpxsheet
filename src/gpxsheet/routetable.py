@@ -97,24 +97,30 @@ def _fmt_speed_mph(mph: float, imperial: bool) -> str:
 
 def _resolve_speed_profile(
     route: Route, speed: float, imperial: bool
-) -> tuple[SpeedProfile, str]:
-    """Pick the table's speed profile and its header line.
+) -> tuple[SpeedProfile, bool, float]:
+    """Pick the table's speed profile: ``(profile, variable, flat_mph)``.
 
     A user-supplied ``speed`` (mph imperial, kph metric) wins and forces a flat
     profile -- the explicit override of OSM speeds. Otherwise, when OSM provided a
     speed-limit profile, use it (variable ETAs); else fall back to a flat 30 mph.
     """
     if speed > 0:
-        mph = speed if imperial else speed * KM_TO_MILES
-        return SpeedProfile.flat(mph), f"* Default speed: {_fmt_speed_mph(mph, imperial)}"
+        return SpeedProfile.flat(speed if imperial else speed * KM_TO_MILES), False, (
+            speed if imperial else speed * KM_TO_MILES
+        )
     if route.speed_samples_mph:
-        profile = SpeedProfile.from_breakpoints_mph(route.speed_samples_mph)
-        avg = profile.average_mph(route.length_miles)
-        return profile, f"* Speed: OSM limits (avg {_fmt_speed_mph(avg, imperial)})"
-    return (
-        SpeedProfile.flat(DEFAULT_SPEED_MPH),
-        f"* Default speed: {_fmt_speed_mph(DEFAULT_SPEED_MPH, imperial)}",
-    )
+        return SpeedProfile.from_breakpoints_mph(route.speed_samples_mph), True, 0.0
+    return SpeedProfile.flat(DEFAULT_SPEED_MPH), False, DEFAULT_SPEED_MPH
+
+
+def _speed_line(
+    profile: SpeedProfile, length_miles: float, variable: bool, flat_mph: float, imperial: bool
+) -> str:
+    """The ``* Speed`` / ``* Default speed`` header line for a section."""
+    if variable:
+        avg = profile.average_mph(length_miles)
+        return f"* Speed: OSM limits (avg {_fmt_speed_mph(avg, imperial)})"
+    return f"* Default speed: {_fmt_speed_mph(flat_mph, imperial)}"
 
 
 def _fmt_length(meters: float, imperial: bool, units: bool = False) -> str:
@@ -147,7 +153,7 @@ def _layover_before(mile: float, rows: list[_Row], classes: list) -> timedelta:
 
 
 def _cue_lines(
-    route: Route,
+    decisions: list[tuple[float, str, tuple]],
     rows: list[_Row],
     classes: list,
     *,
@@ -156,24 +162,28 @@ def _cue_lines(
     tz: tzinfo | None,
     profile: SpeedProfile,
 ) -> list[str]:
-    """A ``## Turn-by-turn`` cue table from the route's decision points.
+    """A ``## Turn-by-turn`` cue table from ``(mile, instruction, branches)`` tuples.
 
-    Columns are ``Mile | [ETA] | Cue``; the ETA column appears only with a
-    departure. The cue is the decision instruction plus any named roads not taken.
+    Miles are section-local (a per-day slice passes day-relative miles, matching
+    its rebased ``rows``/``profile``). Columns are ``Mile | [ETA] | Cue``; the ETA
+    column appears only with a departure. The cue is the instruction plus any
+    named roads not taken.
     """
     eta_on = departure is not None
     lines = ["", "## Turn-by-turn"]
     lines.append("| Mile |  ETA  | Cue" if eta_on else "| Mile | Cue")
     lines.append("| ---: | ----: | :--" if eta_on else "| ---: | :--")
-    for d in route.decision_points:
-        cue = d.instruction
-        skipped = [b.name for b in d.branches if b.name]
+    for mile_val, instruction, branches in decisions:
+        cue = instruction
+        skipped = [b.name for b in branches if b.name]
         if skipped:
             cue += f" — skip {', '.join(skipped)}"
-        mile = _fmt_mile(d.mile, imperial)
+        mile = _fmt_mile(mile_val, imperial)
         if eta_on:
             assert departure is not None
-            arrival = departure + profile.time_to(d.mile) + _layover_before(d.mile, rows, classes)
+            arrival = (
+                departure + profile.time_to(mile_val) + _layover_before(mile_val, rows, classes)
+            )
             eta = arrival.astimezone(tz).strftime("%H:%M")
             lines.append(f"| {mile:>4} | {eta:>5} | {cue}")
         else:
@@ -234,6 +244,78 @@ def _table_lines(
     return lines
 
 
+def _day_bounds_miles(route: Route) -> list[float]:
+    """Mile boundaries ``[0, break1, …, length]`` from ``route.day_breaks``."""
+    breaks = [meters_to_miles(route.distances_m[i]) for i in route.day_breaks]
+    return [0.0, *breaks, route.length_miles]
+
+
+_DAY_EPS = 1e-6
+
+
+def _in_day(mile: float, start_mi: float, end_mi: float, is_last: bool) -> bool:
+    """Whether ``mile`` falls in day ``[start_mi, end_mi)``.
+
+    The last day has no upper bound -- a stop's rounded mile can land just past
+    ``route.length_miles`` -- so the trailing stop is never dropped.
+    """
+    if is_last:
+        return mile >= start_mi - _DAY_EPS
+    return start_mi - _DAY_EPS <= mile < end_mi - _DAY_EPS
+
+
+def _render_section(
+    *,
+    title: str,
+    dist_label: str,
+    rows: list[_Row],
+    classes: list,
+    roads: list[str | None],
+    decisions: list[tuple[float, str, tuple]],
+    length_m: float,
+    profile: SpeedProfile,
+    variable: bool,
+    flat_mph: float,
+    imperial: bool,
+    departure: datetime | None,
+    tz: tzinfo | None,
+    display_coordinates: bool,
+    show_cue: bool,
+) -> list[str]:
+    """Render one section (whole route, or one day): header, table, sun, cue.
+
+    ``rows`` distances and ``profile``/``decisions`` miles are section-local
+    (rebased to 0 for a per-day slice), so this is unit-agnostic to day vs route.
+    """
+    timings = compute_timings(
+        [
+            StopInput(r.distance_m, timedelta(minutes=c.delay), c.fuel_reset)
+            for r, c in zip(rows, classes, strict=True)
+        ],
+        departure=departure,
+        speed=profile,
+    )
+    lines = [title]
+    if departure is not None:
+        lines.append(f"* Departure at {departure.astimezone(tz):%c %Z}")
+    lines.append(f"* {dist_label}: {_fmt_length(length_m, imperial, True)}")
+    lines.append(_speed_line(profile, meters_to_miles(length_m), variable, flat_mph, imperial))
+    lines.append("")
+    lines += _table_lines(
+        rows, classes, timings, roads,
+        imperial=imperial, tz=tz, display_coordinates=display_coordinates,
+    )
+    almanac = _sun_line(rows, timings, tz)
+    if almanac:
+        lines += ["", f"* {almanac}"]
+    if show_cue and decisions:
+        lines += _cue_lines(
+            decisions, rows, classes,
+            imperial=imperial, departure=departure, tz=tz, profile=profile,
+        )
+    return lines
+
+
 def build_table_markdown(
     route: Route,
     *,
@@ -249,47 +331,62 @@ def build_table_markdown(
 
     ``speed`` of 0 uses the 30 mph default. ``departure`` enables the ETA column
     and the sunrise/sunset almanac line. ``show_cue`` appends a turn-by-turn cue
-    table from the route's decision points.
+    table. A multi-track route (``route.day_breaks``) renders one section per day,
+    each with its own mileage (restarting at 0), departure (+24h/day) and almanac.
     """
     rows = _collect_rows(route)
-    profile, speed_line = _resolve_speed_profile(route, speed, imperial)
     classes = [classify(r.name, r.symbol, classifier) for r in rows]
-    timings = compute_timings(
-        [
-            StopInput(r.distance_m, timedelta(minutes=c.delay), c.fuel_reset)
-            for r, c in zip(rows, classes, strict=True)
-        ],
-        departure=departure,
-        speed=profile,
-    )
-
     roads = [_road_at(route, meters_to_miles(r.distance_m)) for r in rows]
+    profile, variable, flat_mph = _resolve_speed_profile(route, speed, imperial)
 
-    lines: list[str] = [f"## Route: {route.name}"]
-    if departure is not None:
-        lines.append(f"* Departure at {departure.astimezone(tz):%c %Z}")
-    lines.append(f"* Total distance: {_fmt_length(route.length_m, imperial, True)}")
-    lines.append(speed_line)
-    lines.append("")
-    lines += _table_lines(
-        rows, classes, timings, roads,
-        imperial=imperial, tz=tz, display_coordinates=display_coordinates,
-    )
+    bounds = _day_bounds_miles(route)
+    multiday = len(route.day_breaks) > 0
 
-    almanac = _sun_line(route, rows, timings, tz)
-    if almanac:
-        lines += ["", f"* {almanac}"]
-    if show_cue and route.decision_points:
-        lines += _cue_lines(
-            route, rows, classes,
-            imperial=imperial, departure=departure, tz=tz, profile=profile,
+    sections: list[list[str]] = []
+    for day, (start_mi, end_mi) in enumerate(zip(bounds, bounds[1:], strict=False)):
+        is_last = day == len(bounds) - 2
+        start_m = miles_to_meters(start_mi)
+        sel = [
+            i for i, r in enumerate(rows)
+            if _in_day(meters_to_miles(r.distance_m), start_mi, end_mi, is_last)
+        ]
+        day_rows = [
+            _Row(
+                rows[i].name, rows[i].lat, rows[i].lon,
+                rows[i].distance_m - start_m, rows[i].symbol,
+            )
+            for i in sel
+        ]
+        day_decisions = [
+            (dp.mile - start_mi, dp.instruction, dp.branches)
+            for dp in route.decision_points
+            if _in_day(dp.mile, start_mi, end_mi, is_last)
+        ]
+        sections.append(
+            _render_section(
+                title=f"## Day {day + 1}" if multiday else f"## Route: {route.name}",
+                dist_label="Day distance" if multiday else "Total distance",
+                rows=day_rows,
+                classes=[classes[i] for i in sel],
+                roads=[roads[i] for i in sel],
+                decisions=day_decisions,
+                length_m=miles_to_meters(end_mi - start_mi),
+                profile=profile.slice(start_mi, end_mi) if multiday else profile,
+                variable=variable,
+                flat_mph=flat_mph,
+                imperial=imperial,
+                departure=departure + timedelta(days=day) if departure else None,
+                tz=tz,
+                display_coordinates=display_coordinates,
+                show_cue=show_cue,
+            )
         )
-    return "\n".join(lines) + "\n"
+
+    # A blank line between day sections so each "## Day N" header renders.
+    return "\n\n".join("\n".join(s) for s in sections) + "\n"
 
 
-def _sun_line(
-    route: Route, rows: list[_Row], timings: list, tz: tzinfo | None
-) -> str | None:
+def _sun_line(rows: list[_Row], timings: list, tz: tzinfo | None) -> str | None:
     """The sunrise/sunset almanac line, or None without a start/end arrival."""
     if not rows or timings[0].arrival is None or timings[-1].arrival is None:
         return None

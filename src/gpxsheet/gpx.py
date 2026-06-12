@@ -178,13 +178,18 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
 
     points: list[GeoPoint] = []
     gpx_name: str | None = None
+    # Point index where each track after the first begins (≈ one day per track).
+    day_breaks: list[int] = []
 
     # Prefer tracks; fall back to routes.
     for track in gpx.tracks:
         gpx_name = gpx_name or track.name
+        start_index = len(points)
         for seg in track.segments:
             for pt in seg.points:
                 points.append(GeoPoint(pt.latitude, pt.longitude, pt.elevation))
+        if start_index > 0 and len(points) > start_index:
+            day_breaks.append(start_index)
 
     # Garmin BaseCamp routes hide their real road geometry inside per-rtept
     # extensions; harvest it as a dense track and lift announced stops to
@@ -219,4 +224,10 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
     resolved_name = name or gpx_name or (gpx.name if gpx.name else None) or path.stem
     distances = cumulative_distances(_point_tuples(points))
 
-    return Route(name=resolved_name, points=points, distances_m=distances, waypoints=waypoints)
+    return Route(
+        name=resolved_name,
+        points=points,
+        distances_m=distances,
+        waypoints=waypoints,
+        day_breaks=day_breaks,
+    )

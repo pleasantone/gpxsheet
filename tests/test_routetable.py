@@ -162,6 +162,51 @@ def test_user_speed_overrides_osm_profile(analyzed):
     assert "OSM limits" not in md
 
 
+_MULTITRACK_GPX = """<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="t" xmlns="http://www.topografix.com/GPX/1/1">
+  <wpt lat="38.000" lon="-122.000"><name>Day1 Start</name></wpt>
+  <wpt lat="38.020" lon="-122.000"><name>Day1 Lunch</name><sym>Restaurant</sym></wpt>
+  <wpt lat="38.100" lon="-122.000"><name>Day2 Start</name></wpt>
+  <wpt lat="38.120" lon="-122.000"><name>Day2 End</name></wpt>
+  <trk><name>Day One</name><trkseg>
+    <trkpt lat="38.000" lon="-122.000"/><trkpt lat="38.010" lon="-122.000"/>
+    <trkpt lat="38.020" lon="-122.000"/>
+  </trkseg></trk>
+  <trk><name>Day Two</name><trkseg>
+    <trkpt lat="38.100" lon="-122.000"/><trkpt lat="38.110" lon="-122.000"/>
+    <trkpt lat="38.120" lon="-122.000"/>
+  </trkseg></trk>
+</gpx>
+"""
+
+
+def _multiday_route(tmp_path):
+    p = tmp_path / "multiday.gpx"
+    p.write_text(_MULTITRACK_GPX, encoding="utf-8")
+    return analyze(str(p), osm=False)
+
+
+def test_multiday_renders_per_day_sections(tmp_path):
+    route = _multiday_route(tmp_path)
+    assert route.day_breaks  # a break at the start of track 2
+    depart, tz = parse_departure("2023-07-30 09:00", "US/Pacific")
+    md = build_table_markdown(route, departure=depart, tz=tz)
+    assert "## Day 1" in md
+    assert "## Day 2" in md
+    assert md.count("## Day ") == 2
+    assert "* Day distance:" in md
+
+
+def test_multiday_day2_departs_24h_later(tmp_path):
+    route = _multiday_route(tmp_path)
+    depart, tz = parse_departure("2023-07-30 09:00", "US/Pacific")
+    md = build_table_markdown(route, departure=depart, tz=tz)
+    dep_lines = [ln for ln in md.splitlines() if ln.startswith("* Departure at")]
+    assert len(dep_lines) == 2
+    assert "Jul 30" in dep_lines[0]
+    assert "Jul 31" in dep_lines[1]  # one day later
+
+
 def test_parse_departure_optional():
     assert parse_departure(None, None) == (None, None)
 
