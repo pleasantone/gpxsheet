@@ -10,6 +10,21 @@ section when resuming.
 
 Planned work is in [TODO.md](TODO.md).
 
+## Merge discipline — docs must mirror the code
+
+**Before merging any PR, verify the documentation still mirrors the changes in
+that PR.** The user-facing docs that go stale most easily: `docs/web-api.md`
+(endpoints, params, sample output), `docs/library-api.md` (public API surface,
+return structures), `docs/product.md`, `README.md`, this `CLAUDE.md`, and
+`TODO.md`. Walk the PR diff and ask: did any endpoint/param/CLI flag, public
+function signature, returned data structure, default, or behavior change without
+the matching doc being updated?
+
+- If docs are out of sync, **warn the user**, **draft** the documentation update
+  (edit the files locally) but **do not commit it**, and **hold the merge** until
+  the user has reviewed the draft.
+- Only proceed with the merge once the user signs off.
+
 ## Commands
 
 ```bash
