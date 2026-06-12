@@ -157,6 +157,41 @@ def test_first_party_token_allows_keyless_spa(tmp_path, l_route_file):
     ).status_code == 401
 
 
+def test_first_party_job_visible_across_client_ips(tmp_path, l_route_file):
+    """A first-party SPA job stays visible to its owner even when the client IP
+    differs between submit and poll. Proxies/load balancers (e.g. HF Spaces) do
+    not present a stable peer address, so identity is keyed off the signed token,
+    not request.client.host — otherwise the owner is 404'd off their own job."""
+    from gpxsheet.service.app import _issue_fp_token
+
+    store = InMemoryJobStore()
+    storage = LocalStorage(tmp_path / "results")
+    app = create_app(
+        store,
+        storage,
+        EagerRunner(store, storage),
+        api_keys=frozenset({"s3cret"}),
+        trust_first_party=True,
+        session_secret="sign-me",
+    )
+    token = _issue_fp_token(b"sign-me")
+    submit = TestClient(app, client=("10.0.0.1", 1111))
+    poll = TestClient(app, client=("10.0.0.2", 2222))  # a different source IP
+
+    with open(l_route_file, "rb") as fh:
+        created = submit.post(
+            "/v1/render",
+            files={"gpx": ("route.gpx", fh, "application/gpx+xml")},
+            headers={"X-First-Party": token},
+        )
+    assert created.status_code in (200, 202), created.text
+    job_id = created.json()["id"]
+
+    # Same token, different peer IP -> still the owner, must not be "unknown job".
+    seen = poll.get(f"/v1/jobs/{job_id}", headers={"X-First-Party": token})
+    assert seen.status_code == 200, seen.text
+
+
 def test_first_party_disabled_by_default_still_requires_key(tmp_path, l_route_file):
     """Self-hoster default: keys set but trust off -> a (would-be) token is ignored
     and the key is required for everyone."""
