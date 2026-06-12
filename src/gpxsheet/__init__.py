@@ -15,7 +15,7 @@ from .validate import Finding, ValidationReport
 if TYPE_CHECKING:
     from .models import Route
 
-__version__ = "1.1.0"  # x-release-please-version
+__version__ = "1.1.1"  # x-release-please-version
 
 __all__ = [
     "__version__",

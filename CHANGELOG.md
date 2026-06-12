@@ -4,6 +4,14 @@ All notable changes are documented here. From the next release onward this file
 is maintained automatically by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.1.1](https://github.com/pleasantone/gpxsheet/compare/v1.1.0...v1.1.1) (2026-06-12)
+
+
+### Bug Fixes
+
+* **service:** key first-party identity off the token, not client IP ([9ba37eb](https://github.com/pleasantone/gpxsheet/commit/9ba37ebbd325ac1466427b7543362f12d600ce34))
+* **service:** key first-party identity off the token, not client IP ([8376ef3](https://github.com/pleasantone/gpxsheet/commit/8376ef32da114ff1af5ff037e25d688ef007ad4a))
+
 ## [1.1.0](https://github.com/pleasantone/gpxsheet/compare/v1.0.0...v1.1.0) (2026-06-12)
 
 
