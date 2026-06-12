@@ -20,14 +20,31 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 .venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
 .venv/bin/gpxsheet generate <gpx> --layout landscape     # one strip/page
 .venv/bin/gpxsheet generate <gpx> --layout strip -o strip.png   # single strip PNG
-.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # GPXtable route table (html|md)
+.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # route table (html|md)
+.venv/bin/gpxsheet table <gpx> --no-osm -o route.md             # fast, fully offline
 ```
 
-The `table` command wraps the **GPXtable** library (`gpxtable` on PyPI, a core dep)
-to emit a markdown/HTML route table — waypoints, distances, fuel/lunch markers, ETAs.
-It is **independent of the OSM/`analyze` pipeline** (reads GPX waypoints directly, fully
-offline). Backend seam: `src/gpxsheet/table.py`; web op `"table"` → `/v1/table`
-(`TableParams`); the SPA exposes it under a **Table** tab (vs the **Sheet** tab).
+The `table` command renders a markdown/HTML route table — waypoints, distances,
+fuel/lunch markers, ETAs — **natively from the `analyze` pipeline** (`src/gpxsheet/
+routetable.py`), so it inherits OSM enrichment: OSM is **on by default** (auto-
+discovered `amenity=fuel`, road-snapped distance), with `--no-osm` for a fast,
+fully offline table. ETAs need `--departure`. OSM also drives **variable ETAs**
+(per-segment `maxspeed`/highway-class speed; a user `--speed` overrides it), a
+**Road column** (from `route.segments` names), `--cue` (a turn-by-turn cue sheet
+from `decision_points`), and **per-day sections** for multi-`<trk>` routes
+(`route.day_breaks`, +24h/day). Supporting seams: `waypoints.py` (the classifier
+— G/L/GL markers, layover, fuel-reset; schema-compatible with a GPXtable
+`--config`) and `timing.py` (`SpeedProfile` + ETA/layover/since-gas + sun).
+Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`/`cue`); the SPA
+exposes it under a **Table** tab (vs the **Sheet** tab).
+
+`src/gpxsheet/gpx.py` lifts named, non-shaping plain `<rtept>`s to waypoints (not
+just Garmin ViaPoints), so plain `<rte>` stops drive POIs / the table. The
+`gpxtable` runtime dependency is **gone** — the table is fully native; `astral`,
+`markdown2` and `python-dateutil` are now direct deps. `routetable.py` carries
+`parse_departure` + `markdown_to_html` (the HTML table keeps the `gpxtable` CSS
+class the SPA styles). Distances are correct, unlike GPXtable's route path, which
+lags by one point (drops the final leg).
 
 Install: `pip install -e ".[dev]"` (core deps include osmnx 2.1 + shapely +
 geopandas; install fine on 3.14). Add `,service` for the web-service stack.
@@ -73,6 +90,21 @@ timeout); else the synchronous `EagerRunner` (the dev/test default). The Docker
 image (Hugging Face Space) sets `GPXSHEET_BACKGROUND_RENDER=1`. Concurrency stays
 1 (`GPXSHEET_RENDER_CONCURRENCY`): the renderers use global matplotlib `pyplot`,
 which is not thread-safe, so renders serialize.
+
+**Perf instrumentation.** Each web job logs one `gpxsheet.perf` INFO line with a
+phase breakdown — e.g. `perf job:render 2.34s [bytes=1.7MB points=30909
+cache=miss] load=… geometry=… enrich=… derive.pois=… derive.reassurance=…
+render=…`. `cache=hit|miss` is the analysis-core cache (`service/analysis_cache.py`,
+keyed on `(gpx, osm)`). Instrument new hot paths with `gpxsheet.perf`: `with
+perf.span("name")` inside a `perf.track(...)` (set per job in `service/render.py`);
+`perf.annotate(k=v)` adds context. Spans outside a track are ~free.
+
+**Heavy analysis is cached + OSM-free per request.** `analysis.analyze_core`
+(geometry + OSM enrich, always fuel+hazards) is the cacheable part; the cheap
+`analysis.derive_products` (profile threshold, fuel report, POIs, reassurance,
+hazard visibility) runs per request from the cached core without mutating it. Keep
+expensive/OSM work in `analyze_core`; keep `derive_products` cheap (watch for
+O(points) loops — reassurance/POIs precompute waypoint projections once).
 
 Sample routes live in the `gpxsamples/` git submodule; a fresh clone needs
 `git submodule update --init` to populate it.

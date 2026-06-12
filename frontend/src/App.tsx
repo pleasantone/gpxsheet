@@ -3,11 +3,12 @@ import { fetchResultJson, submitAnalyze, submitRender, submitTable } from "./api
 import { DropZone } from "./components/DropZone";
 import { Footer } from "./components/Footer";
 import { IntroGuide } from "./components/IntroGuide";
-import { JobProgress } from "./components/JobProgress";
+import { JobProgress, type ProgressPhase } from "./components/JobProgress";
 import { OptionsPanel } from "./components/OptionsPanel";
 import { ResultPane } from "./components/ResultPane";
 import { RouteInfo } from "./components/RouteInfo";
 import { SettingsPopover } from "./components/SettingsPopover";
+import { Spinner } from "./components/Spinner";
 import { TableInfo } from "./components/TableInfo";
 import { TableOptionsPanel } from "./components/TableOptionsPanel";
 import { TableResultPane } from "./components/TableResultPane";
@@ -39,6 +40,10 @@ export default function App() {
   const [ready, setReady] = useState<ReadyState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  // True while a submit POST is in flight (uploading + waiting for the 202),
+  // before a job id exists to poll — drives the "submitting…" feedback.
+  const [renderSubmitting, setRenderSubmitting] = useState(false);
+  const [tableSubmitting, setTableSubmitting] = useState(false);
 
   // Polling hooks
   const analyzeJobId = ready?.analyzeJobId ?? null;
@@ -80,11 +85,18 @@ export default function App() {
   const tableHtml = useBlobText(tableHtmlBlob);
   const tableMarkdown = useBlobText(tableMdBlob);
 
-  // Kick off the jobs for a given mode (used on file drop, tab switch, generate).
-  function runSheet(file: File) {
+  // Warm the (cached) analysis on upload so the first Generate is fast: the
+  // backend caches analyze_core per (gpx, osm), so this OSM pass is reused by the
+  // subsequent render/table. Fired in both modes.
+  function warmAnalysis(file: File) {
     submitAnalyze(file, opts.profile, opts.fuel_range)
       .then((job) => setReady((prev) => (prev ? { ...prev, analyzeJobId: job.id } : prev)))
       .catch((e) => setSubmitError(e instanceof Error ? e.message : "analyze failed"));
+  }
+
+  // Sheet drop/switch: warm analysis + a live preview.
+  function runSheet(file: File) {
+    warmAnalysis(file);
     submitRender(file, { ...opts, layout: "preview", format: "png" })
       .then((job) => setReady((prev) => (prev ? { ...prev, previewJobId: job.id } : prev)))
       .catch(() => {});
@@ -92,23 +104,15 @@ export default function App() {
 
   function runTable(file: File, tblOpts: TableOptions) {
     setReady((prev) => (prev ? { ...prev, tableHtmlJobId: null, tableMdJobId: null } : prev));
+    setTableSubmitting(true);
     submitTable(file, tblOpts, "html")
       .then((job) => setReady((prev) => (prev ? { ...prev, tableHtmlJobId: job.id } : prev)))
-      .catch((e) => setSubmitError(e instanceof Error ? e.message : "table failed"));
+      .catch((e) => setSubmitError(e instanceof Error ? e.message : "table failed"))
+      .finally(() => setTableSubmitting(false));
     submitTable(file, tblOpts, "markdown")
       .then((job) => setReady((prev) => (prev ? { ...prev, tableMdJobId: job.id } : prev)))
       .catch(() => {});
   }
-
-  // Table mode is cheap + offline, so it regenerates live (debounced) whenever the
-  // file or any table option changes — no need to press Generate to see e.g. a new
-  // departure time. (Sheet rendering stays manual; it's matplotlib/OSM heavy.)
-  useEffect(() => {
-    if (mode !== "table" || !ready?.file) return;
-    const file = ready.file;
-    const id = setTimeout(() => runTable(file, tableOpts), 400);
-    return () => clearTimeout(id);
-  }, [mode, ready?.file, tableOpts]);
 
   function handleFile(file: File) {
     setSubmitError(null);
@@ -127,27 +131,50 @@ export default function App() {
       tableMdJobId: null,
     });
     setPhase("ready");
-    // Prefill the Table departure from the GPX's first track/route point time so the
-    // box and the rendered table agree. If the GPX has no point times, keep whatever
-    // is already in the box (don't clear it).
-    gpxStartLocal(file).then((dep) => {
-      if (dep) setTableOpts((prev) => ({ ...prev, departure: dep }));
-    });
-    if (mode === "sheet") runSheet(file); // table mode regenerates via the effect
+    // Prefill the Table departure from the GPX's start time (so the box and the
+    // table agree), then auto-generate the table when dropping straight onto the
+    // Table tab. Sheet kicks off its analyze + preview below.
+    gpxStartLocal(file)
+      .then((dep) => {
+        const next = dep ? { ...tableOpts, departure: dep } : tableOpts;
+        if (dep) setTableOpts(next);
+        if (mode === "table") runTable(file, next);
+      })
+      .catch(() => {
+        if (mode === "table") runTable(file, tableOpts);
+      });
+    if (mode === "sheet") runSheet(file);
   }
 
   function switchMode(m: Mode) {
     if (m === mode) return;
     setMode(m);
     setSubmitError(null);
-    // Sheet needs its analyze + preview kicked off; table regenerates via the effect.
-    if (m === "sheet" && ready?.file && !ready.analyzeJobId) runSheet(ready.file);
+    // Entering a tab auto-produces its output once (Sheet: analyze + preview;
+    // Table: the table). The Generate button re-runs after option changes. Backend
+    // job + analysis caches keep the re-submits cheap.
+    if (m === "sheet" && ready?.file && !ready.previewJobId) runSheet(ready.file);
+    else if (m === "table" && ready?.file && !ready.tableHtmlJobId) {
+      runTable(ready.file, tableOpts);
+    }
+  }
+
+  // The Generate button: render the Sheet, or (re)generate the Table.
+  function onGenerate() {
+    if (!ready) return;
+    if (mode === "table") {
+      setSubmitError(null);
+      runTable(ready.file, tableOpts);
+    } else {
+      void handleGenerate();
+    }
   }
 
   async function handleGenerate() {
-    if (!ready) return; // sheet-only: the table view regenerates live (no button)
+    if (!ready) return;
     setSubmitError(null);
     setIsGenerating(true);
+    setRenderSubmitting(true);
     setReady((prev) => (prev ? { ...prev, renderJobId: null, renderFilename: null } : prev));
     try {
       const job = await submitRender(ready.file, opts);
@@ -160,6 +187,8 @@ export default function App() {
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : "generate failed");
       setIsGenerating(false);
+    } finally {
+      setRenderSubmitting(false);
     }
   }
 
@@ -170,9 +199,38 @@ export default function App() {
     }
   }, [renderStatus, renderError]);
 
-  const sheetGenerating = isGenerating || renderPolling;
-  const tableGenerating = tableHtmlPolling || (!!tableHtmlJobId && !tableHtml && !tableHtmlError);
+  const sheetGenerating = isGenerating || renderSubmitting || renderPolling;
+  const tableGenerating =
+    tableSubmitting || tableHtmlPolling || (!!tableHtmlJobId && !tableHtml && !tableHtmlError);
   const generating = mode === "table" ? tableGenerating : sheetGenerating;
+
+  // Progress phase per job line: a submit in flight, then processing (after the
+  // 202), then done — so there's continuous spinner + status, never a dead gap.
+  const previewPhase: ProgressPhase | null = previewError
+    ? "error"
+    : previewBlobUrl
+      ? "done"
+      : previewJobId
+        ? "processing"
+        : null;
+  const renderPhase: ProgressPhase | null = renderError
+    ? "error"
+    : renderBlobUrl
+      ? "done"
+      : renderSubmitting
+        ? "submitting"
+        : renderJobId
+          ? "processing"
+          : null;
+  const tablePhase: ProgressPhase | null = tableHtmlError
+    ? "error"
+    : tableHtml
+      ? "done"
+      : tableSubmitting
+        ? "submitting"
+        : tableHtmlJobId
+          ? "processing"
+          : null;
 
   if (phase === "idle") {
     return (
@@ -225,14 +283,14 @@ export default function App() {
                 <div className="space-y-1">
                   <JobProgress
                     label="Preview"
-                    isPolling={previewPolling}
-                    jobStatus={previewStatus}
+                    phase={previewPhase}
+                    queuePosition={previewStatus?.queue_position}
                     error={previewError}
                   />
                   <JobProgress
-                    label="Generating"
-                    isPolling={renderPolling}
-                    jobStatus={renderStatus}
+                    label="Sheet"
+                    phase={renderPhase}
+                    queuePosition={renderStatus?.queue_position}
                     error={renderError}
                   />
                   {submitError && <p className="text-sm text-red-600">{submitError}</p>}
@@ -249,8 +307,8 @@ export default function App() {
                 />
                 <JobProgress
                   label="Table"
-                  isPolling={tableHtmlPolling}
-                  jobStatus={tableHtmlStatus}
+                  phase={tablePhase}
+                  queuePosition={tableHtmlStatus?.queue_position}
                   error={tableHtmlError}
                 />
                 {submitError && <p className="text-sm text-red-600">{submitError}</p>}
@@ -265,17 +323,22 @@ export default function App() {
             ) : (
               <TableOptionsPanel opts={tableOpts} onChange={setTableOpts} disabled={generating} />
             )}
-            {/* Sheet rendering is manual; the table regenerates live, so it has no button. */}
-            {mode === "sheet" && (
-              <button
-                data-testid="btn-generate"
-                onClick={handleGenerate}
-                disabled={generating || !ready}
-                className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {generating ? "Generating…" : "Generate"}
-              </button>
-            )}
+            {/* Both modes generate on demand via this button. */}
+            <button
+              data-testid="btn-generate"
+              onClick={onGenerate}
+              disabled={generating || !ready}
+              className="w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {generating ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Spinner className="w-4 h-4" />
+                  {renderSubmitting || tableSubmitting ? "Submitting…" : "Generating…"}
+                </span>
+              ) : (
+                "Generate"
+              )}
+            </button>
           </div>
         </div>
       </main>

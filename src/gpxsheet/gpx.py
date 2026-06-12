@@ -90,6 +90,35 @@ def _garmin_route_dense_points(route: object) -> list[GeoPoint] | None:
     return dense if saw_extension else None
 
 
+def _is_shaping_point(name: str | None, extensions: list) -> bool:
+    """True for a route point that should not appear as a named stop.
+
+    Mirrors GPXtable's ``shaping_point()``: an unnamed point, a Garmin shaping
+    point (``...ShapingPoint`` extension), or a name flagged as a via/shaping
+    point (``"Via …"`` prefix or ``"(V)"`` suffix).
+    """
+    if not name:
+        return True
+    if name.startswith("Via ") or name.endswith("(V)"):
+        return True
+    return any("ShapingPoint" in getattr(ext, "tag", "") for ext in extensions)
+
+
+def _plain_route_named_waypoints(route: object) -> list[Waypoint]:
+    """Lift named, non-shaping ``<rtept>``s of a plain route to waypoints.
+
+    A non-Garmin ``<rte>`` (no ``RoutePointExtension``) carries its stops as named
+    route points rather than ``<wpt>``s. Surface them so they drive POIs / the
+    route table, skipping shaping/via points (see :func:`_is_shaping_point`).
+    """
+    out: list[Waypoint] = []
+    for rtept in route.points:  # type: ignore[attr-defined]
+        if _is_shaping_point(rtept.name, rtept.extensions):
+            continue
+        out.append(Waypoint(rtept.latitude, rtept.longitude, rtept.name, rtept.symbol))
+    return out
+
+
 def _garmin_route_via_waypoints(route: object) -> list[Waypoint]:
     """Promote a Garmin route's announced stops (``trp:ViaPoint``) to waypoints.
 
@@ -149,13 +178,25 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
 
     points: list[GeoPoint] = []
     gpx_name: str | None = None
+    # Point index where each track after the first begins (≈ one day per track),
+    # and the name of each track that contributes points (one per day).
+    day_breaks: list[int] = []
+    track_names: list[str] = []
 
     # Prefer tracks; fall back to routes.
     for track in gpx.tracks:
         gpx_name = gpx_name or track.name
+        start_index = len(points)
         for seg in track.segments:
             for pt in seg.points:
                 points.append(GeoPoint(pt.latitude, pt.longitude, pt.elevation))
+        if len(points) > start_index:  # this track contributed points -> a day
+            if start_index > 0:
+                day_breaks.append(start_index)
+            track_names.append(track.name or "")
+
+    # Only a genuinely multi-day route carries per-day names.
+    day_names = track_names if len(track_names) > 1 else []
 
     # Garmin BaseCamp routes hide their real road geometry inside per-rtept
     # extensions; harvest it as a dense track and lift announced stops to
@@ -173,6 +214,7 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
                     points.append(
                         GeoPoint(rpt.latitude, rpt.longitude, rpt.elevation)
                     )
+                via_waypoints.extend(_plain_route_named_waypoints(route))
 
     if len(points) < 2:
         found = len(points)
@@ -189,4 +231,11 @@ def load_route(path: str | Path, *, name: str | None = None) -> Route:
     resolved_name = name or gpx_name or (gpx.name if gpx.name else None) or path.stem
     distances = cumulative_distances(_point_tuples(points))
 
-    return Route(name=resolved_name, points=points, distances_m=distances, waypoints=waypoints)
+    return Route(
+        name=resolved_name,
+        points=points,
+        distances_m=distances,
+        waypoints=waypoints,
+        day_breaks=day_breaks,
+        day_names=day_names,
+    )

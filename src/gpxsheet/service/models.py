@@ -61,11 +61,12 @@ class RenderParams(ReportParams):
 
 
 class TableParams(BaseModel):
-    """Params for ``/v1/table`` (a GPXtable-backed route table).
+    """Params for ``/v1/table`` (a native route table from the analysis graph).
 
-    Independent of :class:`ReportParams` — table output skips the analyze/OSM
-    pipeline entirely, so none of the profile/fuel knobs apply. ``departure`` is a
-    natural-language or ISO time string parsed server-side; ``speed`` of 0 = auto.
+    ``departure`` is a natural-language or ISO time string parsed server-side and
+    is required for the ETA column; ``speed`` of 0 = auto (30 mph). ``osm`` runs
+    OSM enrichment (auto fuel, road-snapped distance) and is on by default; set it
+    false for a fast, fully offline table.
     """
 
     format: str = Field("html", pattern="^(html|markdown)$")
@@ -73,7 +74,8 @@ class TableParams(BaseModel):
     speed: float = Field(0.0, ge=0)
     units: str = Field("imperial", pattern="^(imperial|metric)$")
     coordinates: bool = False
-    ignore_times: bool = False
+    cue: bool = False
+    osm: bool = True
     timezone: str | None = None
 
 

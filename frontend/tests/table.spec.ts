@@ -8,9 +8,9 @@ test("table: switch to Table tab, see inline table + copy buttons", async ({ pag
   await page.goto("/");
   await page.getByTestId("drop-zone").locator('input[type="file"]').setInputFiles(GPX);
 
-  // Switch to the Table tab — it regenerates live (no Generate button in this mode).
+  // Switching to the Table tab auto-generates the table (the Generate button is
+  // there to re-run after option changes).
   await page.getByTestId("tab-table").click();
-  await expect(page.getByTestId("btn-generate")).toHaveCount(0);
 
   // The table renders inline (no iframe) and matches the app shell.
   const out = page.getByTestId("table-output");
@@ -41,8 +41,9 @@ test("table: departure box is prefilled from a GPX that has timestamps", async (
   await page.goto("/");
   await page.getByTestId("drop-zone").locator('input[type="file"]').setInputFiles(TIMED);
   await page.getByTestId("tab-table").click();
-  await page.getByTestId("table-output").waitFor({ timeout: 90_000 });
-  // The box reflects the GPX's own start time, and the table shows a matching departure.
+  // The box reflects the GPX's own start time; generate after it prefills.
   await expect(page.getByTestId("tbl-departure")).toHaveValue(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+  await page.getByTestId("btn-generate").click();
+  await page.getByTestId("table-output").waitFor({ timeout: 90_000 });
   await expect(page.getByTestId("table-output")).toContainText("Departure");
 });

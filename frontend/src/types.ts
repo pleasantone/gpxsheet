@@ -67,18 +67,19 @@ export const DEFAULT_OPTIONS: RenderOptions = {
   show_branches: false,
 };
 
-// "sheet" = the existing PDF/PNG map renderers; "table" = the GPXtable-backed
-// route table (HTML/markdown), which bypasses the OSM analyze pipeline entirely.
+// "sheet" = the PDF/PNG map renderers; "table" = the native route table
+// (HTML/markdown) rendered from the analyze pipeline (OSM on by default).
 export type Mode = "sheet" | "table";
 export type TableFormat = "html" | "markdown";
 export type Units = "imperial" | "metric";
 
 export interface TableOptions {
   departure: string | null; // value of a <input type="datetime-local">; null = no ETA
-  speed: number; // mph/kph; 0 = auto
+  speed: number; // mph/kph; 0 = auto (overrides OSM speeds)
   units: Units;
   coordinates: boolean;
-  ignore_times: boolean;
+  osm: boolean; // OSM enrichment: auto fuel, road names, road-snapped distance
+  cue: boolean; // append a turn-by-turn cue sheet
   timezone: string | null;
 }
 
@@ -87,6 +88,7 @@ export const DEFAULT_TABLE_OPTIONS: TableOptions = {
   speed: 0,
   units: "imperial",
   coordinates: false,
-  ignore_times: false,
+  osm: true,
+  cue: false,
   timezone: null,
 };

@@ -130,6 +130,75 @@ def _is_unpaved(surface: str | None, highway: str | None) -> bool:
     return (surface or "").lower() in _UNPAVED_SURFACES or (highway or "").lower() == "track"
 
 
+# Assumed sport-touring cruising speed (mph) by OSM highway class, used when an
+# edge has no usable ``maxspeed`` tag. Deliberately coarse; a posted limit always
+# wins. The default covers unknown/blank classes.
+_HIGHWAY_SPEED_MPH = {
+    "motorway": 70.0, "motorway_link": 45.0,
+    "trunk": 60.0, "trunk_link": 40.0,
+    "primary": 55.0, "primary_link": 35.0,
+    "secondary": 50.0, "secondary_link": 35.0,
+    "tertiary": 45.0, "tertiary_link": 30.0,
+    "unclassified": 40.0, "residential": 25.0, "living_street": 15.0,
+    "service": 15.0, "track": 10.0, "road": 35.0,
+}
+_DEFAULT_HIGHWAY_SPEED_MPH = 35.0
+_MAXSPEED_RE = re.compile(r"(\d+(?:\.\d+)?)")
+
+
+def _parse_maxspeed_mph(value: str | None) -> float | None:
+    """An OSM ``maxspeed`` value in mph, or None for absent/non-numeric tags.
+
+    Handles ``"55 mph"`` (mph) and a bare number (km/h, OSM's default unit);
+    ``"none"``/``"signals"``/``"walk"`` and the like have no number and return
+    None so the caller falls back to the highway-class default.
+    """
+    if not value:
+        return None
+    match = _MAXSPEED_RE.search(value)
+    if not match:
+        return None
+    num = float(match.group(1))
+    return num if "mph" in value.lower() else num * (1.0 / 1.609344)
+
+
+def _edge_speed_mph(maxspeed: str | None, highway: str | None) -> float | None:
+    """Travel speed (mph) for an edge: posted ``maxspeed`` else highway-class default."""
+    posted = _parse_maxspeed_mph(maxspeed)
+    if posted is not None:
+        return posted
+    if highway is None:
+        return None
+    return _HIGHWAY_SPEED_MPH.get(highway.lower(), _DEFAULT_HIGHWAY_SPEED_MPH)
+
+
+def _speed_breakpoints(
+    sample_m: list[float], speeds: list[float | None]
+) -> list[tuple[float, float]] | None:
+    """Coalesce per-sample mph into ``(start_mile, mph)`` breakpoints, or None.
+
+    Gaps (None) are forward/back-filled from neighbours; adjacent samples with the
+    same rounded mph collapse to one breakpoint. Returns None when no sample had a
+    usable speed (e.g. OSM never ran).
+    """
+    filled: list[float | None] = []
+    prev: float | None = None
+    for s in speeds:
+        prev = s if s is not None else prev
+        filled.append(prev)
+    first_known = next((s for s in filled if s is not None), None)
+    if first_known is None:
+        return None
+    bps: list[tuple[float, float]] = []
+    last_round: float | None = None
+    for m, s in zip(sample_m, filled, strict=True):
+        mph = round(s if s is not None else first_known)
+        if mph != last_round:
+            bps.append((round(meters_to_miles(m), 2), float(mph)))
+            last_round = mph
+    return bps or None
+
+
 # A ferry only counts as a crossing if the route actually rides along this much
 # of it. Merely passing within the corridor buffer of a terminal (e.g. riding
 # past a bay ferry pier) leaves only a sliver of the long ferry way overlapping.
@@ -214,6 +283,7 @@ def enrich_route(
     coords = [coord_at_meters(route, m) for m in sample_m]
     names: list[str | None] = [None] * len(sample_m)
     unpaved: list[bool] = [False] * len(sample_m)
+    speeds: list[float | None] = [None] * len(sample_m)  # mph per sample, from OSM
     node_seq: list[int | None] = [None] * len(sample_m)  # nearest OSM node per sample
     graphs: list[_GraphChunk] = []  # (i0, i1, graph) for the topology pass
 
@@ -237,10 +307,9 @@ def enrich_route(
         for k, key in zip(idxs, keys, strict=True):
             edge = tuple(key)
             names[k] = _edge_name(edges_gdf, edge)
-            unpaved[k] = _is_unpaved(
-                _edge_value(edges_gdf, edge, "surface"),
-                _edge_value(edges_gdf, edge, "highway"),
-            )
+            highway = _edge_value(edges_gdf, edge, "highway")
+            unpaved[k] = _is_unpaved(_edge_value(edges_gdf, edge, "surface"), highway)
+            speeds[k] = _edge_speed_mph(_edge_value(edges_gdf, edge, "maxspeed"), highway)
             # Nearest node = the closer endpoint of the nearest edge. (Avoids
             # ox.distance.nearest_nodes, which needs the scikit-learn extra.)
             node_seq[k] = _closer_endpoint(graph, edge, coords[k])
@@ -257,13 +326,20 @@ def enrich_route(
     spacing_m = total_m / (n - 1) if n > 1 else 0.0
     route.unpaved_miles = round(meters_to_miles(sum(unpaved) * spacing_m), 1)
     route.spans = _unpaved_spans(sample_m, unpaved, spacing_m)
+    route.speed_samples_mph = _speed_breakpoints(sample_m, speeds)
 
     if include_fuel:
         _add_fuel(route, ox, chunks, fuel_buffer_m)
     if include_hazards:
-        ferry_spans = _detect_ferries(route, ox, sg, road_buffer_m)
-        route.ferry_crossings = sorted({s.name for s in ferry_spans if s.name})
-        route.spans = sorted([*route.spans, *ferry_spans], key=lambda s: s.start_mile)
+        # Best-effort (like the junction-topology pass): the ferry query is an
+        # extra Overpass call, so a failure/timeout must not abort enrichment --
+        # it just leaves ferry_crossings None and the unpaved-only spans.
+        try:
+            ferry_spans = _detect_ferries(route, ox, sg, road_buffer_m)
+            route.ferry_crossings = sorted({s.name for s in ferry_spans if s.name})
+            route.spans = sorted([*route.spans, *ferry_spans], key=lambda s: s.start_mile)
+        except Exception:  # noqa: BLE001 - degrade to no ferries on any failure
+            log.exception("ferry detection failed; skipping hazards")
     return route
 
 

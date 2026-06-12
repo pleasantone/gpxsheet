@@ -117,7 +117,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
             response.headers.setdefault("X-Frame-Options", "DENY")
         # API routes stay locked down; SPA HTML needs script execution + blob: images.
         # style-src allows 'unsafe-inline' so the inline-rendered Table view can keep
-        # GPXtable's `text-align` cell styles (sanitized via DOMPurify before injection);
+        # the route table's `text-align` cell styles (sanitized via DOMPurify before injection);
         # script-src/default-src stay strict, so this is style-only.
         is_api = request.url.path.startswith("/v1/") or request.url.path in ("/healthz", "/readyz")
         base = (
@@ -414,7 +414,7 @@ def create_app(
         response: Response,
         identity: str = Depends(client_identity),
     ) -> JobStatus:
-        """Render a GPXtable route table (HTML or markdown) as a job."""
+        """Render a route table (HTML or markdown) as a job."""
         return submit_job("table", body.gpx, _to_params(body, TableParams), identity, response)
 
     @app.post(

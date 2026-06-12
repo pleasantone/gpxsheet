@@ -81,7 +81,7 @@ def enrich_route_file() -> Path:
 
 @pytest.fixture
 def table_route_file() -> Path:
-    """A small ``<rte>`` with named points + symbols, for GPXtable route tables."""
+    """A small ``<rte>`` with named points + symbols, for the native route table."""
     return FIXTURES_DIR / "table_route.gpx"
 
 

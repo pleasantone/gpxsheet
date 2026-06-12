@@ -124,6 +124,27 @@ def test_plain_route_uses_sparse_fallback(tmp_path: Path) -> None:
     route = load_route(path)
     assert len(route.points) == 2
     assert route.waypoints == []
+    assert route.day_breaks == []  # single geometry block -> no day breaks
+
+
+def test_multiple_tracks_record_day_breaks(tmp_path: Path) -> None:
+    """Each <trk> after the first records a day break at its first point index."""
+    xml = (
+        '<?xml version="1.0"?>'
+        '<gpx xmlns="http://www.topografix.com/GPX/1/1" version="1.1">'
+        '<trk><name>D1</name><trkseg>'
+        '<trkpt lat="38.0" lon="-122.0"/><trkpt lat="38.01" lon="-122.0"/>'
+        "</trkseg></trk>"
+        '<trk><name>D2</name><trkseg>'
+        '<trkpt lat="38.1" lon="-122.0"/><trkpt lat="38.11" lon="-122.0"/>'
+        "</trkseg></trk>"
+        "</gpx>"
+    )
+    path = tmp_path / "multi.gpx"
+    path.write_text(xml, encoding="utf-8")
+    route = load_route(path)
+    assert route.day_breaks == [2]  # track 2 starts at point index 2
+    assert route.day_names == ["D1", "D2"]  # one name per day (track names)
 
 
 _BASECAMP_SAMPLE = (
