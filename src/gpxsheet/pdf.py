@@ -18,11 +18,12 @@ from .models import Route
 from .paginate import plan_pages, slice_route
 from .strip import _use_bundled_fonts, draw_strip
 
-# Above this many decisions a sheet stops being glanceable and the render time
-# balloons (every decision is a marker + a leader-placed label across the lanes).
-# A long twisty route analyzed geometry-only -- no OSM -- floods to 1000+, so cap
-# what we draw to the most significant ones. OSM routes (durable road-name
-# changes) stay well under this, so normal output is unaffected.
+# Cap for the glanceable single-image overviews (preview / strip): above this many
+# decisions they stop being glanceable and the render time balloons (every
+# decision is a marker + a leader-placed label). A long twisty route analyzed
+# geometry-only -- no OSM -- floods to 1000+, so the overviews draw only the most
+# significant ones. The paginated roadbook (portrait/landscape) is NOT capped --
+# it spreads every decision across pages. OSM routes stay well under this anyway.
 MAX_RENDER_DECISIONS = 80
 
 
@@ -481,8 +482,10 @@ def render_layout(
     if fmt not in FORMATS:
         raise ValueError(f"fmt must be one of {FORMATS}, got {fmt!r}")
     output_path = Path(output_path)
-    route = _cap_decisions(route)  # bound a decision-flooded route's render
 
+    # The paginated roadbook (portrait/landscape) keeps every decision -- it spreads
+    # them across pages, and dropping turns from the printed nav product would be
+    # wrong. Only the glanceable single-image overviews cap a decision flood.
     if layout in ("portrait", "landscape"):
         render = render_pdf if fmt == "pdf" else render_pages_png
         return render(
@@ -490,6 +493,7 @@ def render_layout(
             lanes_per_page=lanes_per_page, decisions_per_lane=decisions_per_lane,
             show_branches=show_branches,
         )
+    route = _cap_decisions(route)  # preview/strip: bound a decision flood
     if layout == "preview":
         return render_preview(
             route, output_path, turn_style=turn_style, decisions_per_lane=decisions_per_lane,
