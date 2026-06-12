@@ -85,11 +85,18 @@ export default function App() {
   const tableHtml = useBlobText(tableHtmlBlob);
   const tableMarkdown = useBlobText(tableMdBlob);
 
-  // Kick off the jobs for a given mode (used on file drop, tab switch, generate).
-  function runSheet(file: File) {
+  // Warm the (cached) analysis on upload so the first Generate is fast: the
+  // backend caches analyze_core per (gpx, osm), so this OSM pass is reused by the
+  // subsequent render/table. Fired in both modes.
+  function warmAnalysis(file: File) {
     submitAnalyze(file, opts.profile, opts.fuel_range)
       .then((job) => setReady((prev) => (prev ? { ...prev, analyzeJobId: job.id } : prev)))
       .catch((e) => setSubmitError(e instanceof Error ? e.message : "analyze failed"));
+  }
+
+  // Sheet drop/switch: warm analysis + a live preview.
+  function runSheet(file: File) {
+    warmAnalysis(file);
     submitRender(file, { ...opts, layout: "preview", format: "png" })
       .then((job) => setReady((prev) => (prev ? { ...prev, previewJobId: job.id } : prev)))
       .catch(() => {});
@@ -130,16 +137,19 @@ export default function App() {
     gpxStartLocal(file).then((dep) => {
       if (dep) setTableOpts((prev) => ({ ...prev, departure: dep }));
     });
-    // Sheet kicks off its analyze + preview on drop; table waits for Generate.
+    // Warm analysis immediately in both modes; Sheet also shows a live preview.
+    // The render/table itself still waits for Generate.
     if (mode === "sheet") runSheet(file);
+    else warmAnalysis(file);
   }
 
   function switchMode(m: Mode) {
     if (m === mode) return;
     setMode(m);
     setSubmitError(null);
-    // Sheet needs its analyze + preview kicked off; table waits for Generate.
-    if (m === "sheet" && ready?.file && !ready.analyzeJobId) runSheet(ready.file);
+    // Sheet needs its preview kicked off (analyze is already warm); the analyze
+    // re-submit is deduped by the backend job cache.
+    if (m === "sheet" && ready?.file && !ready.previewJobId) runSheet(ready.file);
   }
 
   // The Generate button: render the Sheet, or (re)generate the Table.
