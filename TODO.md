@@ -5,32 +5,23 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
 ## Input / GPX support (open)
 
-- **✅ Garmin BaseCamp routes** — done. The loader reconstructs the dense track
-  from `gpxx:RoutePointExtension`/`gpxx:rpt` and lifts `trp:ViaPoint` stops to
-  waypoints (with optional arrival/departure times). See
-  [docs/basecamp-routes.md](docs/basecamp-routes.md); fixture
-  `gpxsamples/basecamp-route.gpx`.
 - **Broaden GPX route/track support across more planners** — ingest GPX from
   **Kurviger** and **Furkot**, using each tool's route extensions to reconstruct
   a real track from route points (shaping/via points and any embedded geometry),
   so a `<rte>`-only export still yields trackpoints for analysis. Handle files
   that carry **both** a `<rte>` and a `<trk>` (combined route + track) — decide
   which is authoritative and merge consistently. Add fixtures from each planner
-  under `gpxsamples/`/`tests/`. (BaseCamp, above, is the reference implementation.)
+  under `gpxsamples/`/`tests/`. (The shipped Garmin BaseCamp loader is the
+  reference implementation.)
 
 ## Analysis (open)
 
-- **✅ Seasonal-closure risk check** — done. `validate.validate_route` now warns
-  on seasonal roads via a *hybrid* check (`gpxsheet.seasonal`): a curated list of
-  well-known seasonal roads (Sierra/Cascade passes) matched on OSM road names, plus
-  an OSM-tag supplement (`seasonal` / `*:conditional` / `snowmobile`). Mirrors the
-  ferry hazard (`Route.seasonal_closures`; `None`=not assessed, `[]`=clear).
-  Possible follow-up: **audit the curated `SEASONAL_ROADS` list against live OSM —
-  if every road in it already carries reliable `seasonal` / `access:conditional`
-  tags, drop the curated list and rely solely on the OSM-tag path
-  (`seasonal.is_seasonal_edge`), removing the special-case code.** Also: expand the
-  curated list; parse closure windows for a date-aware verdict (validate carries no
-  trip date today).
+- **Audit the curated seasonal-road list against OSM** — check `SEASONAL_ROADS`
+  (`gpxsheet.seasonal`) against live OSM: if every road in it already carries
+  reliable `seasonal` / `access:conditional` tags, drop the curated list and rely
+  solely on the OSM-tag path (`seasonal.is_seasonal_edge`), removing the
+  special-case code. Otherwise, expand the curated list; and parse closure windows
+  for a date-aware verdict (validate carries no trip date today).
 - **Y/T-intersection & junction-geometry significance scoring** — docs/product.md's
   scoring table defines Y/T-intersection scores, but only road-name / highway-name /
   sharp-turn scoring is wired up today. Implementing this would reintroduce the
