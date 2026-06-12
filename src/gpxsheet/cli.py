@@ -147,10 +147,7 @@ def validate(
 def table(
     gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
     output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output file path (.html or .md)."
-    ),
-    fmt: str = typer.Option(
-        "html", "--format", help="Output format: html | markdown (inferred from -o extension)."
+        None, "--output", "-o", help="Output file path; format inferred from .html or .md."
     ),
     departure: str | None = typer.Option(
         None, "--departure", help='Departure time, e.g. "9:00 AM" or "July 4 2pm".'
@@ -176,15 +173,16 @@ def table(
 
     Built natively on GPXsheet's analysis: OSM enrichment is on by default (auto
     fuel, road-snapped distance); pass ``--no-osm`` for a fast, fully offline
-    table. ETAs require ``--departure``.
+    table. Output format follows the ``-o`` extension (``.md`` → markdown, else
+    HTML). ETAs require ``--departure``.
     """
     from .routetable import render_table
     from .table import parse_departure
 
     if output is None:
-        output = Path("route_table.md" if fmt == "markdown" else "route_table.html")
+        output = Path("route_table.html")
     suffix = output.suffix.lower()
-    out_fmt = "markdown" if suffix in (".md", ".markdown") else "html" if suffix == ".html" else fmt
+    out_fmt = "markdown" if suffix in (".md", ".markdown") else "html"
     try:
         depart_at, tz = parse_departure(departure, timezone)
         out = render_table(
@@ -193,7 +191,7 @@ def table(
             fmt=out_fmt,
             imperial=not metric,
             speed=speed,
-            depart_at=depart_at,
+            departure=depart_at,
             display_coordinates=coordinates,
             tz=tz,
             osm=osm,

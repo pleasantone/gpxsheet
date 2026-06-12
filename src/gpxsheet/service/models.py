@@ -66,9 +66,7 @@ class TableParams(BaseModel):
     ``departure`` is a natural-language or ISO time string parsed server-side and
     is required for the ETA column; ``speed`` of 0 = auto (30 mph). ``osm`` runs
     OSM enrichment (auto fuel, road-snapped distance) and is on by default; set it
-    false for a fast, fully offline table. ``ignore_times`` is accepted for
-    backward compatibility but has no effect (the native engine never reads track
-    timestamps).
+    false for a fast, fully offline table.
     """
 
     format: str = Field("html", pattern="^(html|markdown)$")
@@ -77,7 +75,6 @@ class TableParams(BaseModel):
     units: str = Field("imperial", pattern="^(imperial|metric)$")
     coordinates: bool = False
     osm: bool = True
-    ignore_times: bool = False
     timezone: str | None = None
 
 

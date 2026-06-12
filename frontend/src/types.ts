@@ -78,7 +78,6 @@ export interface TableOptions {
   speed: number; // mph/kph; 0 = auto
   units: Units;
   coordinates: boolean;
-  ignore_times: boolean;
   timezone: string | null;
 }
 
@@ -87,6 +86,5 @@ export const DEFAULT_TABLE_OPTIONS: TableOptions = {
   speed: 0,
   units: "imperial",
   coordinates: false,
-  ignore_times: false,
   timezone: null,
 };

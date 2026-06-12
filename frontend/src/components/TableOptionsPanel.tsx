@@ -82,13 +82,6 @@ export function TableOptionsPanel({ opts, onChange, disabled }: TableOptionsPane
             label="Show coordinates"
             disabled={disabled}
           />
-          <Checkbox
-            testId="tbl-ignore-times"
-            checked={opts.ignore_times}
-            onChange={(v) => set("ignore_times", v)}
-            label="Ignore GPX times"
-            disabled={disabled}
-          />
         </div>
       </Row>
     </div>

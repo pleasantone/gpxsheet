@@ -212,7 +212,7 @@ def render_table(
     fmt: str = "html",
     imperial: bool = True,
     speed: float = 0.0,
-    depart_at: datetime | None = None,
+    departure: datetime | None = None,
     tz: tzinfo | None = None,
     display_coordinates: bool = False,
     osm: bool = True,
@@ -232,7 +232,7 @@ def render_table(
         route,
         imperial=imperial,
         speed=speed,
-        departure=depart_at,
+        departure=departure,
         tz=tz,
         display_coordinates=display_coordinates,
     )
