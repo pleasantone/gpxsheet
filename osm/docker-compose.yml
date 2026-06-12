@@ -40,9 +40,9 @@ services:
       # Build area objects (needed for area[...] / is_in queries) after import.
       OVERPASS_RULES_LOAD: "10"
 
-      # Seconds the updater sleeps between diff fetches. Geofabrik publishes
-      # region diffs daily, so polling hourly is plenty.
-      OVERPASS_UPDATE_SLEEP: "${OVERPASS_UPDATE_SLEEP:-3600}"
+      # Seconds the updater sleeps between diff fetches. Weekly by default
+      # (604800s); a single poll applies all diffs published since the last run.
+      OVERPASS_UPDATE_SLEEP: "${OVERPASS_UPDATE_SLEEP:-604800}"
 
       # Dispatcher scratch space for query results, in bytes (default 2 GiB).
       OVERPASS_SPACE: "${OVERPASS_SPACE:-2147483648}"

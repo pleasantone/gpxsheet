@@ -17,8 +17,8 @@ rate-limit-free Overpass instead of the public `overpass-api.de`.
 - **Data:** the full Geofabrik **California** extract (`california-latest.osm.pbf`).
 - **Freshness:** the container polls Geofabrik's
   [`california-updates/`](https://download.geofabrik.de/north-america/us/california-updates/)
-  diff feed and applies changes automatically (default: hourly poll; Geofabrik
-  publishes region diffs ~daily).
+  diff feed **weekly** by default and applies all changes published since the
+  last run. Tune the cadence with `OVERPASS_UPDATE_SLEEP`.
 - **History:** current data only (`OVERPASS_META=no`) — no attic/object history.
   Smaller and faster; sufficient for POI/road/geometry queries. (No augmented-diff
   `adiff` support in this mode.)
@@ -112,7 +112,7 @@ All knobs live in `docker-compose.yml` with overridable defaults; copy
 | `OVERPASS_PORT` | `12345` | Host port the API is published on. |
 | `OVERPASS_PLANET_URL` | California PBF | Region extract to import. |
 | `OVERPASS_DIFF_URL` | California updates | Matching diff feed for auto-updates. |
-| `OVERPASS_UPDATE_SLEEP` | `3600` | Seconds between diff polls. |
+| `OVERPASS_UPDATE_SLEEP` | `604800` | Seconds between diff polls (default weekly). |
 | `OVERPASS_SPACE` | `2147483648` | Dispatcher scratch space (bytes). |
 | `OVERPASS_MAX_TIMEOUT` | `1000` | Max query runtime advertised to clients (s). |
 
