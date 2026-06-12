@@ -36,7 +36,7 @@ _TRP = "{http://www.garmin.com/xmlschemas/TripExtensions/v1}"
 # never carries a DOCTYPE; rejecting one neutralises XXE and entity-expansion
 # ("billion laughs") attacks regardless of which XML backend gpxpy selects
 # (the stdlib parser blocks both, but gpxpy prefers lxml when installed, whose
-# default parser resolves entities). See docs/security-audit.md.
+# default parser resolves entities).
 _DOCTYPE_RE = re.compile(r"<!(?:DOCTYPE|ENTITY)\b", re.IGNORECASE)
 
 

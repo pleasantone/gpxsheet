@@ -43,7 +43,7 @@ library API, web API guide + interactive reference, and deployment notes.
   markers, ETAs, sunrise/sunset; per-day sections for multi-day GPX); `table` CLI.
 - **Packaged** for `pip install gpxsheet`; PEP 561 typed.
 - **Web service** — a FastAPI app exposing the engine over REST (async jobs);
-  see [Web service](#web-service) and [docs/web-api.md](docs/web-api.md).
+  see [Web service](#web-service) below.
 
 How it works internally — the two-tier decision detection, schematic layout
 engine, pagination, and OSM enrichment — is documented in
@@ -105,8 +105,8 @@ A FastAPI service exposes the engine over REST and ships a built-in browser UI.
 **Web UI** — drop a GPX onto the page, see a live strip preview and route stats,
 adjust options, and download the PDF/PNG or route table. Build it once
 (`make frontend`), then run `uvicorn gpxsheet.service.asgi:app` (UI at `/`,
-Swagger at `/docs`); for the hot-reload dev modes see
-[docs/dev-workflow.md](docs/dev-workflow.md).
+Swagger at `/docs`); the hot-reload dev modes are covered under
+[Development](#development) above.
 
 **REST API** — every operation is an async job (submit → poll → fetch) over
 `/v1/render`, `/v1/table`, `/v1/analyze`, and `/v1/validate`. The full reference —
@@ -116,9 +116,8 @@ env-driven (`GPXSHEET_REDIS_URL` switches the prod path; see
 `gpxsheet/service/settings.py`).
 
 **Self-hosting & hardening** — run the single Docker image or the full
-Redis/MinIO stack; see [docs/deploy.md](docs/deploy.md), and read
-[docs/security-audit.md](docs/security-audit.md) **before exposing the service to
-the public internet**.
+Redis/MinIO stack; see [docs/deploy.md](docs/deploy.md) before exposing the
+service to the public internet.
 
 ## License
 

@@ -59,5 +59,7 @@ nav:
       - API reference: web-api-reference.md
   - Deployment:
       - Hosting: deploy.md
-      - Security audit: security-audit.md
+  - Development:
+      - Workflow: dev-workflow.md
+      - Garmin BaseCamp routes: basecamp-routes.md
   - Design notes: product.md

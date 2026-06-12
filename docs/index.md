@@ -2,27 +2,12 @@
 
 > Motorcycle sport-touring route awareness generator.
 
-GPXSheet converts GPX routes into highly **glanceable, map-centric** motorcycle
-navigation aids optimized for **tank-bag** use. It is *not* a rally roadbook and
-*not* a GPS replacement — the goal is route **awareness**: a rider should be able
-to glance at the sheet for under a second and immediately grasp what road they're
-on, what the next navigation decision is, how far off it is, what comes after,
-and where they are along the whole route.
-
-Route *structure* — which turns are real decisions versus mere curves, road
-names, and fuel — is derived from OpenStreetMap rather than raw geometry, so the
-output reflects the road network instead of flooding twisty roads with false
-turns.
-
-## What you can do with it
-
-- **Generate** a roadbook-style **PDF** (or PNG) of a route — schematic strips
-  showing road shape, decision points, names, and fuel.
-- **Table** a route into a markdown/HTML trip-plan — waypoints, distances,
-  fuel/lunch markers, ETAs and sunrise/sunset (per-day for multi-day GPX).
-- **Analyze** a route into structured data (decision points, segments, fuel
-  stops) for your own tooling.
-- **Validate** a route for fuel-range gaps, unpaved stretches, and ferries.
+GPXSheet converts GPX routes into glanceable, map-centric motorcycle navigation
+aids optimized for tank-bag use. Route *structure* — which turns are real
+decisions versus mere curves, road names, and fuel — comes from OpenStreetMap
+rather than raw geometry, so the output reflects the road network instead of
+flooding twisty roads with false turns. See the [design notes](product.md) for
+the goals and the engineering behind it.
 
 Three ways to use it:
 
@@ -46,5 +31,5 @@ pip install "gpxsheet[service]"   # + the web service
   browser `fetch` examples.
 - [Web API reference](web-api-reference.md) — interactive OpenAPI for every
   endpoint.
-- [Deployment & security](security-audit.md) — hardening for public exposure.
+- [Deployment](deploy.md) — hosting and hardening for public exposure.
 - [Design notes](product.md) — the full product/engineering specification.
