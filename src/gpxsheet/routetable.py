@@ -15,6 +15,7 @@ layover / fuel-reset and timed (:mod:`gpxsheet.timing`).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
 from pathlib import Path
@@ -39,13 +40,24 @@ DEFAULT_SPEED_MPH = 30.0
 # stop (the waypoint row already represents it).
 FUEL_NEAR_POI_MILES = 0.3
 
-# Column templates, identical to GPXtable's GPXTableCalculator.
+# Base column templates, identical to GPXtable's GPXTableCalculator.
 _OUT_HDR = "| Name                           |   Dist. | GL |  ETA  | Notes"
 _OUT_SEP = "| :----------------------------- | ------: | -- | ----: | :----"
 _OUT_FMT = "| {:30.30} | {:>7} | {:>2} | {:>5} | {}{}"
+# A Road column (before Notes) appears when OSM road names are available.
+_OUT_HDR_ROAD = (
+    "| Name                           |   Dist. | GL |  ETA  | Road                     | Notes"
+)
+_OUT_SEP_ROAD = (
+    "| :----------------------------- | ------: | -- | ----: | :----------------------- | :----"
+)
+_OUT_FMT_ROAD = "| {:30.30} | {:>7} | {:>2} | {:>5} | {:24.24} | {}{}"
 _LLP_HDR = "|        Lat,Lon       "
 _LLP_SEP = "| :------------------: "
 _LLP_FMT = "| {:-10.4f},{:.4f} "
+
+# Geometry-only segments are named "Leg N"; those are not real road names.
+_LEG_RE = re.compile(r"^Leg \d+$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +131,59 @@ def _fmt_layover(layover: timedelta) -> str:
     return f" (+{str(layover)[:-3]})" if layover else ""
 
 
+def _road_at(route: Route, mile: float) -> str | None:
+    """The OSM road name covering ``mile`` (None for a gap or a 'Leg N' segment)."""
+    for seg in route.segments:
+        if seg.start_mile <= mile <= seg.end_mile and not _LEG_RE.match(seg.name):
+            return seg.name
+    return None
+
+
+def _table_lines(
+    rows: list[_Row],
+    classes: list,
+    timings: list,
+    roads: list[str | None],
+    *,
+    imperial: bool,
+    tz: tzinfo | None,
+    display_coordinates: bool,
+) -> list[str]:
+    """The header, separator and data rows for one table section.
+
+    A Road column is added when any row has a road name (``roads`` not all None).
+    """
+    show_road = any(roads)
+    out_hdr, out_sep = (
+        (_OUT_HDR_ROAD, _OUT_SEP_ROAD) if show_road else (_OUT_HDR, _OUT_SEP)
+    )
+    if display_coordinates:
+        lines = [f"{_LLP_HDR}{out_hdr}", f"{_LLP_SEP}{out_sep}"]
+    else:
+        lines = [out_hdr, out_sep]
+
+    last = len(rows) - 1
+    for i, (row, cls, t, road) in enumerate(
+        zip(rows, classes, timings, roads, strict=True)
+    ):
+        is_edge = i == 0 or i == last
+        if cls.fuel_reset or i == last:
+            dist = f"{_fmt_length(t.since_gas_m, imperial)}/{_fmt_length(t.total_m, imperial)}"
+        else:
+            dist = _fmt_length(t.total_m, imperial)
+        marker = "" if is_edge else cls.marker
+        eta = t.arrival.astimezone(tz).strftime("%H:%M") if t.arrival else ""
+        prefix = _LLP_FMT.format(row.lat, row.lon) if display_coordinates else ""
+        name = (row.name or "").replace("\n", " ")
+        notes, layover = cls.symbol or "", _fmt_layover(t.layover)
+        if show_road:
+            body = _OUT_FMT_ROAD.format(name, dist, marker, eta, road or "", notes, layover)
+        else:
+            body = _OUT_FMT.format(name, dist, marker, eta, notes, layover)
+        lines.append(prefix + body)
+    return lines
+
+
 def build_table_markdown(
     route: Route,
     *,
@@ -146,42 +211,18 @@ def build_table_markdown(
         speed=profile,
     )
 
+    roads = [_road_at(route, meters_to_miles(r.distance_m)) for r in rows]
+
     lines: list[str] = [f"## Route: {route.name}"]
     if departure is not None:
         lines.append(f"* Departure at {departure.astimezone(tz):%c %Z}")
     lines.append(f"* Total distance: {_fmt_length(route.length_m, imperial, True)}")
     lines.append(speed_line)
     lines.append("")
-    if display_coordinates:
-        lines.append(f"{_LLP_HDR}{_OUT_HDR}")
-        lines.append(f"{_LLP_SEP}{_OUT_SEP}")
-    else:
-        lines.append(_OUT_HDR)
-        lines.append(_OUT_SEP)
-
-    last = len(rows) - 1
-    for i, (row, cls, t) in enumerate(zip(rows, classes, timings, strict=True)):
-        is_edge = i == 0 or i == last
-        if cls.fuel_reset or i == last:
-            dist = (
-                f"{_fmt_length(t.since_gas_m, imperial)}/{_fmt_length(t.total_m, imperial)}"
-            )
-        else:
-            dist = _fmt_length(t.total_m, imperial)
-        marker = "" if is_edge else cls.marker
-        eta = t.arrival.astimezone(tz).strftime("%H:%M") if t.arrival else ""
-        prefix = _LLP_FMT.format(row.lat, row.lon) if display_coordinates else ""
-        lines.append(
-            prefix
-            + _OUT_FMT.format(
-                (row.name or "").replace("\n", " "),
-                dist,
-                marker,
-                eta,
-                cls.symbol or "",
-                _fmt_layover(t.layover),
-            )
-        )
+    lines += _table_lines(
+        rows, classes, timings, roads,
+        imperial=imperial, tz=tz, display_coordinates=display_coordinates,
+    )
 
     almanac = _sun_line(route, rows, timings, tz)
     if almanac:

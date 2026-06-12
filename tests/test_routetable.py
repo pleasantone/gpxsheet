@@ -108,6 +108,22 @@ def test_no_osm_skips_enrichment(enrich_route_file):
     assert route.fuel_stops == []
 
 
+def test_road_column_appears_with_osm_names(analyzed):
+    from gpxsheet.models import Segment
+
+    analyzed.segments = [Segment("Sand Hill Road", 0.0, analyzed.length_miles)]
+    md = build_table_markdown(analyzed)
+    assert "| Road" in md  # the new column header
+    assert "Sand Hill Road" in md
+
+
+def test_no_road_column_when_geometry_only(analyzed):
+    # Default synthetic route has only "Leg N" segments -> no Road column.
+    md = build_table_markdown(analyzed)
+    assert "| Road" not in md
+    assert "| Name                           |   Dist. | GL |  ETA  | Notes" in md
+
+
 def test_osm_speed_profile_drives_variable_eta(analyzed):
     # Inject an OSM speed profile: first half 60 mph, second half 20 mph.
     half = analyzed.length_miles / 2
