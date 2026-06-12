@@ -1,0 +1,8 @@
+# Local environment overrides — never commit credentials/host-specific config.
+.env
+
+# Anything dumped locally for ad-hoc imports or query output.
+*.osm.pbf
+*.osm.bz2
+*.osc.gz
+/out/
