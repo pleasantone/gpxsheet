@@ -24,7 +24,7 @@ import dramatiq
 from pydantic import BaseModel
 
 from . import settings
-from .models import RenderParams, ReportParams, TableParams
+from .models import DayCardParams, RenderParams, ReportParams, TableParams
 from .render import run_job
 from .storage import Storage
 
@@ -34,6 +34,7 @@ _PARAMS_BY_OP: dict[str, type[BaseModel]] = {
     "render": RenderParams,
     "analyze": ReportParams,
     "validate": ReportParams,
+    "daycard": DayCardParams,
     "table": TableParams,
 }
 

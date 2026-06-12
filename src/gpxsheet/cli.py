@@ -205,5 +205,64 @@ def table(
     typer.echo(f"Wrote {out}")
 
 
+@app.command()
+def daycard(
+    gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
+    output: Path | None = typer.Option(
+        None, "--output", "-o", help="Output path; format inferred from .md/.html/.json."
+    ),
+    departure: str | None = typer.Option(
+        None, "--departure", help='Departure time, e.g. "Sat 8am"; enables sun/after-dark.'
+    ),
+    speed: float = typer.Option(
+        0.0, "--speed", help="Average travel speed (mph, or kph with --metric); 0 = auto."
+    ),
+    fuel_range: float | None = typer.Option(
+        None, "--fuel-range", help="Rider fuel range in miles (tunes no-services warnings)."
+    ),
+    metric: bool = typer.Option(
+        False, "--metric/--imperial", help="Units: metric (km/m) or imperial (default)."
+    ),
+    osm: bool = typer.Option(
+        True, "--osm/--no-osm",
+        help="Enrich via OSM (passes, scenic, gravel); --no-osm is fast/offline.",
+    ),
+    timezone: str | None = typer.Option(
+        None, "--timezone", help="IANA timezone for displayed times, e.g. US/Pacific."
+    ),
+) -> None:
+    """Build per-day read-ahead cards (markdown, HTML, or JSON).
+
+    A planning-time briefing per day: distance, climb, sunset / riding-after-dark,
+    passes and scenic stops, and cautions (gravel, construction, wildlife,
+    no-services gaps). Output format follows ``-o`` (``.md`` / ``.html`` /
+    ``.json``); sun sections need ``--departure``.
+    """
+    from .daycard import render_day_cards
+    from .routetable import parse_departure
+
+    if output is None:
+        output = Path("day_cards.md")
+    suffix = output.suffix.lower()
+    out_fmt = {".html": "html", ".json": "json"}.get(suffix, "markdown")
+    try:
+        depart_at, tz = parse_departure(departure, timezone)
+        out = render_day_cards(
+            gpx_file,
+            output,
+            fmt=out_fmt,
+            imperial=not metric,
+            speed=speed,
+            departure=depart_at,
+            tz=tz,
+            fuel_range=fuel_range,
+            osm=osm,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"Wrote {out}")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
