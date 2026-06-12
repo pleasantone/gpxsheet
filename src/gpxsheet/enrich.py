@@ -329,7 +329,17 @@ def enrich_route(
     route.speed_samples_mph = _speed_breakpoints(sample_m, speeds)
 
     if include_fuel:
-        _add_fuel(route, ox, chunks, fuel_buffer_m)
+        # Best-effort: the road-name/decision/segment/speed enrichment is already
+        # done by this point, so a failure in the *separate* fuel Overpass query
+        # must not discard it (and mislabel the route geometry-only). Degrade to
+        # GPX fuel waypoints, exactly as the geometry-only path does.
+        try:
+            _add_fuel(route, ox, chunks, fuel_buffer_m)
+        except Exception:  # noqa: BLE001 - keep the OSM road enrichment; degrade fuel
+            log.exception("OSM fuel query failed; falling back to GPX fuel waypoints")
+            from .analysis import detect_fuel_stops
+
+            route.fuel_stops = detect_fuel_stops(route)
     if include_hazards:
         # Best-effort (like the junction-topology pass): the ferry query is an
         # extra Overpass call, so a failure/timeout must not abort enrichment --

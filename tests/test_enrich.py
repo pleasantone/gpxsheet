@@ -327,3 +327,25 @@ def test_enrich_route_against_cached_osm(enrich_route_file):
     # The point of the tuning: decisions track real road changes, not the road's
     # curvature, so the count stays bounded (no per-curve flood).
     assert len(route.decision_points) / route.length_miles < 1.0
+
+
+def test_fuel_query_failure_keeps_osm_enrichment(enrich_route_file, monkeypatch):
+    """A late OSM fuel failure must not discard the road-name enrichment.
+
+    Regression: ``_add_fuel`` raising (e.g. a transient Overpass outage) used to
+    propagate out of ``enrich_route`` and make ``_osm_enrich_pass`` report
+    geometry-only -- even though decisions/segments were already OSM-derived.
+    """
+    from gpxsheet import enrich as enrich_mod
+    from gpxsheet import load_route
+    from gpxsheet.analysis import analyze_route
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("overpass down")
+
+    monkeypatch.setattr(enrich_mod, "_add_fuel", _boom)
+    route = load_route(str(enrich_route_file))
+    analyze_route(route, profile="sport-touring")  # must not raise
+    # Road-name segments/decisions survive -> the route is still OSM-enriched.
+    assert route.segments and all(not s.name.startswith("Leg ") for s in route.segments)
+    assert route.decision_points and all("onto" in d.instruction for d in route.decision_points)
