@@ -1,6 +1,9 @@
 import type { AnalyzeResult } from "../types";
 import { SummaryCards } from "./SummaryCards";
 
+// Below this gap, with no fuel range set, we don't even nudge — most bikes clear it.
+const FUEL_GAP_NUDGE_MILES = 100;
+
 interface RouteInfoProps {
   result: AnalyzeResult | null;
   isLoading: boolean;
@@ -20,7 +23,8 @@ export function RouteInfo({ result, isLoading, error, fuelRange }: RouteInfoProp
   const cards = result
     ? [
         { label: "Distance", value: `${result.length_miles.toFixed(1)} mi` },
-        { label: "Turns", value: String(result.decision_points.length) },
+        // decision_points are turns + forks + roundabouts, not just turns.
+        { label: "Decisions", value: String(result.decision_points.length) },
         {
           label: "Fuel stops",
           value: result.fuel_stops.length ? String(result.fuel_stops.length) : "none found",
@@ -61,7 +65,7 @@ function FuelGapNotice({
   }
 
   // No fuel range set and the gap is notable → informational nudge (not a warning).
-  if (fuelRange == null && gapMiles > 100) {
+  if (fuelRange == null && gapMiles > FUEL_GAP_NUDGE_MILES) {
     return (
       <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
         ℹ Longest fuel gap: {gapMiles.toFixed(0)} mi — consider setting your fuel range

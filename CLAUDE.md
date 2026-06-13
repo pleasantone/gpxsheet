@@ -133,6 +133,15 @@ make infra-down     # stop containers
 Non-obvious: `service/static/` must exist for the SPA to be served at `/`.
 Without the build, `/` falls through to Swagger at `/docs`.
 
+The **Sheet tab**'s inline preview renders the **selected layout** as PNG (not a
+fixed overview), refreshed on drop and on Generate, so the layout/profile knobs
+have a visible effect; the PDF download (or PNG) is the separate `renderOpts`
+submit. `OptionsPanel` is **non-destructive** — the PNG-only/fixed-layout and
+portrait-only-lanes constraints are applied at render time (`effectiveFormat`),
+so format/lanes survive a round-trip through other layouts. Clicking Generate
+also re-runs `analyze` so `RouteInfo` (decisions/fuel from the profile) matches
+the rendered sheet (`App.tsx` `handleGenerate`).
+
 Runner selection (in `default_components`): `GPXSHEET_REDIS_URL` → Dramatiq/Redis;
 else `GPXSHEET_BACKGROUND_RENDER=1` → in-process thread pool (submit returns at
 once, client polls — keeps a slow render from holding the request past a proxy
