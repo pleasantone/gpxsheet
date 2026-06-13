@@ -34,8 +34,10 @@ when a route is too sparse to sample or the Overpass query fails.
 | `validate(gpx, …)` | [`ValidationReport`](#validate) | the analyzed `Route` plus a list of [`Finding`](#validate)s |
 | `load_route(gpx)` | [`Route`](#route) | geometry only — `points`/`distances_m`/`waypoints` populated, all analysis lists empty |
 | `analyze_route(route, …)` | [`Route`](#route) | analyzes an already-loaded `Route` in place of `analyze`'s load step |
-| `routetable.render_table(gpx, out, …)` | `pathlib.Path` | path to the written `.html`/`.md` table |
+| `routetable.render_table(gpx, out, …)` | `pathlib.Path` | path to the written `.html`/`.md`/`.json` table |
 | `routetable.build_table_markdown(route, …)` | `str` | the table markdown for an already-analyzed `Route` |
+| `routetable.build_table_json(route, …)` | `str` | the structured table as a JSON string |
+| `routetable.build_table_data(route, …)` | [`TableDocument`](#tabledocument) | the structured table as typed dataclasses |
 
 Everything analytical hangs off the [`Route`](#route) object, so that section is
 the bulk of this reference.
@@ -78,7 +80,7 @@ read the findings. See [`ValidationReport` and `Finding`](#validationreport-and-
 
 ## Route table
 
-A markdown/HTML route table (waypoints, distances, fuel/lunch markers, ETAs,
+A markdown/HTML/JSON route table (waypoints, distances, fuel/lunch markers, ETAs,
 sunrise/sunset) rendered from the same analysis graph, so it inherits OSM
 enrichment (auto-discovered fuel, road names, road-snapped distance) and adds a
 timing layer. It lives in `gpxsheet.routetable` (not the top-level namespace):
@@ -90,15 +92,30 @@ depart, tz = parse_departure("9:00 AM", "US/Pacific")  # natural-language or ISO
 render_table("route.gpx", "route.md", fmt="markdown", departure=depart, tz=tz)
 # OSM is on by default; pass osm=False for a fast, fully offline table.
 # ETAs need a departure; show_cue=True appends a turn-by-turn cue sheet.
+
+# Structured data (always imperial; lat/lon + cue always present):
+from gpxsheet.routetable import build_table_data, build_table_json
+from gpxsheet import analyze
+
+route = analyze("route.gpx")
+doc = build_table_data(route, departure=depart, tz=tz)   # typed TableDocument
+print(doc.sections[0].rows[0].mile, doc.sections[0].rows[0].eta)
+json_str = build_table_json(route, departure=depart, tz=tz)  # JSON string
 ```
 
 Return values:
 
 - `render_table(gpx_source, output_path, …)` → `pathlib.Path` — analyzes
-  `gpx_source` and writes an `html` or `markdown` file, returning its path.
+  `gpx_source` and writes an `html`, `markdown` or `json` file, returning its path.
 - `build_table_markdown(route, …)` → `str` — renders an already-analyzed
   [`Route`](#route) to the table markdown (multi-track routes get one section per
   day). This is the string `render_table` writes (and wraps for HTML).
+- `build_table_data(route, …)` → [`TableDocument`](#tabledocument) — the structured
+  table for an already-analyzed `Route`: route `name`/`units` plus a `sections`
+  list (one per day), each with `rows`, `cue`, `speed` and `sun`. **Always
+  imperial** (miles/mph, 1-decimal); `lat`/`lon` and the cue are always included.
+- `build_table_json(route, …)` → `str` — `build_table_data` serialized to a JSON
+  string (datetimes as ISO 8601 with offset; `null` for absent optionals).
 - `markdown_to_html(md)` → `str` — wraps table markdown in the `gpxtable` CSS
   class for styling.
 - `parse_departure(departure, timezone)` → `tuple[datetime | None, tzinfo | None]`
@@ -107,6 +124,29 @@ Return values:
   `departure` is `None` (no ETA column).
 
 ::: gpxsheet.routetable.render_table
+
+### `TableDocument`
+
+The structured route table returned by `build_table_data`. All numbers are
+imperial (miles / mph), rounded to one decimal; datetimes are `datetime` objects
+in the display timezone (serialized to ISO 8601 with offset by `to_dict()` /
+`build_table_json`).
+
+- **`TableDocument`** — `name: str`, `units: str` (always `"imperial"`),
+  `sections: list[TableSection]`. `to_dict()` returns the JSON-ready mapping.
+- **`TableSection`** — one day (or the whole route): `day: int` (1-based),
+  `title: str`, `departure: datetime | None`, `distance_mi: float`,
+  `speed: TableSpeed`, `sun: TableSun | None`, `rows: list[TableRow]`,
+  `cue: list[CueEntry]`.
+- **`TableRow`** — `name`, `mile` (section-local), `since_gas_mi`, `marker`
+  (`""`/`"G"`/`"L"`/`"GL"`), `gas`/`lunch`/`fuel_reset` (bool), `layover_min`,
+  `eta: datetime | None`, `road: str | None`, `symbol: str | None`, `lat`, `lon`.
+- **`CueEntry`** — `mile`, `eta: datetime | None`, `instruction`, `skip: list[str]`
+  (named roads not taken).
+- **`TableSpeed`** — `mode: str` (`"osm"` variable limits / `"flat"`), `avg_mph`.
+- **`TableSun`** — `sunrise: datetime | None`, `sunset: datetime | None`.
+
+::: gpxsheet.routetable.build_table_data
 
 ## Day cards
 

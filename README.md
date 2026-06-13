@@ -86,7 +86,7 @@ gpxsheet generate route.gpx -o route.pdf            # portrait roadbook (default
 gpxsheet generate route.gpx --landscape -o route.pdf
 #   layout knobs: --lane-decisions M (decisions per page; default auto-fit); --lanes N (portrait lanes/page)
 
-gpxsheet table   route.gpx --departure 9am -o route.md   # route table (html|md)
+gpxsheet table   route.gpx --departure 9am -o route.md   # route table (html|md|json)
 gpxsheet table   route.gpx --no-osm -o route.md          # fast, fully offline
 gpxsheet analyze route.gpx                           # text analysis
 gpxsheet strip   route.gpx -o route_strip.png        # single schematic strip PNG

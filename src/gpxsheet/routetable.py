@@ -15,6 +15,7 @@ layover / fuel-reset and timed (:mod:`gpxsheet.timing`).
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, tzinfo
@@ -327,23 +328,42 @@ def _render_section(
     return lines
 
 
-def build_table_markdown(
+@dataclass(frozen=True, slots=True)
+class _DaySlice:
+    """One section's pre-computed, section-local inputs (route or a single day).
+
+    Shared by the markdown and JSON renderers so the day-splitting / mile-rebasing
+    logic lives in exactly one place. ``rows`` distances and ``profile``/
+    ``decisions`` miles are rebased to 0 for a per-day slice.
+    """
+
+    day: int  # 0-based section index
+    title: str
+    dist_label: str
+    rows: list[_Row]
+    classes: list[Any]
+    roads: list[str | None]
+    decisions: list[tuple[float, str, tuple]]
+    length_m: float
+    profile: SpeedProfile
+    variable: bool
+    flat_mph: float
+    departure: datetime | None
+
+
+def _day_slices(
     route: Route,
     *,
-    imperial: bool = True,
-    speed: float = 0.0,
-    departure: datetime | None = None,
-    tz: tzinfo | None = None,
-    display_coordinates: bool = False,
-    show_cue: bool = False,
-    classifier: list[dict[str, Any]] | None = None,
-) -> str:
-    """Render ``route`` to GPXtable's markdown table format.
+    imperial: bool,
+    speed: float,
+    departure: datetime | None,
+    classifier: list[dict[str, Any]] | None,
+) -> list[_DaySlice]:
+    """Split ``route`` into renderable sections (whole route, or one per day).
 
-    ``speed`` of 0 uses the 30 mph default. ``departure`` enables the ETA column
-    and the sunrise/sunset almanac line. ``show_cue`` appends a turn-by-turn cue
-    table. A multi-track route (``route.day_breaks``) renders one section per day,
-    each with its own mileage (restarting at 0), departure (+24h/day) and almanac.
+    A single-track route yields one section (``## Route: <name>``); a multi-track
+    route (``route.day_breaks``) yields one per day, each rebased to mile 0 with
+    its own departure (+24h/day).
     """
     rows = _collect_rows(route)
     classes = [classify(r.name, r.symbol, classifier) for r in rows]
@@ -353,7 +373,7 @@ def build_table_markdown(
     bounds = _day_bounds_miles(route)
     multiday = len(route.day_breaks) > 0
 
-    sections: list[list[str]] = []
+    slices: list[_DaySlice] = []
     for day, (start_mi, end_mi) in enumerate(zip(bounds, bounds[1:], strict=False)):
         is_last = day == len(bounds) - 2
         start_m = miles_to_meters(start_mi)
@@ -373,8 +393,9 @@ def build_table_markdown(
             for dp in route.decision_points
             if _in_day(dp.mile, start_mi, end_mi, is_last)
         ]
-        sections.append(
-            _render_section(
+        slices.append(
+            _DaySlice(
+                day=day,
                 title=_day_title(route, day) if multiday else f"## Route: {route.name}",
                 dist_label="Day distance" if multiday else "Total distance",
                 rows=day_rows,
@@ -385,24 +406,68 @@ def build_table_markdown(
                 profile=profile.slice(start_mi, end_mi) if multiday else profile,
                 variable=variable,
                 flat_mph=flat_mph,
-                imperial=imperial,
                 departure=departure + timedelta(days=day) if departure else None,
-                tz=tz,
-                display_coordinates=display_coordinates,
-                show_cue=show_cue,
             )
         )
+    return slices
 
+
+def build_table_markdown(
+    route: Route,
+    *,
+    imperial: bool = True,
+    speed: float = 0.0,
+    departure: datetime | None = None,
+    tz: tzinfo | None = None,
+    display_coordinates: bool = False,
+    show_cue: bool = False,
+    classifier: list[dict[str, Any]] | None = None,
+) -> str:
+    """Render ``route`` to GPXtable's markdown table format.
+
+    ``speed`` of 0 uses the 30 mph default. ``departure`` enables the ETA column
+    and the sunrise/sunset almanac line. ``show_cue`` appends a turn-by-turn cue
+    table. A multi-track route (``route.day_breaks``) renders one section per day,
+    each with its own mileage (restarting at 0), departure (+24h/day) and almanac.
+    """
+    slices = _day_slices(
+        route, imperial=imperial, speed=speed, departure=departure, classifier=classifier
+    )
+    sections = [
+        _render_section(
+            title=s.title,
+            dist_label=s.dist_label,
+            rows=s.rows,
+            classes=s.classes,
+            roads=s.roads,
+            decisions=s.decisions,
+            length_m=s.length_m,
+            profile=s.profile,
+            variable=s.variable,
+            flat_mph=s.flat_mph,
+            imperial=imperial,
+            departure=s.departure,
+            tz=tz,
+            display_coordinates=display_coordinates,
+            show_cue=show_cue,
+        )
+        for s in slices
+    ]
     # A blank line between day sections so each "## Day N" header renders.
     return "\n\n".join("\n".join(s) for s in sections) + "\n"
 
 
-def _sun_line(rows: list[_Row], timings: list, tz: tzinfo | None) -> str | None:
-    """The sunrise/sunset almanac line, or None without a start/end arrival."""
+def _section_sun_times(rows: list[_Row], timings: list) -> dict[str, datetime] | None:
+    """``sun_times`` for a section, or None without both a start and end arrival.
+
+    Sunrise is computed at the first stop's arrival, sunset at the last stop's
+    departure (arrival + its layover). Shared by the markdown almanac line and the
+    JSON ``sun`` block.
+    """
     if not rows or timings[0].arrival is None or timings[-1].arrival is None:
         return None
     end_layover = sum((t.layover for t in timings), timedelta())
-    times = sun_times(
+    return sun_times(
         rows[0].lat,
         rows[0].lon,
         timings[0].arrival,
@@ -410,7 +475,263 @@ def _sun_line(rows: list[_Row], timings: list, tz: tzinfo | None) -> str | None:
         rows[-1].lon,
         timings[-1].arrival + end_layover,
     )
+
+
+def _sun_line(rows: list[_Row], timings: list, tz: tzinfo | None) -> str | None:
+    """The sunrise/sunset almanac line, or None without a start/end arrival."""
+    times = _section_sun_times(rows, timings)
     return format_sun_line(times, tz) if times else None
+
+
+# ---------------------------------------------------------------------------
+# Structured JSON output
+# ---------------------------------------------------------------------------
+#
+# The same per-day sections as the markdown table, as data instead of text.
+# Conventions (see docs/web-api.md / library-api.md):
+#   * Numbers are ALWAYS imperial (miles / mph), rounded to 1 decimal -- the
+#     ``units`` knob only affects the md/html render, never the JSON.
+#   * Datetimes are ISO 8601 carrying the display-tz offset, or ``null``.
+#   * Optional values (eta/road/symbol/sun) are present as ``null`` when absent.
+#   * lat/lon and the per-section cue are always included (not gated on the
+#     ``coordinates``/``cue`` display flags).
+
+
+def _iso(dt: datetime | None) -> str | None:
+    return dt.isoformat() if dt else None
+
+
+@dataclass(slots=True)
+class TableRow:
+    """One table row (a waypoint or fuel stop), section-local distances."""
+
+    name: str
+    mile: float  # distance from the section start
+    since_gas_mi: float  # distance since the last fuel reset
+    marker: str  # "" | "G" | "L" | "GL" (true classification, not edge-blanked)
+    gas: bool
+    lunch: bool
+    fuel_reset: bool
+    layover_min: int
+    eta: datetime | None
+    road: str | None  # OSM road name covering this mile, else null
+    symbol: str | None  # effective GPX/classifier symbol (the Notes column)
+    lat: float
+    lon: float
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "mile": self.mile,
+            "since_gas_mi": self.since_gas_mi,
+            "marker": self.marker,
+            "gas": self.gas,
+            "lunch": self.lunch,
+            "fuel_reset": self.fuel_reset,
+            "layover_min": self.layover_min,
+            "eta": _iso(self.eta),
+            "road": self.road,
+            "symbol": self.symbol,
+            "lat": self.lat,
+            "lon": self.lon,
+        }
+
+
+@dataclass(slots=True)
+class CueEntry:
+    """One turn-by-turn cue (from a decision point), section-local mile."""
+
+    mile: float
+    eta: datetime | None
+    instruction: str
+    skip: list[str]  # named roads not taken at this junction
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "mile": self.mile,
+            "eta": _iso(self.eta),
+            "instruction": self.instruction,
+            "skip": self.skip,
+        }
+
+
+@dataclass(slots=True)
+class TableSpeed:
+    """The section's speed model: ``osm`` (variable limits) or ``flat``."""
+
+    mode: str  # "osm" | "flat"
+    avg_mph: float  # realized average over the section either way
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"mode": self.mode, "avg_mph": self.avg_mph}
+
+
+@dataclass(slots=True)
+class TableSun:
+    """Sunrise at the section start, sunset at its end (display tz)."""
+
+    sunrise: datetime | None
+    sunset: datetime | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"sunrise": _iso(self.sunrise), "sunset": _iso(self.sunset)}
+
+
+@dataclass(slots=True)
+class TableSection:
+    """One section: the whole route, or one day of a multi-track route."""
+
+    day: int  # 1-based
+    title: str  # e.g. "Route: Foo" or "Day 1: Coast" ("## " stripped)
+    departure: datetime | None
+    distance_mi: float
+    speed: TableSpeed
+    sun: TableSun | None
+    rows: list[TableRow]
+    cue: list[CueEntry]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "day": self.day,
+            "title": self.title,
+            "departure": _iso(self.departure),
+            "distance_mi": self.distance_mi,
+            "speed": self.speed.to_dict(),
+            "sun": self.sun.to_dict() if self.sun else None,
+            "rows": [r.to_dict() for r in self.rows],
+            "cue": [c.to_dict() for c in self.cue],
+        }
+
+
+@dataclass(slots=True)
+class TableDocument:
+    """The full structured route table: route metadata + per-day sections."""
+
+    name: str
+    units: str  # always "imperial" (the JSON numbers' unit)
+    sections: list[TableSection]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "units": self.units,
+            "sections": [s.to_dict() for s in self.sections],
+        }
+
+
+def _section_eta(
+    mile: float,
+    slc: _DaySlice,
+    tz: tzinfo | None,
+) -> datetime | None:
+    """ETA at section-local ``mile`` (departure + travel + prior layovers)."""
+    if slc.departure is None:
+        return None
+    arrival = slc.departure + slc.profile.time_to(mile) + _layover_before(
+        mile, slc.rows, slc.classes
+    )
+    return arrival.astimezone(tz) if tz else arrival
+
+
+def build_table_data(
+    route: Route,
+    *,
+    speed: float = 0.0,
+    departure: datetime | None = None,
+    tz: tzinfo | None = None,
+    classifier: list[dict[str, Any]] | None = None,
+) -> TableDocument:
+    """Build the structured (imperial) route table from an analyzed ``route``.
+
+    The data counterpart of :func:`build_table_markdown` -- same sections, rows
+    and timings, as a typed :class:`TableDocument`. ``speed`` is interpreted as
+    mph (JSON is imperial-only); ``departure`` populates ETAs, the cue ETAs and
+    the sun block. Multi-track routes yield one section per day (rebased to mile
+    0, +24h/day).
+    """
+    slices = _day_slices(
+        route, imperial=True, speed=speed, departure=departure, classifier=classifier
+    )
+    sections: list[TableSection] = []
+    for slc in slices:
+        timings = compute_timings(
+            [
+                StopInput(r.distance_m, timedelta(minutes=c.delay), c.fuel_reset)
+                for r, c in zip(slc.rows, slc.classes, strict=True)
+            ],
+            departure=slc.departure,
+            speed=slc.profile,
+        )
+        rows = [
+            TableRow(
+                name=(r.name or "").replace("\n", " "),
+                mile=round(meters_to_miles(r.distance_m), 1),
+                since_gas_mi=round(meters_to_miles(t.since_gas_m), 1),
+                marker=c.marker,
+                gas="G" in c.marker,
+                lunch="L" in c.marker,
+                fuel_reset=c.fuel_reset,
+                layover_min=round(t.layover.total_seconds() / 60),
+                eta=t.arrival.astimezone(tz) if (t.arrival and tz) else t.arrival,
+                road=road,
+                symbol=c.symbol or None,
+                lat=round(r.lat, 5),
+                lon=round(r.lon, 5),
+            )
+            for r, c, t, road in zip(slc.rows, slc.classes, timings, slc.roads, strict=True)
+        ]
+        length_mi = meters_to_miles(slc.length_m)
+        if slc.variable:
+            speed_obj = TableSpeed("osm", round(slc.profile.average_mph(length_mi), 1))
+        else:
+            speed_obj = TableSpeed("flat", round(slc.flat_mph, 1))
+        st = _section_sun_times(slc.rows, timings)
+        sun = (
+            TableSun(
+                sunrise=st["Sunrise"].astimezone(tz) if tz else st["Sunrise"],
+                sunset=st["Sunset"].astimezone(tz) if tz else st["Sunset"],
+            )
+            if st
+            else None
+        )
+        cue = [
+            CueEntry(
+                mile=round(mile_val, 1),
+                eta=_section_eta(mile_val, slc, tz),
+                instruction=instruction,
+                skip=[b.name for b in branches if b.name],
+            )
+            for mile_val, instruction, branches in slc.decisions
+        ]
+        dep = slc.departure.astimezone(tz) if (slc.departure and tz) else slc.departure
+        sections.append(
+            TableSection(
+                day=slc.day + 1,
+                title=slc.title.removeprefix("## "),
+                departure=dep,
+                distance_mi=round(length_mi, 1),
+                speed=speed_obj,
+                sun=sun,
+                rows=rows,
+                cue=cue,
+            )
+        )
+    return TableDocument(name=route.name, units="imperial", sections=sections)
+
+
+def build_table_json(
+    route: Route,
+    *,
+    speed: float = 0.0,
+    departure: datetime | None = None,
+    tz: tzinfo | None = None,
+    classifier: list[dict[str, Any]] | None = None,
+) -> str:
+    """The structured route table as a JSON string (see :func:`build_table_data`)."""
+    doc = build_table_data(
+        route, speed=speed, departure=departure, tz=tz, classifier=classifier
+    )
+    return json.dumps(doc.to_dict())
 
 
 def markdown_to_html(md: str) -> str:
@@ -456,8 +777,8 @@ def parse_departure(
 
 
 # Output formats the native renderer accepts, and their file extensions.
-TABLE_FORMATS = ("html", "markdown")
-EXTENSIONS = {"html": "html", "markdown": "md"}
+TABLE_FORMATS = ("html", "markdown", "json")
+EXTENSIONS = {"html": "html", "markdown": "md", "json": "json"}
 
 
 def render_table(
@@ -477,23 +798,28 @@ def render_table(
 
     Runs the full analysis (OSM on by default, ``osm=False`` for a fast offline
     table) under the default sport-touring profile so waypoints and fuel are
-    populated, then renders ``html`` or ``markdown``.
+    populated, then renders ``html``, ``markdown`` or ``json``. The ``json``
+    output is always imperial (``imperial``/``display_coordinates``/``show_cue``
+    do not apply -- lat/lon and the cue are always present).
     """
     if fmt not in TABLE_FORMATS:
         raise ValueError(f"fmt must be one of {TABLE_FORMATS}, got {fmt!r}")
     from . import analyze
 
     route = analyze(str(gpx_source), osm=osm)
-    md = build_table_markdown(
-        route,
-        imperial=imperial,
-        speed=speed,
-        departure=departure,
-        tz=tz,
-        display_coordinates=display_coordinates,
-        show_cue=show_cue,
-    )
-    text = markdown_to_html(md) if fmt == "html" else md
+    if fmt == "json":
+        text = build_table_json(route, speed=speed, departure=departure, tz=tz)
+    else:
+        md = build_table_markdown(
+            route,
+            imperial=imperial,
+            speed=speed,
+            departure=departure,
+            tz=tz,
+            display_coordinates=display_coordinates,
+            show_cue=show_cue,
+        )
+        text = markdown_to_html(md) if fmt == "html" else md
     out = Path(output_path)
     out.write_text(text, encoding="utf-8")
     return out

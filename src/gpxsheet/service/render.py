@@ -118,6 +118,7 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
     from gpxsheet import perf
     from gpxsheet.analysis import derive_products
     from gpxsheet.routetable import (
+        build_table_json,
         build_table_markdown,
         markdown_to_html,
         parse_departure,
@@ -128,6 +129,13 @@ def _table_result(gpx_bytes: bytes, params: TableParams) -> JobResult:
     perf.annotate(fmt=params.format, osm=params.osm, cue=params.cue)
     depart_at, tz = parse_departure(params.departure, params.timezone)
     route = derive_products(get_core(gpx_bytes, osm=params.osm))
+    if params.format == "json":
+        with perf.span("table.build"):
+            data, ext = (
+                build_table_json(route, speed=params.speed, departure=depart_at, tz=tz).encode(),
+                "json",
+            )
+        return data, _CONTENT_TYPES["json"], ext, _safe_filename(route.name, ext)
     with perf.span("table.build"):
         md = build_table_markdown(
             route,

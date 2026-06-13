@@ -147,7 +147,7 @@ def validate(
 def table(
     gpx_file: Path = typer.Argument(..., exists=True, readable=True, help="Input GPX file."),
     output: Path | None = typer.Option(
-        None, "--output", "-o", help="Output file path; format inferred from .html or .md."
+        None, "--output", "-o", help="Output file path; format inferred from .html/.md/.json."
     ),
     departure: str | None = typer.Option(
         None, "--departure", help='Departure time, e.g. "9:00 AM" or "July 4 2pm".'
@@ -172,19 +172,23 @@ def table(
         None, "--timezone", help="IANA timezone for displayed times, e.g. US/Pacific."
     ),
 ) -> None:
-    """Generate a route table (markdown or HTML) from the analysis graph.
+    """Generate a route table (markdown, HTML, or JSON) from the analysis graph.
 
     Built natively on GPXsheet's analysis: OSM enrichment is on by default (auto
     fuel, road-snapped distance); pass ``--no-osm`` for a fast, fully offline
-    table. Output format follows the ``-o`` extension (``.md`` → markdown, else
-    HTML). ETAs require ``--departure``.
+    table. Output format follows the ``-o`` extension (``.md`` → markdown, ``.json``
+    → structured JSON, else HTML). ETAs require ``--departure``. The JSON is always
+    imperial and always includes coordinates + the cue (``--metric``/``--coordinates``
+    only affect md/HTML).
     """
     from .routetable import parse_departure, render_table
 
     if output is None:
         output = Path("route_table.html")
     suffix = output.suffix.lower()
-    out_fmt = "markdown" if suffix in (".md", ".markdown") else "html"
+    out_fmt = {".md": "markdown", ".markdown": "markdown", ".json": "json"}.get(
+        suffix, "html"
+    )
     try:
         depart_at, tz = parse_departure(departure, timezone)
         out = render_table(

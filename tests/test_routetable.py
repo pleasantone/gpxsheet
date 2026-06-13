@@ -13,7 +13,13 @@ from datetime import datetime
 import pytest
 
 from gpxsheet import analyze
-from gpxsheet.routetable import build_table_markdown, markdown_to_html, parse_departure
+from gpxsheet.routetable import (
+    build_table_data,
+    build_table_json,
+    build_table_markdown,
+    markdown_to_html,
+    parse_departure,
+)
 
 
 @pytest.fixture
@@ -216,6 +222,103 @@ def test_multiday_day2_departs_24h_later(tmp_path):
     assert len(dep_lines) == 2
     assert "Jul 30" in dep_lines[0]
     assert "Jul 31" in dep_lines[1]  # one day later
+
+
+# --------------------------------------------------------------------------- #
+# Structured JSON output
+# --------------------------------------------------------------------------- #
+
+
+def _rows_by_name(section):
+    return {r.name: r for r in section.rows}
+
+
+def test_table_data_single_section_structure(analyzed):
+    doc = build_table_data(analyzed)
+    assert doc.name == "Table Test Route"
+    assert doc.units == "imperial"
+    assert len(doc.sections) == 1
+    sec = doc.sections[0]
+    assert sec.day == 1
+    assert sec.title == "Route: Table Test Route"  # "## " stripped
+    assert sec.departure is None  # no departure -> ETAs/sun absent
+    assert sec.distance_mi > 0
+    assert sec.speed.mode == "flat"  # geometry-only -> default 30 mph
+    assert sec.speed.avg_mph == 30.0
+    assert sec.sun is None
+    # Rows carry coordinates and a null ETA without a departure.
+    start = _rows_by_name(sec)["Start Cafe"]
+    assert start.mile == 0.0
+    assert start.eta is None
+    assert start.lat and start.lon
+
+
+def test_table_data_markers_and_fuel_reset(analyzed):
+    rows = _rows_by_name(build_table_data(analyzed).sections[0])
+    gas = rows["Shell Gas Station"]
+    assert gas.gas is True and gas.lunch is False and gas.marker == "G"
+    assert gas.fuel_reset is True
+    lunch = rows["Pat's Diner"]
+    assert lunch.lunch is True and lunch.gas is False and lunch.marker == "L"
+    # Distance since the last fuel reset is exposed on every row (here, > 0).
+    assert rows["Trailhead"].since_gas_mi >= 0
+
+
+def test_table_data_departure_populates_eta_and_sun(analyzed):
+    depart, tz = parse_departure("9:00 AM", "US/Pacific")
+    sec = build_table_data(analyzed, departure=depart, tz=tz).sections[0]
+    assert sec.departure is not None
+    assert sec.rows[0].eta is not None  # first arrival == departure
+    assert sec.rows[0].eta.utcoffset() is not None  # tz-aware (display offset)
+    assert sec.sun is not None
+    assert sec.sun.sunrise is not None and sec.sun.sunset is not None
+
+
+def test_table_json_is_valid_and_mirrors_data(analyzed):
+    import json as _json
+
+    depart, tz = parse_departure("9:00 AM", "US/Pacific")
+    parsed = _json.loads(build_table_json(analyzed, departure=depart, tz=tz))
+    assert parsed == build_table_data(analyzed, departure=depart, tz=tz).to_dict()
+    row = parsed["sections"][0]["rows"][0]
+    # ETA serializes as an ISO 8601 string with offset; null when absent.
+    assert isinstance(row["eta"], str) and "T" in row["eta"]
+    assert set(row) >= {"name", "mile", "since_gas_mi", "marker", "gas", "lunch",
+                        "fuel_reset", "layover_min", "eta", "road", "symbol", "lat", "lon"}
+
+
+def test_table_data_cue_always_included_regardless_of_flag(analyzed):
+    from gpxsheet.models import Branch, DecisionPoint
+
+    analyzed.decision_points = [
+        DecisionPoint(
+            mile=5.0, instruction="Right onto Skyline Blvd", significance=50,
+            lat=38.1, lon=-122.05,
+            branches=(Branch("left", -90.0, "Kings Mountain Rd"),),
+        ),
+    ]
+    # JSON has no show_cue flag -- the cue is always present.
+    sec = build_table_data(analyzed).sections[0]
+    assert len(sec.cue) == 1
+    assert sec.cue[0].instruction == "Right onto Skyline Blvd"
+    assert sec.cue[0].skip == ["Kings Mountain Rd"]
+    assert sec.cue[0].eta is None  # no departure -> null cue ETA
+
+
+def test_table_data_multiday_sections(tmp_path):
+    route = _multiday_route(tmp_path)
+    depart, tz = parse_departure("2023-07-30 09:00", "US/Pacific")
+    doc = build_table_data(route, departure=depart, tz=tz)
+    assert len(doc.sections) == 2
+    assert [s.day for s in doc.sections] == [1, 2]
+    assert doc.sections[0].title == "Day 1: Day One"
+    assert doc.sections[1].title == "Day 2: Day Two"
+    # Day 2 departs ~24h after day 1.
+    dep0, dep1 = doc.sections[0].departure, doc.sections[1].departure
+    assert dep0 is not None and dep1 is not None
+    assert (dep1 - dep0).days == 1
+    # Each day's mileage restarts at 0.
+    assert doc.sections[1].rows[0].mile == 0.0
 
 
 def test_parse_departure_optional():

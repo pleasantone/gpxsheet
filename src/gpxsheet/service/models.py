@@ -66,10 +66,12 @@ class TableParams(BaseModel):
     ``departure`` is a natural-language or ISO time string parsed server-side and
     is required for the ETA column; ``speed`` of 0 = auto (30 mph). ``osm`` runs
     OSM enrichment (auto fuel, road-snapped distance) and is on by default; set it
-    false for a fast, fully offline table.
+    false for a fast, fully offline table. ``format`` ``json`` returns the
+    structured table (always imperial; ``units``/``coordinates``/``cue`` do not
+    apply -- lat/lon and the cue are always present).
     """
 
-    format: str = Field("html", pattern="^(html|markdown)$")
+    format: str = Field("html", pattern="^(html|markdown|json)$")
     departure: str | None = None
     speed: float = Field(0.0, ge=0)
     units: str = Field("imperial", pattern="^(imperial|metric)$")
