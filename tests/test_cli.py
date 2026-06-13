@@ -108,6 +108,21 @@ def test_table_command_markdown_inferred_from_md_extension(table_route_file, tmp
     assert "## Route: Table Test Route" in out.read_text()
 
 
+def test_table_command_json_inferred_from_json_extension(table_route_file, tmp_path):
+    import json
+
+    out = tmp_path / "t.json"
+    result = runner.invoke(
+        app, ["table", str(table_route_file), "-o", str(out), "--departure", "9:00 AM"]
+    )
+    assert result.exit_code == 0, result.output
+    doc = json.loads(out.read_text())
+    assert doc["name"] == "Table Test Route"
+    assert doc["units"] == "imperial"
+    assert len(doc["sections"]) == 1
+    assert doc["sections"][0]["rows"]
+
+
 def test_table_command_bad_timezone_errors(table_route_file, tmp_path):
     result = runner.invoke(
         app, ["table", str(table_route_file), "-o", str(tmp_path / "t.html"),

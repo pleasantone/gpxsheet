@@ -13,7 +13,7 @@ goals). The service takes a rider's exported GPX and produces:
 - a **roadbook-style PDF** (or PNG) — the route broken into a sequence of
   schematic "strips," each showing the shape of the road, the decision points
   (where you actually have to do something), road names, and fuel;
-- a **route table** (markdown or HTML) — waypoints, cumulative distance,
+- a **route table** (markdown, HTML, or JSON) — waypoints, cumulative distance,
   fuel/lunch markers, ETAs and sunrise/sunset, for a glanceable trip plan;
 - a **structured analysis** of the route (decision points, segments, fuel
   stops) as JSON, so a UI can render its own view;
@@ -97,7 +97,7 @@ format.
 Returns a job (see [Job lifecycle](#job-lifecycle)). The finished result's
 `content_type` is `application/pdf` or `image/png`.
 
-### `POST /v1/table` — route table (markdown or HTML)
+### `POST /v1/table` — route table (markdown, HTML, or JSON)
 
 A glanceable trip-planning table: each named waypoint with cumulative distance,
 a `G`/`L`/`GL` fuel/lunch marker, ETA, and the symbol; plus a sunrise/sunset
@@ -110,7 +110,7 @@ Form fields (all optional except `gpx`):
 | field | type | default | values / meaning |
 |-------|------|---------|------------------|
 | `gpx` | file | — | the `.gpx` upload (**required**) |
-| `format` | string | `html` | `html` or `markdown` |
+| `format` | string | `html` | `html`, `markdown`, or `json` |
 | `departure` | string | — | natural-language or ISO time ("9:00 AM", "July 4 2pm"); **required for the ETA column** |
 | `timezone` | string | — | IANA zone for displayed times (e.g. `US/Pacific`) |
 | `speed` | number ≥ 0 | `0` | average speed (mph imperial / kph metric); **`0` = auto** — OSM per-segment speed limits, else 30 mph. A positive value overrides OSM speeds with a flat speed |
@@ -119,9 +119,10 @@ Form fields (all optional except `gpx`):
 | `cue` | bool | `false` | append a turn-by-turn cue sheet from the decision points |
 | `osm` | bool | `true` | OSM enrichment (auto fuel, road names, road-snapped distance); `false` is fast and fully offline |
 
-Returns a job whose result `content_type` is `text/html` or `text/markdown`.
-The HTML is the same table wrapped in a `gpxtable` CSS class you can style; the
-markdown is what's shown below. A real run (`format=markdown`, `departure="9:00
+Returns a job whose result `content_type` is `text/html`, `text/markdown`, or
+`application/json`. The HTML is the same table wrapped in a `gpxtable` CSS class
+you can style; the markdown is what's shown below; `json` (documented further
+down) is the structured form. A real run (`format=markdown`, `departure="9:00
 AM"`, `timezone=US/Pacific`) of a route with named waypoints:
 
 ```markdown
@@ -161,6 +162,54 @@ come straight from OpenStreetMap, the speed from its `maxspeed` tags:
 | :----------------------------- | ------: | -- | ----: | :----------------------- | :----
 | Canyon Auto Service            |   14/14 |    | 09:24 | Farm Hill Boulevard      | Gas Station
 ```
+
+**`format=json`** returns the same per-day sections as structured data
+(`content_type: application/json`) for programmatic consumers. The JSON is
+**always imperial** (miles / mph) with numbers rounded to one decimal; the
+`units`, `coordinates` and `cue` fields **do not apply** — `lat`/`lon` and the
+`cue` array are always present. Datetimes are ISO 8601 carrying the display-tz
+offset (`null` when absent). Shape: a top-level object with `name`, `units`, and
+a `sections` array (one per day; a single-track route gives one section):
+
+```json
+{
+  "name": "Table Test Route",
+  "units": "imperial",
+  "sections": [
+    {
+      "day": 1,
+      "title": "Route: Table Test Route",
+      "departure": "2026-06-12T09:00:00-07:00",
+      "distance_mi": 45.0,
+      "speed": { "mode": "flat", "avg_mph": 30.0 },
+      "sun": {
+        "sunrise": "2026-06-12T05:45:00-07:00",
+        "sunset": "2026-06-12T20:34:00-07:00"
+      },
+      "rows": [
+        {
+          "name": "Shell Gas Station", "mile": 19.0, "since_gas_mi": 0.0,
+          "marker": "G", "gas": true, "lunch": false, "fuel_reset": true,
+          "layover_min": 15, "eta": "2026-06-12T09:53:00-07:00",
+          "road": "Farm Hill Boulevard", "symbol": "Gas Station",
+          "lat": 38.05, "lon": -122.0
+        }
+      ],
+      "cue": [
+        {
+          "mile": 5.0, "eta": "2026-06-12T09:11:00-07:00",
+          "instruction": "Right onto Skyline Blvd", "skip": ["Kings Mountain Rd"]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each row's `mile`/`since_gas_mi` are section-local (a multi-day route restarts
+mileage at 0 per day); `marker` is the true `G`/`L`/`GL` classification (with
+`gas`/`lunch`/`fuel_reset` booleans); `speed.mode` is `osm` (variable limits) or
+`flat`. Sections without a `departure` have `eta`/`sun` as `null`.
 
 ### `POST /v1/daycard` — per-day read-ahead cards (markdown / HTML / JSON)
 
