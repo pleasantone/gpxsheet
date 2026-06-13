@@ -31,6 +31,7 @@ supersedes them, but they capture the domain and the hard-won lessons):
 - [`docs/group-rides-design.md`](../group-rides-design.md) — the leader interview that defined the group features and phasing.
 - [`docs/product.md`](../product.md) — the original product spec + **"Implementation Status & Engineering Notes" / "Decision Point Engine — as built"** (the lessons to carry forward).
 - [`IDEAS.md`](https://github.com/pleasantone/gpxsheet/blob/main/IDEAS.md) — the broader feature brainstorm.
+- [`DECISIONS.md`](DECISIONS.md) — the decision log (provenance: chosen options, rejected alternatives, rationale).
 
 ### Primary user & job-to-be-done
 

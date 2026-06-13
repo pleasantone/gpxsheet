@@ -10,6 +10,20 @@ section when resuming.
 
 Planned work is in [TODO.md](TODO.md).
 
+## Successor: Convoy (group-ride planning web app) — read this when resuming
+
+GPXSheet's forward direction is being taken up by **Convoy**, a from-scratch
+**web app** for *group-ride* pre-planning, fully specified in
+[docs/app/SPEC.md](docs/app/SPEC.md) (+ per-component specs in `docs/app/components/`,
+provenance in [docs/app/DECISIONS.md](docs/app/DECISIONS.md)). **GPXSheet is
+planned for retirement once Convoy absorbs its functionality** — new
+planning/group feature work belongs in the **Convoy spec**, not here; keep
+GPXSheet to bug-fixes/stability until then. Convoy **rewrites the analysis engine
+fresh** (carrying GPXSheet's *lessons*, not its code — see SPEC §6 + component 11)
+and will live in its **own repo**, using `gpxsheet` + `gpxsamples` as **read-only
+references**. (The Convoy design currently lives on branch
+`claude/group-ride-planner-app` / PR #70; once merged it is on `main` under `docs/app/`.)
+
 ## Merge discipline — docs must mirror the code
 
 **Before merging any PR, verify the documentation still mirrors the changes in
