@@ -1,32 +1,28 @@
-import DOMPurify from "dompurify";
 import { useMemo, useState } from "react";
-import { parseTableSummary } from "../tableSummary";
+import { buildHtml, buildJson, buildMarkdown } from "../tableExport";
+import { buildDisplayModel, type DisplayModel, type DisplaySection } from "../tableModel";
+import type { TableDocData, TableOptions } from "../types";
 import { Spinner } from "./Spinner";
 
 interface TableResultPaneProps {
-  html: string | null;
-  markdown: string | null;
+  data: TableDocData | null;
+  opts: TableOptions;
   loading: boolean;
   error: string | null;
 }
 
-export function TableResultPane({ html, markdown, loading, error }: TableResultPaneProps) {
-  // The backend already escapes user content (markdown2 safe_mode="escape"); sanitize
-  // again client-side as defense-in-depth before injecting. Keep inline `style` so the
-  // table's column alignment survives.
-  const safeHtml = useMemo(
-    () => (html ? DOMPurify.sanitize(html, { ADD_ATTR: ["style"] }) : ""),
-    [html],
-  );
-
-  const baseName = (markdown && parseTableSummary(markdown).name) || "route";
+export function TableResultPane({ data, opts, loading, error }: TableResultPaneProps) {
+  // Rebuilds when the JSON OR the display toggles (units/coords/cue) change —
+  // those toggles are instant, no backend round-trip.
+  const model = useMemo(() => (data ? buildDisplayModel(data, opts) : null), [data, opts]);
+  const baseName = model?.name || "route";
 
   return (
     <div className="space-y-3">
-      {(markdown || html) && (
+      {model && (
         <div className="flex gap-2">
-          <CopyButton testId="copy-markdown" label="Copy Markdown" text={markdown} />
-          <CopyButton testId="copy-html" label="Copy HTML" text={html} />
+          <CopyButton testId="copy-markdown" label="Copy Markdown" build={() => buildMarkdown(model)} />
+          <CopyButton testId="copy-html" label="Copy HTML" build={() => buildHtml(model)} />
         </div>
       )}
 
@@ -40,36 +36,40 @@ export function TableResultPane({ html, markdown, loading, error }: TableResultP
         {!loading && error && (
           <p className="text-sm text-red-600 py-8 px-4 text-center">{error}</p>
         )}
-        {!loading && !error && html && (
-          // The HTML is produced by our own backend (markdown2 with safe_mode=
-          // "escape", so any raw HTML in waypoint names is escaped) — safe to
-          // render inline, styled by .table-output in index.css to match the app.
-          <div
-            data-testid="table-output"
-            className="table-output w-full p-4"
-            dangerouslySetInnerHTML={{ __html: safeHtml }}
-          />
+        {!loading && !error && model && (
+          <div data-testid="table-output" className="table-output w-full p-4 space-y-6">
+            {model.sections.map((sec, i) => (
+              <Section key={i} model={model} sec={sec} />
+            ))}
+          </div>
         )}
-        {!loading && !error && !html && (
+        {!loading && !error && !model && (
           <p className="text-sm text-slate-400 py-8">Drop a GPX file to build a table</p>
         )}
       </div>
 
-      {(markdown || html) && (
+      {model && (
         <div className="flex gap-2">
           <DownloadButton
             testId="download-markdown"
             label="Download Markdown"
-            text={markdown}
+            build={() => buildMarkdown(model)}
             filename={`${baseName}.md`}
             mime="text/markdown"
           />
           <DownloadButton
             testId="download-html"
             label="Download HTML"
-            text={html}
+            build={() => buildHtml(model)}
             filename={`${baseName}.html`}
             mime="text/html"
+          />
+          <DownloadButton
+            testId="download-json"
+            label="Download JSON"
+            build={() => (data ? buildJson(data) : "")}
+            filename={`${baseName}.json`}
+            mime="application/json"
           />
         </div>
       )}
@@ -77,22 +77,102 @@ export function TableResultPane({ html, markdown, loading, error }: TableResultP
   );
 }
 
+function Section({ model, sec }: { model: DisplayModel; sec: DisplaySection }) {
+  const cols = [
+    "Name",
+    ...(model.showCoords ? ["Lat,Lon"] : []),
+    "Dist.",
+    "GL",
+    "ETA",
+    ...(sec.showRoad ? ["Road"] : []),
+    "Notes",
+  ];
+  const meta = [sec.departure ? `Departs ${sec.departure}` : null, sec.distance, sec.speed]
+    .filter(Boolean)
+    .join("  ·  ");
+
+  return (
+    <section className="space-y-2">
+      <div>
+        <h2>{sec.title}</h2>
+        <p className="text-xs text-slate-500">{meta}</p>
+        {sec.sun && (
+          <p className="text-xs text-slate-500">
+            ☀ sunrise {sec.sun.sunrise} · sunset {sec.sun.sunset}
+          </p>
+        )}
+      </div>
+
+      <table className="gpxtable">
+        <thead>
+          <tr>
+            {cols.map((c) => (
+              <th key={c}>{c}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sec.rows.map((r, i) => (
+            <tr key={i}>
+              <td>{r.name}</td>
+              {model.showCoords && <td className="tabular-nums">{r.latlon}</td>}
+              <td className="tabular-nums">{r.dist}</td>
+              <td>{r.marker}</td>
+              <td className="tabular-nums">{r.eta}</td>
+              {sec.showRoad && <td>{r.road}</td>}
+              <td>{r.notes}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {sec.cue.length > 0 && <CueTable sec={sec} />}
+    </section>
+  );
+}
+
+function CueTable({ sec }: { sec: DisplaySection }) {
+  const etaOn = sec.cue.some((c) => c.eta);
+  return (
+    <div data-testid="cue-output" className="space-y-1">
+      <h3 className="text-sm font-semibold text-slate-700">Turn-by-turn</h3>
+      <table className="gpxtable">
+        <thead>
+          <tr>
+            <th>Mile</th>
+            {etaOn && <th>ETA</th>}
+            <th>Cue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sec.cue.map((c, i) => (
+            <tr key={i}>
+              <td className="tabular-nums">{c.mile}</td>
+              {etaOn && <td className="tabular-nums">{c.eta}</td>}
+              <td>{c.cue}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function DownloadButton({
   label,
-  text,
+  build,
   filename,
   mime,
   testId,
 }: {
   label: string;
-  text: string | null;
+  build: () => string;
   filename: string;
   mime: string;
   testId: string;
 }) {
   function download() {
-    if (!text) return;
-    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const url = URL.createObjectURL(new Blob([build()], { type: mime }));
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
@@ -104,8 +184,7 @@ function DownloadButton({
     <button
       data-testid={testId}
       onClick={download}
-      disabled={!text}
-      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark transition-colors"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -122,19 +201,18 @@ function DownloadButton({
 
 function CopyButton({
   label,
-  text,
+  build,
   testId,
 }: {
   label: string;
-  text: string | null;
+  build: () => string;
   testId: string;
 }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
-    if (!text) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(build());
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -146,8 +224,7 @@ function CopyButton({
     <button
       data-testid={testId}
       onClick={copy}
-      disabled={!text}
-      className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
     >
       {copied ? "Copied!" : label}
     </button>

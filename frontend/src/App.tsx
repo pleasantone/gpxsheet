@@ -23,6 +23,7 @@ import type {
   DayCardOptions,
   Mode,
   RenderOptions,
+  TableDocData,
   TableOptions,
 } from "./types";
 import { DEFAULT_DAYCARD_OPTIONS, DEFAULT_OPTIONS, DEFAULT_TABLE_OPTIONS } from "./types";
@@ -37,9 +38,9 @@ interface ReadyState {
   previewJobId: string | null;
   renderJobId: string | null;
   renderFilename: string | null;
-  // table flow
-  tableHtmlJobId: string | null;
-  tableMdJobId: string | null;
+  // table flow (structured JSON drives a React-rendered table)
+  tableJobId: string | null;
+  tableResult: TableDocData | null;
   // day card flow
   daycardJobId: string | null; // format=json (drives the cards)
   daycardMdJobId: string | null; // format=markdown (copy/download parity)
@@ -65,8 +66,7 @@ export default function App() {
   const analyzeJobId = ready?.analyzeJobId ?? null;
   const previewJobId = ready?.previewJobId ?? null;
   const renderJobId = ready?.renderJobId ?? null;
-  const tableHtmlJobId = ready?.tableHtmlJobId ?? null;
-  const tableMdJobId = ready?.tableMdJobId ?? null;
+  const tableJobId = ready?.tableJobId ?? null;
   const daycardJobId = ready?.daycardJobId ?? null;
   const daycardMdJobId = ready?.daycardMdJobId ?? null;
 
@@ -77,12 +77,10 @@ export default function App() {
   const { jobStatus: renderStatus, resultBlob: renderBlob, isPolling: renderPolling, error: renderError } =
     useJobPoll(renderJobId, true);
   const {
-    resultBlob: tableHtmlBlob,
-    isPolling: tableHtmlPolling,
-    jobStatus: tableHtmlStatus,
-    error: tableHtmlError,
-  } = useJobPoll(tableHtmlJobId, true);
-  const { resultBlob: tableMdBlob } = useJobPoll(tableMdJobId, true);
+    jobStatus: tableStatus,
+    isPolling: tablePolling,
+    error: tableError,
+  } = useJobPoll(tableJobId);
   const {
     jobStatus: daycardStatus,
     isPolling: daycardPolling,
@@ -103,6 +101,19 @@ export default function App() {
       .catch(() => {});
   }, [analyzeJobDone, analyzeJobId, analyzeStatus?.result_url]);
 
+  // Fetch the table JSON once its job is done (mirrors the analyze effect).
+  const tableJobDone = tableStatus?.status === "done";
+  const tableJobIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tableJobDone || !tableJobId || tableJobId === tableJobIdRef.current) return;
+    tableJobIdRef.current = tableJobId;
+    fetchResultJson<TableDocData>(tableJobId, tableStatus?.result_url)
+      .then((result) =>
+        setReady((prev) => (prev ? { ...prev, tableResult: result } : prev))
+      )
+      .catch(() => {});
+  }, [tableJobDone, tableJobId, tableStatus?.result_url]);
+
   // Fetch the day-card JSON array once its job is done (mirrors the analyze effect).
   const daycardJobDone = daycardStatus?.status === "done";
   const daycardJobIdRef = useRef<string | null>(null);
@@ -119,8 +130,6 @@ export default function App() {
   // Blob URLs / text — derived from poll results
   const previewBlobUrl = useBlobUrl(previewBlob);
   const renderBlobUrl = useBlobUrl(renderBlob);
-  const tableHtml = useBlobText(tableHtmlBlob);
-  const tableMarkdown = useBlobText(tableMdBlob);
   const daycardMarkdown = useBlobText(daycardMdBlob);
 
   // Warm the (cached) analysis on upload so the first Generate is fast: the
@@ -140,16 +149,16 @@ export default function App() {
       .catch(() => {});
   }
 
+  // One JSON job drives the table; units/coordinates/cue are applied client-side,
+  // so only departure/speed/timezone/osm changes need this re-run.
   function runTable(file: File, tblOpts: TableOptions) {
-    setReady((prev) => (prev ? { ...prev, tableHtmlJobId: null, tableMdJobId: null } : prev));
+    setReady((prev) => (prev ? { ...prev, tableJobId: null, tableResult: null } : prev));
+    tableJobIdRef.current = null;
     setTableSubmitting(true);
-    submitTable(file, tblOpts, "html")
-      .then((job) => setReady((prev) => (prev ? { ...prev, tableHtmlJobId: job.id } : prev)))
+    submitTable(file, tblOpts, "json")
+      .then((job) => setReady((prev) => (prev ? { ...prev, tableJobId: job.id } : prev)))
       .catch((e) => setSubmitError(e instanceof Error ? e.message : "table failed"))
       .finally(() => setTableSubmitting(false));
-    submitTable(file, tblOpts, "markdown")
-      .then((job) => setReady((prev) => (prev ? { ...prev, tableMdJobId: job.id } : prev)))
-      .catch(() => {});
   }
 
   // Two jobs per run: json (drives the structured cards) + markdown (copy/download).
@@ -176,6 +185,7 @@ export default function App() {
     // Allow the analyze result to be refetched even if a re-upload dedupes to the
     // same job id (otherwise the ref guard would skip the refetch after the reset).
     analyzeJobIdRef.current = null;
+    tableJobIdRef.current = null;
     daycardJobIdRef.current = null;
     setReady({
       file,
@@ -184,8 +194,8 @@ export default function App() {
       previewJobId: null,
       renderJobId: null,
       renderFilename: null,
-      tableHtmlJobId: null,
-      tableMdJobId: null,
+      tableJobId: null,
+      tableResult: null,
       daycardJobId: null,
       daycardMdJobId: null,
       daycardResult: null,
@@ -220,7 +230,7 @@ export default function App() {
     // Table: the table). The Generate button re-runs after option changes. Backend
     // job + analysis caches keep the re-submits cheap.
     if (m === "sheet" && ready?.file && !ready.previewJobId) runSheet(ready.file);
-    else if (m === "table" && ready?.file && !ready.tableHtmlJobId) {
+    else if (m === "table" && ready?.file && !ready.tableJobId) {
       runTable(ready.file, tableOpts);
     } else if (m === "daycard" && ready?.file && !ready.daycardJobId) {
       runDaycard(ready.file, daycardOpts);
@@ -272,7 +282,7 @@ export default function App() {
 
   const sheetGenerating = isGenerating || renderSubmitting || renderPolling;
   const tableGenerating =
-    tableSubmitting || tableHtmlPolling || (!!tableHtmlJobId && !tableHtml && !tableHtmlError);
+    tableSubmitting || tablePolling || (!!tableJobId && !ready?.tableResult && !tableError);
   const daycardGenerating =
     daycardSubmitting ||
     daycardPolling ||
@@ -302,13 +312,13 @@ export default function App() {
         : renderJobId
           ? "processing"
           : null;
-  const tablePhase: ProgressPhase | null = tableHtmlError
+  const tablePhase: ProgressPhase | null = tableError
     ? "error"
-    : tableHtml
+    : ready?.tableResult
       ? "done"
       : tableSubmitting
         ? "submitting"
-        : tableHtmlJobId
+        : tableJobId
           ? "processing"
           : null;
   const daycardPhase: ProgressPhase | null = daycardError
@@ -387,18 +397,22 @@ export default function App() {
               </>
             ) : mode === "table" ? (
               <>
-                <TableInfo markdown={tableMarkdown} loading={tableGenerating} />
-                <TableResultPane
-                  html={tableHtml}
-                  markdown={tableMarkdown}
+                <TableInfo
+                  data={ready?.tableResult ?? null}
+                  units={tableOpts.units}
                   loading={tableGenerating}
-                  error={tableHtmlError}
+                />
+                <TableResultPane
+                  data={ready?.tableResult ?? null}
+                  opts={tableOpts}
+                  loading={tableGenerating}
+                  error={tableError}
                 />
                 <JobProgress
                   label="Table"
                   phase={tablePhase}
-                  queuePosition={tableHtmlStatus?.queue_position}
-                  error={tableHtmlError}
+                  queuePosition={tableStatus?.queue_position}
+                  error={tableError}
                 />
                 {submitError && <p className="text-sm text-red-600">{submitError}</p>}
               </>

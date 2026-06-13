@@ -71,17 +71,72 @@ export const DEFAULT_OPTIONS: RenderOptions = {
 // (HTML/markdown); "daycard" = per-day read-ahead briefings (structured JSON).
 // All rendered from the analyze pipeline (OSM on by default).
 export type Mode = "sheet" | "table" | "daycard";
-export type TableFormat = "html" | "markdown";
+export type TableFormat = "html" | "markdown" | "json";
 export type Units = "imperial" | "metric";
 
+// The Table tab renders the structured `format=json` output and applies
+// units/coordinates/cue as CLIENT-SIDE display toggles (no re-fetch). Only
+// departure/speed/timezone/osm change the computed data (a backend re-run).
 export interface TableOptions {
   departure: string | null; // value of a <input type="datetime-local">; null = no ETA
   speed: number; // mph/kph; 0 = auto (overrides OSM speeds)
-  units: Units;
-  coordinates: boolean;
+  units: Units; // display-only: JSON is always imperial; converted in-browser
+  coordinates: boolean; // display-only: show/hide lat/lon columns
   osm: boolean; // OSM enrichment: auto fuel, road names, road-snapped distance
-  cue: boolean; // append a turn-by-turn cue sheet
+  cue: boolean; // display-only: show/hide the turn-by-turn cue section
   timezone: string | null;
+}
+
+// JSON shapes — mirror routetable.TableDocument.to_dict() (always imperial:
+// mi/mph; datetimes ISO 8601 with offset, null when absent).
+export interface TableSpeedData {
+  mode: string; // "osm" | "flat"
+  avg_mph: number;
+}
+
+export interface TableSunData {
+  sunrise: string | null;
+  sunset: string | null;
+}
+
+export interface TableRowData {
+  name: string;
+  mile: number; // section-local distance from the section start
+  since_gas_mi: number; // distance since the last fuel reset
+  marker: string; // "" | "G" | "L" | "GL" (true classification, not edge-blanked)
+  gas: boolean;
+  lunch: boolean;
+  fuel_reset: boolean;
+  layover_min: number;
+  eta: string | null;
+  road: string | null;
+  symbol: string | null;
+  lat: number;
+  lon: number;
+}
+
+export interface TableCueData {
+  mile: number;
+  eta: string | null;
+  instruction: string;
+  skip: string[];
+}
+
+export interface TableSectionData {
+  day: number; // 1-based
+  title: string; // e.g. "Route: Foo" or "Day 1: Coast"
+  departure: string | null;
+  distance_mi: number;
+  speed: TableSpeedData;
+  sun: TableSunData | null;
+  rows: TableRowData[];
+  cue: TableCueData[];
+}
+
+export interface TableDocData {
+  name: string;
+  units: string; // always "imperial"
+  sections: TableSectionData[];
 }
 
 export const DEFAULT_TABLE_OPTIONS: TableOptions = {
