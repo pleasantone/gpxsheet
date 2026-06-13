@@ -7,8 +7,8 @@
 > on the bike in real time.
 >
 > This document is the entry point. Each major component has its own focused
-> spec in [`docs/app/components/`](components/) that a subagent can build from in
-> isolation. Read this file first for the shared vision, decisions, data model,
+> spec under `docs/app/components/` (each linked in §5) that a subagent can build
+> from in isolation. Read this file first for the shared vision, decisions, data model,
 > and glossary; then the component spec for your piece.
 
 ---
@@ -30,7 +30,7 @@ Source design discussions to read for context (not requirements — Convoy
 supersedes them, but they capture the domain and the hard-won lessons):
 - [`docs/group-rides-design.md`](../group-rides-design.md) — the leader interview that defined the group features and phasing.
 - [`docs/product.md`](../product.md) — the original product spec + **"Implementation Status & Engineering Notes" / "Decision Point Engine — as built"** (the lessons to carry forward).
-- [`IDEAS.md`](../../IDEAS.md) — the broader feature brainstorm.
+- [`IDEAS.md`](https://github.com/pleasantone/gpxsheet/blob/main/IDEAS.md) — the broader feature brainstorm.
 
 ### Primary user & job-to-be-done
 
