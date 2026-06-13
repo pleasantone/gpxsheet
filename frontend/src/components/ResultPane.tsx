@@ -102,7 +102,14 @@ function PanZoomImage({ src }: { src: string }) {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const { scale: s, pos: p } = view.current;
-      apply(s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), p);
+      const ns = clampZoom(s * (e.deltaY < 0 ? 1.15 : 1 / 1.15));
+      // Keep the point under the cursor fixed (anchor zoom there, not at center),
+      // matching the pinch gesture's focal-point behaviour.
+      const rect = el.getBoundingClientRect();
+      const dx = e.clientX - (rect.left + rect.width / 2);
+      const dy = e.clientY - (rect.top + rect.height / 2);
+      const k = ns / s;
+      apply(ns, { x: dx * (1 - k) + p.x * k, y: dy * (1 - k) + p.y * k });
     };
 
     // Gesture start state for touch.
