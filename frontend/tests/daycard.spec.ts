@@ -24,18 +24,40 @@ test("day card: switch to the tab, see a stacked card + summary + downloads", as
   await expect(page.getByTestId("daycard-stats")).toContainText("Distance");
   await expect(page.getByTestId("daycard-stats")).toContainText("Days");
 
-  // Copy markdown sits above; gives transient feedback.
+  // A data-source attribution footer is always present (OSM at minimum).
+  await expect(page.getByTestId("daycard-sources").first()).toContainText("Sources");
+
+  // Copy buttons (Markdown + HTML) are built client-side; give transient feedback.
   const copyMd = page.getByTestId("copy-daycard-md");
   await expect(copyMd).toBeEnabled();
   await copyMd.click();
   await expect(copyMd).toHaveText("Copied!");
+  await expect(page.getByTestId("copy-daycard-html")).toBeEnabled();
 
-  // Download JSON sits below and serializes the in-memory cards client-side.
-  const [dl] = await Promise.all([
+  // Download Markdown / HTML / JSON, all generated in the browser.
+  await expect(page.getByTestId("download-daycard-md")).toBeVisible();
+  const [dlHtml] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByTestId("download-daycard-html").click(),
+  ]);
+  expect(dlHtml.suggestedFilename()).toMatch(/\.html$/);
+  const [dlJson] = await Promise.all([
     page.waitForEvent("download"),
     page.getByTestId("download-daycard-json").click(),
   ]);
-  expect(dl.suggestedFilename()).toMatch(/\.json$/);
+  expect(dlJson.suggestedFilename()).toMatch(/\.json$/);
+});
+
+test("day card: units toggle converts client-side with no re-fetch", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("drop-zone").locator('input[type="file"]').setInputFiles(GPX);
+  await page.getByTestId("tab-daycard").click();
+  await page.getByTestId("daycard-output").waitFor({ timeout: 90_000 });
+
+  await expect(page.getByTestId("daycard-stats")).toContainText("mi");
+  // Flipping to metric re-renders instantly from the same JSON (no spinner/job).
+  await page.getByTestId("dc-units").selectOption("metric");
+  await expect(page.getByTestId("daycard-stats")).toContainText("km");
 });
 
 test("day card: a multi-day route renders one card per day", async ({ page }) => {

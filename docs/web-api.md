@@ -220,6 +220,9 @@ you'll be **riding after dark**, mountain passes and scenic stops, cautions
 (gravel, construction, wildlife, and long **no-services** gaps), and keyless
 **live conditions** — weather at your ETA (with **crosswind**), air quality /
 smoke, and nearby wildfires. Built on the same analysis as the other endpoints.
+All three formats (`markdown`/`html`/`json`) carry the same sections — the
+markdown/HTML render every caution and a **`Sources:` attribution line** for the
+data providers used (OSM, Open-Meteo, NIFC), matching the JSON.
 
 > **Live data (Phase 2).** Weather/air/elevation come from Open-Meteo and
 > wildfire perimeters from NIFC — all keyless, cached, and **graceful** (any

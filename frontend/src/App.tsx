@@ -41,9 +41,8 @@ interface ReadyState {
   // table flow (structured JSON drives a React-rendered table)
   tableJobId: string | null;
   tableResult: TableDocData | null;
-  // day card flow
-  daycardJobId: string | null; // format=json (drives the cards)
-  daycardMdJobId: string | null; // format=markdown (copy/download parity)
+  // day card flow (structured JSON drives the cards + client-side exports)
+  daycardJobId: string | null;
   daycardResult: DayCardData[] | null;
 }
 
@@ -68,7 +67,6 @@ export default function App() {
   const renderJobId = ready?.renderJobId ?? null;
   const tableJobId = ready?.tableJobId ?? null;
   const daycardJobId = ready?.daycardJobId ?? null;
-  const daycardMdJobId = ready?.daycardMdJobId ?? null;
 
   const { jobStatus: analyzeStatus, isPolling: analyzePolling, error: analyzeError } =
     useJobPoll(analyzeJobId);
@@ -86,7 +84,6 @@ export default function App() {
     isPolling: daycardPolling,
     error: daycardError,
   } = useJobPoll(daycardJobId);
-  const { resultBlob: daycardMdBlob } = useJobPoll(daycardMdJobId, true);
 
   // Fetch analyze JSON once the analyze job is done
   const analyzeJobDone = analyzeStatus?.status === "done";
@@ -130,7 +127,6 @@ export default function App() {
   // Blob URLs / text — derived from poll results
   const previewBlobUrl = useBlobUrl(previewBlob);
   const renderBlobUrl = useBlobUrl(renderBlob);
-  const daycardMarkdown = useBlobText(daycardMdBlob);
 
   // Warm the (cached) analysis on upload so the first Generate is fast: the
   // backend caches analyze_core per (gpx, osm), so this OSM pass is reused by the
@@ -161,22 +157,17 @@ export default function App() {
       .finally(() => setTableSubmitting(false));
   }
 
-  // Two jobs per run: json (drives the structured cards) + markdown (copy/download).
+  // One JSON job drives the cards; Markdown/HTML/JSON exports are built
+  // client-side, and units is applied client-side, so only departure/speed/
+  // fuel_range/osm/live changes need this re-run.
   function runDaycard(file: File, dcOpts: DayCardOptions) {
-    setReady((prev) =>
-      prev
-        ? { ...prev, daycardJobId: null, daycardMdJobId: null, daycardResult: null }
-        : prev,
-    );
+    setReady((prev) => (prev ? { ...prev, daycardJobId: null, daycardResult: null } : prev));
     daycardJobIdRef.current = null;
     setDaycardSubmitting(true);
     submitDaycard(file, dcOpts, "json")
       .then((job) => setReady((prev) => (prev ? { ...prev, daycardJobId: job.id } : prev)))
       .catch((e) => setSubmitError(e instanceof Error ? e.message : "day card failed"))
       .finally(() => setDaycardSubmitting(false));
-    submitDaycard(file, dcOpts, "markdown")
-      .then((job) => setReady((prev) => (prev ? { ...prev, daycardMdJobId: job.id } : prev)))
-      .catch(() => {});
   }
 
   function handleFile(file: File) {
@@ -197,7 +188,6 @@ export default function App() {
       tableJobId: null,
       tableResult: null,
       daycardJobId: null,
-      daycardMdJobId: null,
       daycardResult: null,
     });
     setPhase("ready");
@@ -425,7 +415,6 @@ export default function App() {
                 />
                 <DayCardResultPane
                   data={ready?.daycardResult ?? null}
-                  markdown={daycardMarkdown}
                   imperial={daycardOpts.units === "imperial"}
                   loading={daycardGenerating}
                   error={daycardError}
@@ -540,15 +529,4 @@ function useBlobUrl(blob: Blob | null): string | null {
     return () => URL.revokeObjectURL(u);
   }, [blob]);
   return url;
-}
-
-function useBlobText(blob: Blob | null): string | null {
-  const [text, setText] = useState<string | null>(null);
-  useEffect(() => {
-    if (!blob) { setText(null); return; }
-    let cancelled = false;
-    blob.text().then((t) => { if (!cancelled) setText(t); });
-    return () => { cancelled = true; };
-  }, [blob]);
-  return text;
 }

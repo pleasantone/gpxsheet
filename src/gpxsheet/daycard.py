@@ -787,10 +787,46 @@ def _weather_line(w: WeatherInfo, imperial: bool) -> str | None:
     return "* Weather: " + ", ".join(parts) if parts else None
 
 
+def _range_line(spans: list[tuple[float, float]], imperial: bool, *, lengths: bool) -> str:
+    """Format mile ranges as ``12 mi–18 mi`` (optionally ``… (6 mi)``)."""
+    parts = []
+    for a, b in spans:
+        s = f"{_fmt_dist(a, imperial)}–{_fmt_dist(b, imperial)}"
+        if lengths:
+            s += f" ({_fmt_dist(b - a, imperial)})"
+        parts.append(s)
+    return ", ".join(parts)
+
+
+def _sun_line(sun: SunInfo, imperial: bool, tz: tzinfo | None) -> str | None:
+    """``Sun: ↑ … ↓ …`` plus an after-dark note, or None when empty."""
+    parts = []
+    if sun.sunrise:
+        parts.append(f"↑ {_fmt_clock(sun.sunrise, tz)}")
+    if sun.sunset:
+        parts.append(f"↓ {_fmt_clock(sun.sunset, tz)}")
+    if not parts and not sun.after_dark:
+        return None
+    line = "* Sun: " + "  ".join(parts)
+    if sun.after_dark:
+        line += (
+            f" — riding after dark from {_fmt_dist(sun.dark_from_mile, imperial)}"
+            if sun.dark_from_mile is not None
+            else " — finishes after dark"
+        )
+    return line
+
+
 def build_day_cards_markdown(
     cards: list[DayCard], *, imperial: bool = True, tz: tzinfo | None = None
 ) -> str:
-    """Render day cards as markdown (one ``## Day N`` section per card)."""
+    """Render day cards as markdown (one ``## Day N`` section per card).
+
+    Mirrors the structured card: stats, climb (noting a DEM-elevation fallback),
+    sun + after-dark + golden hour, passes/scenic, live weather/air/fire, the
+    cautions (gravel, construction, wildlife, no-services gaps), warnings, and a
+    data-source attribution line.
+    """
     sections: list[str] = []
     for c in cards:
         title = f"## Day {c.index + 1}: {c.name}" if c.name else f"## Day {c.index + 1}"
@@ -802,14 +838,25 @@ def build_day_cards_markdown(
             + (f"  ·  Arrive ~{_fmt_clock(c.arrive, tz)}" if c.arrive else "")
         )
         if c.elevation_gain_ft is not None:
+            approx = (
+                " (approx, via DEM)"
+                if c.elevation_profile and c.elevation_profile.source != "gpx"
+                else ""
+            )
             lines.append(
                 f"* Climb: {_fmt_elev(c.elevation_gain_ft, imperial)} gain"
                 + (f", max {_fmt_elev(c.elevation_max_ft, imperial)}" if c.elevation_max_ft else "")
+                + approx
             )
-        if c.sun:
-            lines.append(
-                f"* Sun: ↑ {_fmt_clock(c.sun.sunrise, tz)}  ↓ {_fmt_clock(c.sun.sunset, tz)}"
-            )
+        if c.sun and (sl := _sun_line(c.sun, imperial, tz)):
+            lines.append(sl)
+            if c.sun.golden_morning_end or c.sun.golden_evening_start:
+                gparts = []
+                if c.sun.golden_morning_end:
+                    gparts.append(f"morning to {_fmt_clock(c.sun.golden_morning_end, tz)}")
+                if c.sun.golden_evening_start:
+                    gparts.append(f"evening from {_fmt_clock(c.sun.golden_evening_start, tz)}")
+                lines.append("* Golden hour: " + ", ".join(gparts))
         if c.passes:
             parts = [
                 f"{p.name} ({_fmt_elev(p.elevation_ft, imperial)})" if p.elevation_ft else p.name
@@ -833,12 +880,29 @@ def build_day_cards_markdown(
                 f"{f.name} (~{f.dist_mi:.0f} mi)" if f.dist_mi > 0 else f"{f.name} (on route)"
                 for f in c.fire
             ))
+        if c.gravel:
+            spans = [(g.start_mile, g.end_mile) for g in c.gravel]
+            lines.append("* Gravel/unpaved: " + _range_line(spans, imperial, lengths=False))
+        if c.construction:
+            lines.append("* Construction: " + ", ".join(p.name for p in c.construction))
+        if c.wildlife:
+            lines.append("* Wildlife: " + ", ".join(p.name for p in c.wildlife))
+        if c.no_services:
+            lines.append(
+                "* No services: "
+                + _range_line(
+                    [(g.start_mile, g.end_mile) for g in c.no_services], imperial, lengths=True
+                )
+            )
         if c.warnings:
             lines.append("")
             lines.append("### Warnings")
             lines += [
                 f"- {'⚠' if w.level == WARNING else '·'} {w.message}" for w in c.warnings
             ]
+        if c.attributions:
+            lines.append("")
+            lines.append("*Sources: " + "; ".join(c.attributions) + "*")
         sections.append("\n".join(lines))
     return "\n\n".join(sections) + "\n"
 
