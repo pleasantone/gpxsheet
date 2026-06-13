@@ -10,6 +10,19 @@ section when resuming.
 
 Planned work is in [TODO.md](TODO.md).
 
+## Successor: Convoy (group-ride planning web app) — read when resuming
+
+GPXSheet's forward direction has moved to **Convoy** — a from-scratch **web app**
+for *group-ride* pre-planning, in its **own repository**
+**[pleasantone/convoy](https://github.com/pleasantone/convoy)**. **GPXSheet is
+being retired once Convoy absorbs its functionality** — keep GPXSheet to
+bug-fixes/stability, and route new planning/group feature work to Convoy. Convoy
+**rewrites the analysis engine from scratch**, carrying GPXSheet's *lessons*
+(not its code), and uses this repo + `pleasantone/gpxsamples` as **read-only
+references**. The group-ride domain interview that seeded Convoy is
+[docs/group-rides-design.md](docs/group-rides-design.md); the broader brainstorm
+is [IDEAS.md](IDEAS.md).
+
 ## Merge discipline — docs must mirror the code
 
 **Before merging any PR, verify the documentation still mirrors the changes in
