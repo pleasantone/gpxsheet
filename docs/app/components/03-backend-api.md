@@ -8,9 +8,14 @@ model (04), auth (05).
 
 - `/v1` base; JSON + multipart upload + binary download.
 - Session-cookie auth for owner/editor routes; **public, unauthenticated**
-  `/v1/share/{token}/…` read-only routes for riders.
+  short `/v1/r/{code}/…` (rider) + long unlisted `/v1/l/{token}/…` (leader) routes.
 - Async jobs for slow work (`202`+poll); sync for cheap reads (plan math).
 - All list/detail responses are imperial; datetimes ISO-8601-with-offset.
+- **Hard-dependency down** (Overpass/Valhalla/db/redis/minio unreachable) → a
+  clean `503 {type:"dependency_unavailable", detail:"Overpass not reachable …"}`
+  (the failing job carries `error`), **never** a degraded `200`. `/readyz`
+  reflects it. Soft sources (weather/fire) down never error — they drop a
+  `Finding`. (See conventions §Reliability.)
 
 ## Endpoints (v1)
 
@@ -78,17 +83,28 @@ POST /v1/plans/{id}/artifacts/{kind}                    -> 202 job(render) | 200
 GET  /v1/plans/{id}/artifacts/{kind}                    -> binary (or 303→MinIO presigned)
 ```
 
-### Public share (rider-facing, no auth)
+### Public share — rider tier (no auth, short link)
 ```
-GET /v1/share/{token}                 -> read-only plan view-model (map data,
-                                         stops, briefing text, schedule, findings)
-GET /v1/share/{token}/briefing.pdf    -> the briefing artifact
-GET /v1/share/{token}/route.gpx       -> enriched GPX (plain; garmin via ?flavor=)
-GET /v1/share/{token}/qr.png          -> QR to this share URL (for the printout)
+GET /v1/r/{code}                 -> rider view-model (map data, stops, ETAs,
+                                    briefing text, conditions, findings) — NO PII
+GET /v1/r/{code}/briefing.pdf    -> rider briefing artifact
+GET /v1/r/{code}/route.gpx       -> enriched GPX (plain; garmin via ?flavor=)
+GET /v1/r/{code}/qr.png          -> QR to /r/{code}
+POST /v1/plans/{id}/share {enabled}  -> {code, share_url}  (owner; rotatable)
 ```
-Share routes expose **no PII beyond what the leader put in the briefing** — the
-leader chooses whether leader phone numbers appear (a plan `text`/`leaders`
-visibility flag).
+`code` is **short** (~7-char base62) for QR density and is **semi-guessable by
+design** — so the rider view-model **must omit rider PII** (names/phones) unless
+the leader explicitly opted a field public.
+
+### Leader tier (PII: roster, phones, bail-outs) — gated
+```
+GET /v1/l/{token}                -> leader view-model (adds roster/phones,
+                                    bail-outs, alt-fuel, full cue)
+GET /v1/l/{token}/packet.pdf     -> leader/sweep packet
+POST /v1/plans/{id}/leader-link {enabled} -> {token}  (owner; long 128-bit, unlisted)
+```
+Served to the **long unlisted leader token** *or* an owner/editor **session**.
+Never to the short public `code`.
 
 ## Jobs
 

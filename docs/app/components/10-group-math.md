@@ -20,6 +20,27 @@ The binding constraint is the **smallest fuel range in the group**
 - `longest_gap_mi`, `gap_exceeds_range` for the header. If a gap **cannot** be
   covered (no fuel in range), emit `Finding(warning,"services","No fuel for 140 mi …")`.
 
+### 1b. Alternate / emergency fuel (leader packet only)
+
+Beyond the *planned* mandatory stops, compute **backup fuel** for when a planned
+stop is closed/skipped — shown **only in the leader packet**, never the rider
+view (avoids clutter + decision noise).
+
+- For each long dry stretch (near `min_fuel_range_mi`), list a few `amenity=fuel`
+  options near the route (within a small detour) as `AltFuel`.
+- **Brand preference applies *here*, not to the primary plan:** prefer major
+  brands (`brand`/`operator` ∈ a curated major-brand set) because in an emergency
+  you want a station that's reliably open with the grade you need. **But where
+  fuel is sparse, take anything** — never drop the only option because it's an
+  unbranded node. Rank: branded+open > branded > any `amenity=fuel`; carry
+  `confidence` from the fuel-cluster pass (§01) so a low-confidence node is shown
+  but flagged.
+- The *primary* mandatory-fuel choice (§1) optimizes **on-route location /
+  coverage**, not brand — a closer independent beats a brand 8 mi off-route.
+
+(Open: the major-brand set is region-specific; seed a small list, make it config.
+Owner to confirm — see the challenge notes.)
+
 ## 2. Group timing (honest ETAs)
 
 Cruising speed comes from the Route's `speed_samples_mph` (OSM `maxspeed`/class),
@@ -76,6 +97,9 @@ Bail-out routing is a **job** (Valhalla call), cached per `(plan, exit_point)`.
 
 ```
 FUEL_SAFETY = 0.9
+FUEL_CLUSTER_M = 50              # merge OSM fuel features within this (§01)
+ALT_FUEL_MAX_DETOUR_MI = 3
+MAJOR_FUEL_BRANDS = {…}          # region-config; emergency-alt preference only
 GAS_BASE_MIN = 8 ; GAS_PER_RIDER_MIN = 1.5
 LUNCH_DEFAULT_MIN = 60
 REGROUP_MIN = 8

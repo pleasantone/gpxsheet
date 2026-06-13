@@ -26,8 +26,11 @@ schematic strip lands later.)
 
 ### 2. Leader / sweep packet
 The briefing **plus**: the full decision/cue list, the **bail-out section**
-(per exit: roads + miles to the major highway), the after-dark note, and the
-roster (`leaders` + any rider list). Same renderer, a `variant=leader` flag.
+(per exit: roads + miles to the major highway), the **emergency alternate-fuel**
+list (§10 — brand-preferred, leader-only), the after-dark note, and the roster
+(`leaders` + any rider list). Same renderer, a `variant=leader` flag. **PII tier:**
+served only to the owner/editor session or the long **leader link** (`/l/{token}`),
+never the public short link.
 
 ### 3. Enriched GPX export (`gpx_plain`, `gpx_garmin`)
 Emit the analyzed route as GPX so every rider's device shows the same stops.
@@ -40,9 +43,10 @@ Emit the analyzed route as GPX so every rider's device shows the same stops.
   (`?day=N` or a zip).
 
 ### 4. QR (`qr.png`)
-Served at `/v1/share/{token}/qr.png` and embedded in the PDFs. Encodes the share
-URL (and a second QR for the GPX). Riders scan at staging to pull route+plan onto
-their phone.
+Served at `/v1/r/{code}/qr.png` and embedded in the PDFs. Encodes the **short**
+public share URL (`/r/{code}` — kept short precisely so the QR is low-density and
+scans fast from paper; recommend a short host too). A second QR points at the
+GPX. Riders scan at staging to pull route+plan onto their phone.
 
 ## Share render (rider-facing, no auth)
 
@@ -58,8 +62,13 @@ map + briefing layout (interactive), and `…/briefing.pdf`, `…/route.gpx`,
 - Store in MinIO `artifacts/{plan}/{kind}/{hash}.{ext}`; serve via presigned URL
   or stream through the API.
 
-## Fast-follow (not v1)
+## Optional / fast-follow
 
+- **Roadbook tulip diagrams** (`tulip`, optional output — owner allowed this,
+  reversing the gpxsheet non-goal): a small per-decision turn diagram (approach
+  + exit stub + the road-not-taken branches + distance-to-next), rendered as a
+  cue card / packet appendix. Drive it from `DecisionPoint.branches` (which the
+  engine already produces). Optional + off by default; a nice leader/cue artifact.
 - **Schematic tank-bag strip** (the gpxsheet signature): port the strip/pdf
   renderer as a `strip_png`/strip-PDF variant. Carries its own tuned constants
   (`MIN_SEGMENT_LEN=2.6`, stylized angles 10/30/55°). A glanceable alternative

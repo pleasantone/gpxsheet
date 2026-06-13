@@ -21,9 +21,13 @@ swap procedure. Owner picks the shipped default (open question in SPEC §8).
 
 ## Client interfaces (Python, in `convoy/geo/`)
 
-All clients: timeout + retry + **graceful failure** (raise a typed
-`GeoUnavailable` the caller catches to degrade), and an on-disk response cache
-keyed by request hash (record/replay for tests).
+All clients are **providers** (conventions §Providers): timeout + bounded retry,
+then raise a typed **`GeoUnavailable`** on a *hard down* — and the caller **does
+not degrade**; it surfaces a clean error (these are hard deps). Each client
+**normalizes** its response to typed JSON (no raw OSM geometry leaks out) and
+**caches on disk** keyed by request hash (record/replay for tests). The Overpass
+client in particular returns *filtered, normalized, de-duplicated* features, so
+the rest of the system treats OSM exactly like any other provider's data.
 
 ```python
 class ValhallaClient:
@@ -81,6 +85,9 @@ Given a leader-marked exit `point`:
 - `valhalla.route` returns a paved bail-out route avoiding gravel.
 - `overpass.corridor_features` returns fuel stations for a known corridor
   (committed fixture for tests).
-- All three reachable via `/readyz`; each, when stopped, degrades its consumer
-  with a `Finding`, not a 500.
+- All three reachable via `/readyz`; **Overpass or Valhalla stopped ⇒ analyze
+  jobs fail with a clear typed error** (hard deps) and `/readyz` goes red — they
+  do **not** emit degraded output. (Tileserver down only affects the map view.)
+- Overpass client returns normalized, clustered, de-duplicated fuel features
+  (raw OSM messiness handled in the client, not leaked downstream).
 - Compose `up` from clean → `seed` populates everything → analysis works offline.

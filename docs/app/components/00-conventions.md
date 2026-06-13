@@ -58,12 +58,59 @@ docs/app/             # these specs
 - Versioned base `/v1`. Health: `/healthz`, `/readyz` (db/redis/minio/overpass/
   valhalla reachable).
 
-## Graceful degradation (non-negotiable)
+## Reliability policy (two-tier — read carefully)
 
-Any external dependency (Overpass, Valhalla, weather, fire) being down must
-**degrade**, never fail the request: skip the enriched piece, attach a warning
-`Finding`, log it. The plan still saves and renders. Mirror gpxsheet's
-`looks_sparse` / Overpass-failure fallback to geometry-only analysis.
+External dependencies split into **hard** and **soft**. This *changes* the
+gpxsheet default (which degraded everything) because geometry-only decisions are
+*wrong* on twisty roads — emitting them silently is worse than failing.
+
+- **Hard (critical):** Postgres, Redis, MinIO, **Overpass**, **Valhalla
+  map-matching**. Unreachable ⇒ the job **fails cleanly and clearly**:
+  `503`-class error, a typed `GeoUnavailable`/`DependencyDown`, an actionable
+  user message ("Route enrichment is temporarily unavailable — Overpass is not
+  reachable. Try again shortly."), `/readyz` red, logged with the cause. **No
+  degraded/geometry-only output is produced.**
+- **Soft (optional):** weather, wildfire, and future 511/reviews. Down ⇒ skip
+  that section, attach an info `Finding`, continue. Plan still computes/saves.
+
+Two cases that are **not** errors and must not be treated as one:
+1. **Sparse route** (waypoint-only `<rte>`): geometry-only is the *correct mode*,
+   chosen because OSM enrichment can't help straight-line vias — not a failure.
+2. **Overpass reachable but returns no features** for a corridor: valid empty
+   data (e.g. genuinely no fuel), not an error.
+
+## Providers (all external data, including OSM)
+
+Every external source — weather, fire, **and Overpass** — implements one
+**provider** shape: `filter → normalize to typed JSON → cache on disk`
+(record/replay). Raw OSM geometry never enters the serialized model; only
+normalized features do. Hard vs soft is a *policy flag* on the provider, not a
+different code path. Env per provider (gpxsheet convention):
+`<SRC>_CACHE_DIR / DISABLE_<SRC> / RECORD_<SRC> / <SRC>_BASE_URL`, umbrella
+`OFFLINE`. (Disabling a *hard* provider via env is a config error in prod.)
+
+## Instrumentation (so we can profile)
+
+Every job emits **one `perf` log line** with a phase breakdown, e.g.
+`perf job:analyze 4.2s [points=30911 cache=miss] match=1.1 enrich=2.4
+decisions=0.4 fuel=0.2 render=0.1`. Hot code wraps spans:
+```python
+with perf.span("enrich"):
+    feats = overpass.corridor_features(...)
+perf.annotate(points=len(pts), cache="miss")
+```
+Spans outside a tracked job are ~free. Carry gpxsheet's `perf` module verbatim
+in spirit. This is the cheap substitute for attaching a profiler in prod.
+
+## Multiprocessing-ready (design now, build later)
+
+Keep analysis **pure and side-effect-free** and split work into **independent
+chunks** — per-day (`<trk>`), per-corridor-segment, per-provider-query — so a
+later `ProcessPoolExecutor`/worker fan-out is a drop-in. **Do not** introduce
+shared mutable global state in the analysis path (it would block this).
+Renderers use global (matplotlib) state → keep them single-process; scale by
+worker *processes*, never threads. v1 stays single-process for simplicity; the
+seams must survive.
 
 ## Findings (shared warning type)
 

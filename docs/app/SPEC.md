@@ -59,14 +59,15 @@ v1 unless this doc is updated.
 | **Backend** | **Python 3.12+ / FastAPI**, analysis engine in-process | Async job model for slow OSM/routing/live work. |
 | **Frontend** | **React 19 + TypeScript + Vite + Tailwind**, as an installable **PWA** | Offline-cache the opened plan + map tiles for the staging lot. |
 | **Primary visual** | **Interactive MapLibre GL map** | Route line + numbered stop markers + bail-out markers; tap for detail. Schematic strip is a *later* printable artifact, not v1. |
-| **Auth** | **Email magic-link** (passwordless) | SMTP in compose (MailHog in dev). OAuth is a later add. |
-| **Accounts/sharing** | **Leader accounts** own/edit plans; **public read-only rider share links** (unguessable token) | Riders need no account. Co-leads invited to edit. |
+| **Auth** | **Email magic-link** (passwordless), **long-lived persistent sessions** | SMTP in compose (MailHog in dev). Not a bank — sessions persist ~1 yr (sliding), persistent cookie, with "sign out everywhere". OAuth later. |
+| **Accounts/sharing** | **Leader accounts** create/edit plans; **rider view needs no login**; share links are **public, read-by-default, short (QR-friendly)** | Short base62 code at `/r/{code}`. PII (rider names/phones) is **never** on the public link unless the leader opts in per-field; the **leader/sweep packet (PII, bail-outs) uses a separate long unlisted token or auth** (§7). Co-leads invited to edit. |
 | **Data store** | **PostgreSQL + PostGIS** (data + geo queries) + **MinIO/S3** (artifacts) | PostGIS for corridor POIs / nearest-highway / stop scoring. |
-| **Geo backbone** | **Self-hosted in compose:** Overpass (enrichment) + Valhalla (routing, map-matching, bail-outs) + a tile server | Regional `.osm.pbf` extract. No per-call API keys at runtime. |
-| **Deployment** | **docker-compose**, self-hostable on one box | Mobile-friendly responsive PWA served by the API. |
-| **Live data (v1)** | **Weather-at-ETA (Open-Meteo) + wildfire (NIFC)** only, graceful + cached | 511/events/air/reviews are later phases. |
-| **Printable (v1)** | **Map+table briefing PDF** (+ QR) | Schematic strip artifact is a fast-follow. |
+| **Geo backbone** | **Self-hosted in compose:** Overpass + Valhalla + tile server. **Overpass & Valhalla map-matching are HARD dependencies** (see Reliability). | Regional `.osm.pbf` extract. No per-call API keys at runtime. |
+| **Reliability** | **Two-tier:** geo backbone (Overpass, Valhalla, Postgres, Redis, MinIO) unreachable ⇒ **clean, clear job error** (no degraded output). Live/optional sources (weather, fire, future 511) down ⇒ skip section + info finding. | Overpass is critical — geometry-only decisions are *wrong* on twisty roads, so we **fail loudly** rather than emit garbage. A legitimately *sparse* route still uses geometry-only as a valid *mode* (not a degradation). |
+| **Live data (v1)** | **Weather-at-ETA (Open-Meteo) + wildfire (NIFC)** only, graceful + cached | 511/events/air/reviews are later phases. **OSM/Overpass corridor queries are modeled as a (filtered+cached) provider too** (§7), just not a *soft* one. |
+| **Printable (v1)** | **Map+table briefing PDF** (+ QR). **Optional roadbook/tulip turn diagrams** per decision point allowed as an output. | Schematic strip artifact is a fast-follow. Tulip diagrams reverse the *gpxsheet* non-goal — fine here (different product), kept optional. |
 | **Route input (v1)** | **Upload GPX** (Valhalla map-matched) + **place/mark stops & bail-outs on the map** | No in-app route *drawing* in v1. |
+| **Perf / scaling** | **Instrument hot paths** (per-job phase breakdown, `perf.span`); **design pure/chunkable code for future multiprocessing** | Don't build the parallelism now; keep the seams (§7). |
 
 ---
 
@@ -135,6 +136,10 @@ this is the conceptual model.
   - **Stop[]** — a point on/near the route with a **role**: `regroup` |
     `fuel` | `lunch` | `poi`, plus `mandatory` flag, `duration_min` override,
     and notes. Stops are derived (analysis/waypoints) and/or leader-placed.
+  - **AltFuel[]** — *emergency-only* alternate fuel options near the route, shown
+    **only in the leader packet** (not the rider view). Prefer major brands;
+    where fuel is sparse, include any `amenity=fuel`. Used when the planned stop
+    is closed/skipped. See group math (§10).
   - **BailOut[]** — leader-marked exit points; each gets a computed
     *fastest-paved-path-to-major-highway* route + miles.
   - **leaders**: `[{role: lead|sweep, name, phone}]`
@@ -200,8 +205,14 @@ rewrite is free to restructure, but **must not regress on these**:
    `MERGE_MIN_SEPARATION_MILES=0.2`. Start here; re-tune only with evidence.
 3. **Rider waypoints win over OSM.** A named GPX `<wpt>` always renders; an OSM
    fuel station within a buffer of a rider waypoint is suppressed as a duplicate.
-4. **Graceful degradation everywhere.** Overpass/Valhalla/live down ⇒ degrade
-   (geometry-only analysis, skipped section) with a warning, **never** a failure.
+4. **Degradation is two-tier (Convoy changes the gpxsheet default).** The geo
+   backbone is **critical**: Overpass or Valhalla map-matching *unreachable* ⇒
+   **clean, clear error**, *not* a silent geometry-only fallback — because
+   geometry-only decisions are wrong on twisty roads (lesson #1), so emitting
+   them would be worse than failing. **Optional** sources (weather, fire) down ⇒
+   skip the section + an info `Finding`. A *sparse* route (waypoint-only `<rte>`)
+   still uses geometry-only as a **valid mode**, distinct from a degradation, and
+   distinct from "Overpass returned no features" (valid empty data).
 5. **Variable ETAs from OSM `maxspeed`/road class**, a flat user speed overrides.
    Layover/since-gas/sun-times are part of timing. (See `timing.py` concepts.)
 6. **Plain `<rte>` and Garmin BaseCamp routes** carry real geometry in
@@ -222,12 +233,38 @@ Detailed in [`components/00-conventions.md`](components/00-conventions.md); the 
   (miles/mph/ft/°F). **Decision:** store canonical **imperial floats**; the API
   returns imperial; the frontend offers a metric *display* toggle (client-side),
   matching the gpxsheet precedent. Datetimes are **ISO 8601 with offset**.
-- **IDs:** UUIDv7 (sortable) for entities; share/edit tokens are 128-bit
-  url-safe random.
+- **IDs & links:** UUIDv7 (sortable) for entities. **Public share links are
+  short** (`/r/{code}`, ~7-char base62) so they fit a low-density QR — *not*
+  secret, read-by-default, semi-guessable by design ("not a bank"). Because they
+  are semi-guessable, the **public share view carries no rider PII** (names,
+  phones) unless the leader explicitly opts a field in; the **leader/sweep packet
+  (PII, bail-outs, roster) is gated** behind the owner's session **or** a separate
+  long unlisted token (`/l/{token}`, 128-bit). Magic-link/session tokens are
+  256-bit, hashed at rest.
+- **Providers (incl. OSM):** every external data source — weather, fire, **and
+  Overpass corridor queries** — goes through one **provider abstraction**:
+  *filter → normalize to typed JSON → cache on disk* (record/replay). Raw OSM
+  geometry never leaks into the serialized model; only filtered, normalized
+  features do. The difference between Overpass and weather is **criticality**, not
+  shape: Overpass is a *hard* provider (down ⇒ error), weather/fire are *soft*
+  (down ⇒ skip + finding).
+- **Sessions:** long-lived & persistent (≈1 yr sliding, persistent cookie) — the
+  rider/leader shouldn't get logged out between rides. Offer "sign out
+  everywhere". (Trade-off accepted; see auth §05 and the challenge notes.)
 - **Money/keys:** no runtime third-party keys in v1 (self-hosted geo + keyless
   live). Keep a provider seam for later key-gated sources.
-- **Privacy:** a self-hosted box keeps rider PII (names/phones) in its own
-  Postgres; share links are unguessable, not enumerable; no analytics calls out.
+- **Privacy:** a self-hosted box keeps rider PII in its own Postgres; public
+  links are short and non-PII; no analytics calls out.
+- **Instrumentation:** every job logs **one `perf` line with a phase breakdown**
+  (`match=… enrich=… decisions=… fuel=… render=…`), and hot code uses
+  `with perf.span("name")` — carry gpxsheet's `gpxsheet.perf` pattern so slow
+  areas are findable without a profiler attached.
+- **Multiprocessing-ready (not yet built):** keep analysis stages **pure and
+  side-effect-free**, and structure work into **independent chunks** (per-day,
+  per-corridor-segment, per-provider) that a future `ProcessPoolExecutor` can
+  fan out. Don't add the parallelism now; **don't add shared mutable state that
+  would block it.** Renderers (matplotlib/global state) stay single-process —
+  scale them by worker processes, not threads.
 - **Testing:** record/replay fixtures for Overpass/Valhalla/live (cache-only in
   CI, offline + deterministic) — mirror the gpxsheet `conftest` cache harness.
 - **Versioning:** an `ENGINE_VERSION` constant invalidates the Route analysis

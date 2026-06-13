@@ -23,11 +23,33 @@ GET /v1/auth/callback?token=…
 
 ```
 magic_links: id, user_id→users, token_hash, expires_at, used_at, created_at
-sessions:    id, user_id→users, token_hash, expires_at(+30d sliding),
+sessions:    id, user_id→users, token_hash, expires_at(+~1yr sliding),
              user_agent, created_at, last_seen_at
 ```
 Store **hashes** of tokens (`sha256`), compare in constant time. The cookie holds
 the raw session token; rotate `last_seen_at`, slide expiry.
+
+**Long-lived sessions (owner's call — "not a bank").** Use a **persistent**
+cookie (`Max-Age ≈ 1 year`), sliding expiry — leaders/riders shouldn't be logged
+out between rides. Provide **"sign out everywhere"** (delete all of a user's
+sessions) and per-session rows (with `user_agent`) so a user can review/revoke.
+This is a deliberate convenience-over-strictness trade-off for a non-sensitive
+rides tool; see the challenge note in the PR. Still: httpOnly + Secure +
+SameSite=Lax, hashed at rest, revocable.
+
+## Share & leader tokens (link model)
+
+Rider viewing needs **no login**. Two link tiers per plan:
+
+| Link | Path | Token | Audience | Contents |
+|---|---|---|---|---|
+| **Public share** | `/r/{code}` | **short** ~7-char base62 (QR-friendly) | anyone with the link | rider briefing: map, stops, ETAs, conditions — **no PII** unless the leader opts a field in |
+| **Leader link** | `/l/{token}` | **long** 128-bit unlisted | co-leads/sweep | the leader packet: roster + phones, bail-outs, full cue — the PII tier |
+
+The public code is **read-by-default and semi-guessable by design** (short for
+QR); therefore it must never expose rider PII. The leader tier is a long unlisted
+token (or owner/editor session). Both are toggleable + rotatable by the owner.
+Schema for these lives in [`04-data-model.md`](04-data-model.md).
 
 ## Email
 

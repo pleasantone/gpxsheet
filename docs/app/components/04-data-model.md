@@ -41,9 +41,14 @@ group jsonb,          -- {riders:int, min_fuel_range_mi:float}
 schedule jsonb,       -- {ksu: iso, timezone: iana, staging:{name, point}}
 leaders jsonb,        -- [{role, name, phone}]
 text jsonb,           -- {separation, rules, notes}
-share_token (unique), share_enabled bool,
+share_code (citext unique),  share_enabled bool,   -- SHORT ~7-char base62, /r/{code}
+share_public_pii jsonb,      -- which PII fields (if any) the leader opted public
+leader_token_hash (unique),  leader_enabled bool,  -- LONG 128-bit, /l/{token}
 created_at, updated_at, deleted_at
 ```
+`share_code` is short for QR density (semi-guessable by design → the rider
+view-model omits PII); the leader tier uses the long hashed `leader_token`. Both
+owner-rotatable. See [`05-auth.md`](05-auth.md) §"Share & leader tokens".
 
 ### `stops`  (plan-scoped; on/near the route)
 ```
@@ -97,9 +102,12 @@ See [`05-auth.md`](05-auth.md).
 - `routes.analysis` is **derived + cached** (recomputable from GPX + engine).
 - `plans.*`, `stops`, `bailouts`, `leaders`, `text` are **authored** (the leader's
   data) — back these up; they're the irreplaceable part.
-- Group-math outputs (mandatory-fuel flags, group ETAs, after-dark) are
-  **recomputed on read** from `plan + route.analysis` (cheap) — do **not** persist
-  (mirrors gpxsheet `derive_products`). Cache in Redis if needed.
+- Group-math outputs (mandatory-fuel flags, group ETAs, after-dark, **AltFuel
+  emergency options**) are **recomputed on read** from `plan + route.analysis`
+  (cheap) — do **not** persist (mirrors gpxsheet `derive_products`). Cache in
+  Redis if needed. (So there is no `alt_fuels` table; it's derived.)
+- Bail-out *routes* (Valhalla output) ARE stored on `bailouts` (an external call,
+  worth caching) — see that table above.
 
 ## Acceptance criteria
 

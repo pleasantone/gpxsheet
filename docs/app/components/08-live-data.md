@@ -8,16 +8,22 @@ ETAs).
 
 ## Provider contract
 
+Weather + wildfire are the **soft** tier of the *same* provider abstraction whose
+**hard** counterpart is Overpass (conventions §Providers): `filter → normalize →
+cache`. The only difference is the down-policy.
+
 ```python
 class Provider(Protocol):
     name: str
-    def fetch(self, request) -> Result | None   # None = unavailable → skip + Finding
+    hard: bool                                   # weather/fire = False
+    def fetch(self, request) -> Result | None    # None = unavailable
 ```
 - Every response cached on disk (record/replay for tests); per-provider TTL.
-- A provider down/unreachable ⇒ return `None`, attach `Finding(info,…,"… unavailable")`,
-  never raise. Gate with `LIVE_DISABLED` / `OFFLINE` env (copy gpxsheet's
-  `sources.py` env convention: `<SRC>_CACHE_DIR / DISABLE_<SRC> / RECORD_<SRC> /
-  *_BASE_URL`, umbrella `OFFLINE`).
+- **Soft** provider down/unreachable ⇒ return `None`, attach
+  `Finding(info,…,"… unavailable")`, never raise — the plan still computes.
+  (A *hard* provider down raises `GeoUnavailable` and the job errors cleanly.)
+- Gate with `DISABLE_<SRC>` / `OFFLINE` env (gpxsheet `sources.py` convention:
+  `<SRC>_CACHE_DIR / DISABLE_<SRC> / RECORD_<SRC> / <SRC>_BASE_URL`).
 
 ## Weather (Open-Meteo, keyless)
 

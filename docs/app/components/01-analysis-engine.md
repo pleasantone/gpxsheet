@@ -68,17 +68,33 @@ false turns). See `docs/product.md` "Decision Point Engine — as built" + the
   table). Implement it here if feasible.
 - **`branches`**: the named roads *not* taken at a junction (for the cue/briefing
   "continue on X, skip Y").
-- **Fallback:** if the route `looks_sparse` (waypoint-only `<rte>`) or Overpass
-  fails → geometry-only with a `Finding(info, "geometry_only", …)`.
+- **Overpass is a HARD dependency (Convoy policy, see conventions §Reliability).**
+  If Overpass is *unreachable*, **fail the job cleanly** (`GeoUnavailable`) — do
+  **not** silently fall back to geometry-only, because those decisions are wrong
+  on twisty roads. Two non-errors stay non-errors: a **sparse** route
+  (waypoint-only `<rte>`) legitimately uses the **geometry-only mode** (emit
+  `Finding(info,"geometry_only",…)`), and **Overpass returning no features** is
+  valid empty data. The geometry baseline remains for direction + the sparse
+  mode, not as an availability fallback.
 
 ## Other passes
 
 - **Segments:** contiguous stretches under one OSM road name between decisions;
   geometry-only segments named `Leg N` (not real names — exclude from "Road"
   displays).
-- **Fuel:** OSM `amenity=fuel` discovered along a corridor buffer + GPX fuel
-  waypoints; **dedupe** an OSM station within `FUEL_BUFFER_M` of a named
-  waypoint (rider waypoints win). Produces `fuel_stops` (mile, name, lat/lon).
+- **Fuel (OSM is messy — clean it):** OSM `amenity=fuel` along a corridor buffer
+  + GPX fuel waypoints. OSM frequently **mis-tags and double-tags** stations
+  (node + enclosing way for one station; a pump tagged separately; a former
+  station). So:
+  1. **Cluster** OSM fuel features within `FUEL_CLUSTER_M` (≈50 m) into one
+     station; merge tags, keeping the most complete (`brand`/`operator`/`name`).
+  2. **Confidence**: prefer features with `brand`/`operator`/`name`; drop bare
+     `amenity=fuel` nodes with no corroborating tags **when a better one is
+     nearby**; flag `disused:`/`abandoned:` out.
+  3. **Dedupe vs rider waypoints**: an OSM station within `FUEL_BUFFER_M` of a
+     named GPX waypoint is suppressed (rider waypoints win).
+  Output `fuel_stops` (mile, name, brand?, lat/lon, confidence). Brand is carried
+  for the alternate-fuel preference in group math (§10).
 - **Surface spans:** `surface=unpaved|gravel|…` and ferry stretches → `RouteSpan`
   (unpaved/ferry) with labeled ends (for map styling + cautions).
 - **Timing prep:** `speed_samples_mph = [(mile, mph)]` from OSM `maxspeed`
@@ -92,8 +108,12 @@ Use Valhalla `trace_attributes` to snap the GPX to road geometry and fetch
 per-edge `road name`, `road class`, `surface`, `speed`/`maxspeed`. This gives
 clean geometry **and** much of the enrichment in one call, reducing Overpass
 load to corridor POI queries (fuel, viewpoints later). See
-[`02-geo-infra.md`](02-geo-infra.md) for the Valhalla call shapes. If
-map-matching fails, fall back to the raw GPX polyline + Overpass-only enrichment.
+[`02-geo-infra.md`](02-geo-infra.md) for the Valhalla call shapes.
+**Availability vs quality:** Valhalla *unreachable* ⇒ hard error (don't proceed
+un-matched). A route that simply *can't be matched* in places (genuinely
+off-road, or a road missing from OSM) ⇒ keep the raw GPX polyline for those
+points + a `Finding(info,"unmatched",…)` — that's a data-quality fallback, not an
+availability one.
 
 ## Acceptance criteria
 
@@ -102,7 +122,15 @@ map-matching fails, fall back to the raw GPX polyline + Overpass-only enrichment
   (sanity: decisions ≪ geometry-only count).
 - Plain `<rte>`, Garmin BaseCamp, and multi-`<trk>` inputs all analyze; via
   points lift to waypoints, shaping points excluded.
-- OSM-discovered fuel appears; a GPX fuel waypoint near an OSM station dedupes.
-- Overpass/Valhalla unavailable ⇒ geometry-only output + a `Finding`, no crash.
+- OSM-discovered fuel appears; clustered (no double-counted station); a GPX fuel
+  waypoint near an OSM station dedupes; brand is captured when tagged.
+- **Overpass/Valhalla unreachable ⇒ a clean typed error** (no geometry-only
+  output), surfaced as a clear API error + `/readyz` red. A **sparse** route
+  still produces geometry-only output (valid mode); empty Overpass results are
+  not an error.
 - Deterministic offline test run via committed Overpass/Valhalla fixtures.
 - `ENGINE_VERSION` bumped whenever detection output changes (cache key).
+- Each analyze job emits **one `perf` line** with a phase breakdown
+  (`match/enrich/decisions/fuel/…`); stages are pure + chunkable (per-day,
+  per-corridor) so a later process-pool fan-out is a drop-in (conventions
+  §Instrumentation/§Multiprocessing-ready).
