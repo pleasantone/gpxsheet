@@ -4,6 +4,51 @@ All notable changes are documented here. From the next release onward this file
 is maintained automatically by [release-please](https://github.com/googleapis/release-please)
 from [Conventional Commits](https://www.conventionalcommits.org/).
 
+## [1.2.0](https://github.com/pleasantone/gpxsheet/compare/v1.1.1...v1.2.0) (2026-06-13)
+
+
+### Features
+
+* **daycard:** client-side MD/HTML/JSON exports + complete markdown ([0c5556c](https://github.com/pleasantone/gpxsheet/commit/0c5556cdb6c68195146fb517d0cebf7eb2c7e8f7))
+* **daycard:** per-day read-ahead cards (Phase 1, offline) ([#62](https://github.com/pleasantone/gpxsheet/issues/62)) ([28334f5](https://github.com/pleasantone/gpxsheet/commit/28334f504ea649a40cae765110954a364c749487))
+* **daycard:** Phase 2 live conditions (weather/crosswind, air/smoke, wildfire) ([c663d1f](https://github.com/pleasantone/gpxsheet/commit/c663d1ff3c16c1bf8c86395b7e6d65410ea16d6f))
+* **frontend:** add Day card SPA tab ([41112b5](https://github.com/pleasantone/gpxsheet/commit/41112b5f99cf18a9dbfe328f709cac1f8dfbc12e))
+* **frontend:** render the Table tab from structured JSON ([8c9a88a](https://github.com/pleasantone/gpxsheet/commit/8c9a88a3a50ed222f5ee1d23361aeeb3a7a84ba2))
+* **table:** add structured JSON output for /v1/table (CLI, web, lib) ([462906e](https://github.com/pleasantone/gpxsheet/commit/462906e66524bc6b9ac618a9b857e512a14481f9))
+* **validate:** seasonal-closure warnings (hybrid: curated list + OSM tags) ([#60](https://github.com/pleasantone/gpxsheet/issues/60)) ([f4c1a6f](https://github.com/pleasantone/gpxsheet/commit/f4c1a6fab742df4297981bc52df61c4ebaf36320))
+
+
+### Bug Fixes
+
+* **enrich:** override Overpass endpoint via GPXSHEET_OVERPASS_URL ([e2fc8bf](https://github.com/pleasantone/gpxsheet/commit/e2fc8bf265260f3bd2ec41d1aed6419604cec333))
+* **frontend:** Sheet tab — real-output preview, accurate header, sticky options ([6a992e2](https://github.com/pleasantone/gpxsheet/commit/6a992e26f7cd325cc3a6fe956960df49bdf92056))
+
+
+### Performance
+
+* instrument day-card live queries ([f87ed4e](https://github.com/pleasantone/gpxsheet/commit/f87ed4e608d51214b0cafb1541e5b46c21ec3f70))
+
+
+### Refactoring
+
+* dedup shared helpers across geo/timing and day cards ([0524b8e](https://github.com/pleasantone/gpxsheet/commit/0524b8e50c68bb062b5757ac2319ceaeb775e624))
+
+
+### Documentation
+
+* add IDEAS.md (touring-rider feature brainstorm) ([019b874](https://github.com/pleasantone/gpxsheet/commit/019b8743059ca476ec4ab51a9d4198adb316f16d))
+* **claude:** add pre-merge documentation-sync check ([e7c1eb9](https://github.com/pleasantone/gpxsheet/commit/e7c1eb9949d27c98e8f3a7c8d991ba08f2dc7752))
+* **deploy:** self-hosted Overpass via the osm/ subproject ([#61](https://github.com/pleasantone/gpxsheet/issues/61)) ([23e3d0a](https://github.com/pleasantone/gpxsheet/commit/23e3d0ae9572bca2d819fc45e9385665c33f466c))
+* group-ride planning design (interview-derived) + phased TODO ([5b2fa81](https://github.com/pleasantone/gpxsheet/commit/5b2fa81ee88139321d03fc03a4c8deba7251a208))
+* **group-rides:** move recon deep links from Phase 4 to Phase 2 ([1dbf010](https://github.com/pleasantone/gpxsheet/commit/1dbf010e0dbc7a5eb8839396b2b1c9c4412cbe71))
+* **library-api:** describe return values and the Route graph structure ([18f78ff](https://github.com/pleasantone/gpxsheet/commit/18f78ff9c758faae927a43eeb5a62f1e4d0567cb))
+* move Overpass API analysis note into docs/ ([bbf37f2](https://github.com/pleasantone/gpxsheet/commit/bbf37f26d32a98709a4574acdb05f1c27d79e233))
+* record Convoy as the successor repo (pleasantone/convoy) ([dbb1dfa](https://github.com/pleasantone/gpxsheet/commit/dbb1dfac64538ef81faa18ab4356620a92923d6a))
+* **todo:** drop completed items (BaseCamp, seasonal check) ([c25b675](https://github.com/pleasantone/gpxsheet/commit/c25b6752a6d7130820f9eb2892b234ee7003338d))
+* **todo:** record deferred Sheet/Table/Day-card follow-ups; drop shipped /v1/table json item ([0d1fa78](https://github.com/pleasantone/gpxsheet/commit/0d1fa78a13f27c008a96febcb8d54c2351444ee7))
+* **web-api:** expand /v1/analyze with real OSM-enriched sample output ([ca98ec7](https://github.com/pleasantone/gpxsheet/commit/ca98ec7dfb7b7cc98d2d2cae6891712f3ebcf8ff))
+* **web-api:** real OSM-enriched samples for /v1/table and /v1/validate ([f815348](https://github.com/pleasantone/gpxsheet/commit/f8153482f713f33cfc9c18b4c2af354415633ae6))
+
 ## [1.1.1](https://github.com/pleasantone/gpxsheet/compare/v1.1.0...v1.1.1) (2026-06-12)
 
 
