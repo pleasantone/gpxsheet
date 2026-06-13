@@ -3,6 +3,29 @@
 Planned work, queued. As-built status lives in [docs/product.md](docs/product.md);
 architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 
+## Group-ride planning (designed, phased — see the design doc)
+
+Full interview-derived design + decided build order in
+[docs/group-rides-design.md](docs/group-rides-design.md). Phases:
+
+1. **Group plan file + group math** (build first) — `ride.yaml` (headcount,
+   min fuel range, KSU/staging, leaders, stop overrides, bail-out points);
+   fuel gaps vs the group's smallest tank → mandatory-fuel markers;
+   headcount-scaled gas/restroom stop delays, fixed lunch (default 1 h) —
+   reservation-grade lunch ETA and an honest after-dark check.
+2. **Artifacts** — rider briefing one-pager (preview thumbnail + stop table +
+   staging/KSU + QR), leader/sweep packet (adds full table/cue + bail-out
+   routes: leader-marked exits → fastest paved path to a major highway),
+   enriched GPX re-export (`/v1/export`; Garmin `trp:ViaPoint`/`<sym>` +
+   plain GPX, per-day split), shareable read-only plan link.
+3. **Freshness validate** — live providers for DOT/511 closures +
+   construction, burn-scar damage, event conflicts → findings/warnings.
+4. **Stop intelligence** — regroup-candidate suggestion + scoring (parking,
+   pumps, seating), recon deep links (maps/street-view per decision + stop),
+   reviews/hours via a key-gated source.
+
+Later: server-saved plans (persistence over the same `ride.yaml` format).
+
 ## Input / GPX support (open)
 
 - **Broaden GPX route/track support across more planners** — ingest GPX from
