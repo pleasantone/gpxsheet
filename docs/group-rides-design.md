@@ -58,6 +58,9 @@ The foundation. Small, testable, and every artifact consumes its outputs.
 - **Enriched GPX re-export** (`/v1/export`): the analyzed route with
   regroup/fuel/lunch as named waypoints — Garmin-convention and plain variants,
   optional per-day split. We parse these conventions already; this is the writer.
+- **Recon deep links** (cheap — pure URL construction): per decision point and
+  stop, Google Maps / street-view / satellite links in the leader packet & SPA,
+  so manual recon is one click instead of address-hunting.
 - **Share link**: hosted read-only plan page (the SPA exists; needs short-lived
   result links first, full co-lead editing only after server-saved plans).
 
@@ -78,8 +81,6 @@ at mile 42 — Caltrans, updated yesterday").
 - **Regroup candidate suggestion + scoring**: pullouts/parking polygons after
   long no-stop stretches, pump counts, group seating — leader picks from
   candidates (decision stays human).
-- **Recon deep links** (cheap — may ride along Phase 2): per decision point and
-  stop, Google Maps / street-view / satellite URLs in the leader packet & SPA.
 - **Reviews/hours** for lunch/fuel candidates ("closed Sundays") via a
   key-gated source, following the AirNow/OpenWeather Phase-3 key pattern.
 

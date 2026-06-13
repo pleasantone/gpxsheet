@@ -17,12 +17,12 @@ Full interview-derived design + decided build order in
    staging/KSU + QR), leader/sweep packet (adds full table/cue + bail-out
    routes: leader-marked exits → fastest paved path to a major highway),
    enriched GPX re-export (`/v1/export`; Garmin `trp:ViaPoint`/`<sym>` +
-   plain GPX, per-day split), shareable read-only plan link.
+   plain GPX, per-day split), recon deep links (maps/street-view per
+   decision + stop), shareable read-only plan link.
 3. **Freshness validate** — live providers for DOT/511 closures +
    construction, burn-scar damage, event conflicts → findings/warnings.
 4. **Stop intelligence** — regroup-candidate suggestion + scoring (parking,
-   pumps, seating), recon deep links (maps/street-view per decision + stop),
-   reviews/hours via a key-gated source.
+   pumps, seating), reviews/hours via a key-gated source.
 
 Later: server-saved plans (persistence over the same `ride.yaml` format).
 
