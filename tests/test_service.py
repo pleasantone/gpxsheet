@@ -236,6 +236,21 @@ def test_table_job(client, table_route_file, fmt, content_type, ext, needle):
     assert needle in res.content
 
 
+def test_table_json_job(client, table_route_file):
+    r = _post(client, "/v1/table", table_route_file, format="json", departure="9:00 AM")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "done"
+    assert body["content_type"] == "application/json"
+    res = client.get(f"/v1/jobs/{body['id']}/result")
+    assert res.status_code == 200
+    assert res.headers["content-type"].startswith("application/json")
+    doc = res.json()
+    assert doc["name"] == "Table Test Route"
+    assert doc["units"] == "imperial"
+    assert doc["sections"][0]["rows"]
+
+
 def test_table_invalid_format_rejected(client, l_route_file):
     assert _post(client, "/v1/table", l_route_file, format="pdf").status_code == 422
 

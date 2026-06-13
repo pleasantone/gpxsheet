@@ -35,7 +35,7 @@ GPXSHEET_RECORD_OSM=1 .venv/bin/pytest tests/test_enrich.py  # re-record OSM cac
 .venv/bin/gpxsheet generate <gpx> -o route.pdf            # portrait (default)
 .venv/bin/gpxsheet generate <gpx> --layout landscape     # one strip/page
 .venv/bin/gpxsheet generate <gpx> --layout strip -o strip.png   # single strip PNG
-.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # route table (html|md)
+.venv/bin/gpxsheet table <gpx> -o route.html --departure "9am"  # route table (html|md|json)
 .venv/bin/gpxsheet table <gpx> --no-osm -o route.md             # fast, fully offline
 ```
 
@@ -51,7 +51,11 @@ from `decision_points`), and **per-day sections** for multi-`<trk>` routes
 — G/L/GL markers, layover, fuel-reset; schema-compatible with a GPXtable
 `--config`) and `timing.py` (`SpeedProfile` + ETA/layover/since-gas + sun).
 Web op `"table"` → `/v1/table` (`TableParams`, incl. `osm`/`cue`); the SPA
-exposes it under a **Table** tab (vs the **Sheet** tab).
+exposes it under a **Table** tab (vs the **Sheet** tab). `format` is
+**html|markdown|json** — JSON (`build_table_data`/`build_table_json`, a typed
+`TableDocument` of per-day sections→rows) is **always imperial** (1-decimal, ISO
+datetimes) and always carries lat/lon + the cue, so `units`/`coordinates`/`cue`
+only affect md/HTML. Both md and JSON render from one shared `_day_slices` seam.
 
 `src/gpxsheet/daycard.py` is the **day card** — a per-day, *read-ahead* briefing
 (distance/climb, sunset + riding-after-dark, passes/scenic, gravel/construction/
