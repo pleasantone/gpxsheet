@@ -281,8 +281,20 @@ Detailed in [`components/00-conventions.md`](components/00-conventions.md); the 
 - **Region/extract**: which `.osm.pbf` ships by default (NorCal? California?
   US-West?). Affects all three geo services' disk/RAM. Owner to choose the
   default; doc the swap procedure.
-- **Bail-out "major highway" definition**: OSM `highway in (motorway, trunk,
-  primary)` as the target class — confirm `primary` is "major" enough for the
-  Sierra foothills (often the only paved option).
 - **Co-lead invite UX**: email-invite vs. shareable edit-link. Defaulting to
   email-invite (ties to accounts); see [`components/05-auth.md`](components/05-auth.md).
+
+### Resolved (owner, 2026-06-13)
+
+- **Bail-out "major highway" = `motorway`, `trunk`, **and `primary`** — `primary`
+  counts (often the only paved option in the foothills). Locked in §10
+  `MAJOR_HWY_CLASSES`.
+- **Major fuel brands = typical North American brands** (Shell/Chevron/Exxon/
+  Mobil/BP/Marathon/Valero/Circle K/…); seeded + config-overridable in §10
+  `MAJOR_FUEL_BRANDS`.
+- **Brand preference applies to ALL fuel stops** (not just emergencies), balanced
+  by a **detour tolerance** (~2 mi primary / ~5 mi emergency): a major brand wins
+  only when it costs little convenience; sparse areas take anything. See §10 §1a.
+- **Auth convenience:** long-lived sliding session so leaders rarely re-login;
+  see [`components/05-auth.md`](components/05-auth.md) for the recommended
+  mechanism (+ optional passkey for one-tap new-device re-auth).

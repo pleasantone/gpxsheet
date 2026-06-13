@@ -37,6 +37,27 @@ This is a deliberate convenience-over-strictness trade-off for a non-sensitive
 rides tool; see the challenge note in the PR. Still: httpOnly + Secure +
 SameSite=Lax, hashed at rest, revocable.
 
+## Staying signed in (the "don't log in all the time" answer)
+
+Recommended mechanism, in priority order:
+
+1. **Riders never log in at all** — viewing/printing/exporting a ride is fully
+   public via the short link. So the *only* people who ever authenticate are
+   leaders creating/editing, and only on their own device.
+2. **Long sliding session = effectively never re-login on an active device.**
+   A persistent cookie (`Max-Age ≈ 1 yr`) whose expiry **slides on every
+   request**: a leader who plans a ride every few weeks is never logged out. The
+   only re-auth events are a brand-new device or ~a year of total inactivity —
+   both rare — and those just re-run the 15-second magic-link.
+3. **Optional: passkey (WebAuthn) enrollment after first login** — a *later*
+   add, not v1. One biometric tap re-establishes a session on a **new** device
+   with no email round-trip. This is the friction-free cross-device story if/when
+   leaders ask for it. Magic-link stays as the bootstrap + fallback.
+
+This covers the owner's "not a bank" intent: maximal convenience, with
+revocability (sign-out-everywhere + per-session review) as the safety valve. v1
+ships (1)+(2); (3) is a clean follow-on behind the same session abstraction.
+
 ## Share & leader tokens (link model)
 
 Rider viewing needs **no login**. Two link tiers per plan:
