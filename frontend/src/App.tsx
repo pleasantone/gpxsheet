@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchResultJson, submitAnalyze, submitRender, submitTable } from "./api";
+import { fetchResultJson, submitAnalyze, submitDaycard, submitRender, submitTable } from "./api";
+import { DayCardInfo } from "./components/DayCardInfo";
+import { DayCardOptionsPanel } from "./components/DayCardOptionsPanel";
+import { DayCardResultPane } from "./components/DayCardResultPane";
 import { DropZone } from "./components/DropZone";
 import { Footer } from "./components/Footer";
 import { IntroGuide } from "./components/IntroGuide";
@@ -14,8 +17,15 @@ import { TableOptionsPanel } from "./components/TableOptionsPanel";
 import { TableResultPane } from "./components/TableResultPane";
 import { gpxStartLocal } from "./gpxMeta";
 import { useJobPoll } from "./hooks/useJobPoll";
-import type { AnalyzeResult, Mode, RenderOptions, TableOptions } from "./types";
-import { DEFAULT_OPTIONS, DEFAULT_TABLE_OPTIONS } from "./types";
+import type {
+  AnalyzeResult,
+  DayCardData,
+  DayCardOptions,
+  Mode,
+  RenderOptions,
+  TableOptions,
+} from "./types";
+import { DEFAULT_DAYCARD_OPTIONS, DEFAULT_OPTIONS, DEFAULT_TABLE_OPTIONS } from "./types";
 
 type Phase = "idle" | "ready";
 
@@ -30,6 +40,10 @@ interface ReadyState {
   // table flow
   tableHtmlJobId: string | null;
   tableMdJobId: string | null;
+  // day card flow
+  daycardJobId: string | null; // format=json (drives the cards)
+  daycardMdJobId: string | null; // format=markdown (copy/download parity)
+  daycardResult: DayCardData[] | null;
 }
 
 export default function App() {
@@ -37,6 +51,7 @@ export default function App() {
   const [mode, setMode] = useState<Mode>("sheet");
   const [opts, setOpts] = useState<RenderOptions>(DEFAULT_OPTIONS);
   const [tableOpts, setTableOpts] = useState<TableOptions>(DEFAULT_TABLE_OPTIONS);
+  const [daycardOpts, setDaycardOpts] = useState<DayCardOptions>(DEFAULT_DAYCARD_OPTIONS);
   const [ready, setReady] = useState<ReadyState | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -44,6 +59,7 @@ export default function App() {
   // before a job id exists to poll — drives the "submitting…" feedback.
   const [renderSubmitting, setRenderSubmitting] = useState(false);
   const [tableSubmitting, setTableSubmitting] = useState(false);
+  const [daycardSubmitting, setDaycardSubmitting] = useState(false);
 
   // Polling hooks
   const analyzeJobId = ready?.analyzeJobId ?? null;
@@ -51,6 +67,8 @@ export default function App() {
   const renderJobId = ready?.renderJobId ?? null;
   const tableHtmlJobId = ready?.tableHtmlJobId ?? null;
   const tableMdJobId = ready?.tableMdJobId ?? null;
+  const daycardJobId = ready?.daycardJobId ?? null;
+  const daycardMdJobId = ready?.daycardMdJobId ?? null;
 
   const { jobStatus: analyzeStatus, isPolling: analyzePolling, error: analyzeError } =
     useJobPoll(analyzeJobId);
@@ -65,6 +83,12 @@ export default function App() {
     error: tableHtmlError,
   } = useJobPoll(tableHtmlJobId, true);
   const { resultBlob: tableMdBlob } = useJobPoll(tableMdJobId, true);
+  const {
+    jobStatus: daycardStatus,
+    isPolling: daycardPolling,
+    error: daycardError,
+  } = useJobPoll(daycardJobId);
+  const { resultBlob: daycardMdBlob } = useJobPoll(daycardMdJobId, true);
 
   // Fetch analyze JSON once the analyze job is done
   const analyzeJobDone = analyzeStatus?.status === "done";
@@ -79,11 +103,25 @@ export default function App() {
       .catch(() => {});
   }, [analyzeJobDone, analyzeJobId, analyzeStatus?.result_url]);
 
+  // Fetch the day-card JSON array once its job is done (mirrors the analyze effect).
+  const daycardJobDone = daycardStatus?.status === "done";
+  const daycardJobIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!daycardJobDone || !daycardJobId || daycardJobId === daycardJobIdRef.current) return;
+    daycardJobIdRef.current = daycardJobId;
+    fetchResultJson<DayCardData[]>(daycardJobId, daycardStatus?.result_url)
+      .then((result) =>
+        setReady((prev) => (prev ? { ...prev, daycardResult: result } : prev))
+      )
+      .catch(() => {});
+  }, [daycardJobDone, daycardJobId, daycardStatus?.result_url]);
+
   // Blob URLs / text — derived from poll results
   const previewBlobUrl = useBlobUrl(previewBlob);
   const renderBlobUrl = useBlobUrl(renderBlob);
   const tableHtml = useBlobText(tableHtmlBlob);
   const tableMarkdown = useBlobText(tableMdBlob);
+  const daycardMarkdown = useBlobText(daycardMdBlob);
 
   // Warm the (cached) analysis on upload so the first Generate is fast: the
   // backend caches analyze_core per (gpx, osm), so this OSM pass is reused by the
@@ -114,12 +152,31 @@ export default function App() {
       .catch(() => {});
   }
 
+  // Two jobs per run: json (drives the structured cards) + markdown (copy/download).
+  function runDaycard(file: File, dcOpts: DayCardOptions) {
+    setReady((prev) =>
+      prev
+        ? { ...prev, daycardJobId: null, daycardMdJobId: null, daycardResult: null }
+        : prev,
+    );
+    daycardJobIdRef.current = null;
+    setDaycardSubmitting(true);
+    submitDaycard(file, dcOpts, "json")
+      .then((job) => setReady((prev) => (prev ? { ...prev, daycardJobId: job.id } : prev)))
+      .catch((e) => setSubmitError(e instanceof Error ? e.message : "day card failed"))
+      .finally(() => setDaycardSubmitting(false));
+    submitDaycard(file, dcOpts, "markdown")
+      .then((job) => setReady((prev) => (prev ? { ...prev, daycardMdJobId: job.id } : prev)))
+      .catch(() => {});
+  }
+
   function handleFile(file: File) {
     setSubmitError(null);
     setIsGenerating(false);
     // Allow the analyze result to be refetched even if a re-upload dedupes to the
     // same job id (otherwise the ref guard would skip the refetch after the reset).
     analyzeJobIdRef.current = null;
+    daycardJobIdRef.current = null;
     setReady({
       file,
       analyzeJobId: null,
@@ -129,19 +186,28 @@ export default function App() {
       renderFilename: null,
       tableHtmlJobId: null,
       tableMdJobId: null,
+      daycardJobId: null,
+      daycardMdJobId: null,
+      daycardResult: null,
     });
     setPhase("ready");
-    // Prefill the Table departure from the GPX's start time (so the box and the
-    // table agree), then auto-generate the table when dropping straight onto the
-    // Table tab. Sheet kicks off its analyze + preview below.
+    // Prefill the Table/Day-card departure from the GPX's start time (so the box
+    // and the output agree), then auto-generate when dropping straight onto a tab.
+    // Sheet kicks off its analyze + preview below.
     gpxStartLocal(file)
       .then((dep) => {
-        const next = dep ? { ...tableOpts, departure: dep } : tableOpts;
-        if (dep) setTableOpts(next);
-        if (mode === "table") runTable(file, next);
+        const nextTable = dep ? { ...tableOpts, departure: dep } : tableOpts;
+        const nextDaycard = dep ? { ...daycardOpts, departure: dep } : daycardOpts;
+        if (dep) {
+          setTableOpts(nextTable);
+          setDaycardOpts(nextDaycard);
+        }
+        if (mode === "table") runTable(file, nextTable);
+        else if (mode === "daycard") runDaycard(file, nextDaycard);
       })
       .catch(() => {
         if (mode === "table") runTable(file, tableOpts);
+        else if (mode === "daycard") runDaycard(file, daycardOpts);
       });
     if (mode === "sheet") runSheet(file);
   }
@@ -156,6 +222,8 @@ export default function App() {
     if (m === "sheet" && ready?.file && !ready.previewJobId) runSheet(ready.file);
     else if (m === "table" && ready?.file && !ready.tableHtmlJobId) {
       runTable(ready.file, tableOpts);
+    } else if (m === "daycard" && ready?.file && !ready.daycardJobId) {
+      runDaycard(ready.file, daycardOpts);
     }
   }
 
@@ -165,6 +233,9 @@ export default function App() {
     if (mode === "table") {
       setSubmitError(null);
       runTable(ready.file, tableOpts);
+    } else if (mode === "daycard") {
+      setSubmitError(null);
+      runDaycard(ready.file, daycardOpts);
     } else {
       void handleGenerate();
     }
@@ -202,7 +273,16 @@ export default function App() {
   const sheetGenerating = isGenerating || renderSubmitting || renderPolling;
   const tableGenerating =
     tableSubmitting || tableHtmlPolling || (!!tableHtmlJobId && !tableHtml && !tableHtmlError);
-  const generating = mode === "table" ? tableGenerating : sheetGenerating;
+  const daycardGenerating =
+    daycardSubmitting ||
+    daycardPolling ||
+    (!!daycardJobId && !ready?.daycardResult && !daycardError);
+  const generating =
+    mode === "table"
+      ? tableGenerating
+      : mode === "daycard"
+        ? daycardGenerating
+        : sheetGenerating;
 
   // Progress phase per job line: a submit in flight, then processing (after the
   // 202), then done — so there's continuous spinner + status, never a dead gap.
@@ -229,6 +309,15 @@ export default function App() {
       : tableSubmitting
         ? "submitting"
         : tableHtmlJobId
+          ? "processing"
+          : null;
+  const daycardPhase: ProgressPhase | null = daycardError
+    ? "error"
+    : ready?.daycardResult
+      ? "done"
+      : daycardSubmitting
+        ? "submitting"
+        : daycardJobId
           ? "processing"
           : null;
 
@@ -296,7 +385,7 @@ export default function App() {
                   {submitError && <p className="text-sm text-red-600">{submitError}</p>}
                 </div>
               </>
-            ) : (
+            ) : mode === "table" ? (
               <>
                 <TableInfo markdown={tableMarkdown} loading={tableGenerating} />
                 <TableResultPane
@@ -313,6 +402,28 @@ export default function App() {
                 />
                 {submitError && <p className="text-sm text-red-600">{submitError}</p>}
               </>
+            ) : (
+              <>
+                <DayCardInfo
+                  data={ready?.daycardResult ?? null}
+                  imperial={daycardOpts.units === "imperial"}
+                  loading={daycardGenerating}
+                />
+                <DayCardResultPane
+                  data={ready?.daycardResult ?? null}
+                  markdown={daycardMarkdown}
+                  imperial={daycardOpts.units === "imperial"}
+                  loading={daycardGenerating}
+                  error={daycardError}
+                />
+                <JobProgress
+                  label="Day card"
+                  phase={daycardPhase}
+                  queuePosition={daycardStatus?.queue_position}
+                  error={daycardError}
+                />
+                {submitError && <p className="text-sm text-red-600">{submitError}</p>}
+              </>
             )}
           </div>
 
@@ -320,8 +431,14 @@ export default function App() {
           <div className="space-y-4">
             {mode === "sheet" ? (
               <OptionsPanel opts={opts} onChange={setOpts} disabled={generating} />
-            ) : (
+            ) : mode === "table" ? (
               <TableOptionsPanel opts={tableOpts} onChange={setTableOpts} disabled={generating} />
+            ) : (
+              <DayCardOptionsPanel
+                opts={daycardOpts}
+                onChange={setDaycardOpts}
+                disabled={generating}
+              />
             )}
             {/* Both modes generate on demand via this button. */}
             <button
@@ -333,7 +450,9 @@ export default function App() {
               {generating ? (
                 <span className="inline-flex items-center justify-center gap-2">
                   <Spinner className="w-4 h-4" />
-                  {renderSubmitting || tableSubmitting ? "Submitting…" : "Generating…"}
+                  {renderSubmitting || tableSubmitting || daycardSubmitting
+                    ? "Submitting…"
+                    : "Generating…"}
                 </span>
               ) : (
                 "Generate"
@@ -359,6 +478,7 @@ function ModeTabs({
   const tabs: { value: Mode; label: string }[] = [
     { value: "sheet", label: "Sheet" },
     { value: "table", label: "Table" },
+    { value: "daycard", label: "Day card" },
   ];
   return (
     <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1">

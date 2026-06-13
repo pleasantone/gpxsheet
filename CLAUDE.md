@@ -58,7 +58,10 @@ exposes it under a **Table** tab (vs the **Sheet** tab).
 wildlife, no-services gaps), distinct from the tank-bag sheet/table. Built on the
 analyzed `Route` + a best-effort OSM POI query; warnings reuse `validate.Finding`.
 CLI `daycard`, web op `"daycard"` → `/v1/daycard` (`DayCardParams`; md/HTML/JSON),
-lib `daycard.render_day_cards`/`build_day_cards`. **Phase 2 adds keyless live
+lib `daycard.render_day_cards`/`build_day_cards`. The SPA exposes it under a **Day
+card** tab (alongside **Sheet**/**Table**), rendering one stacked card per day from
+the structured JSON (always imperial — the frontend converts units client-side) and
+prefilling the departure from the GPX start time. **Phase 2 adds keyless live
 conditions** behind `src/gpxsheet/live/` — Open-Meteo weather (with per-sample
 **crosswind** from route bearings), air-quality/smoke, an elevation DEM fallback,
 and NIFC wildfire perimeters. Providers are **graceful** (any source down →
