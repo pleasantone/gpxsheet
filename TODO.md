@@ -39,15 +39,30 @@ architecture/context and conventions in [CLAUDE.md](CLAUDE.md).
 - **Stylized-angle / compression tuning** — revisit `CONTINUE/NORMAL/SHARP_TURN_DEG`,
   `CURL_RELAX`, and `MIN_SEGMENT_LEN`/`DIST_SCALE` against more real routes.
 
-## Service / API (open)
+## Frontend / SPA (open)
 
-- **`/v1/table` JSON format (structured-table parity with day cards)** — the
-  day-card API emits `json|html|markdown`, but the table API is `html|markdown`
-  only (`TableParams.format = ^(html|markdown)$`, `service.render._table_result`,
-  `routetable`). For parity — and so the SPA's **Table** tab could render a
-  structured table client-side the way the new **Day card** tab renders structured
-  cards — give `/v1/table` a `json` format: extend the pattern and emit a
-  structured table payload (rows: waypoint, mile, road, ETA, fuel/lunch markers).
+Deferred follow-ups from the JSON-driven tab rewrites (Sheet/Table/Day card).
+
+- **Sheet tab — auto-regenerate on option change (debounced)** — the inline
+  preview now reflects the selected layout, but only refreshes on drop and on
+  **Generate** (manual). A debounced auto-render on option change would make it
+  fully live, matching the instant feel of the Table/Day-card display toggles.
+  Mind the matplotlib render lock (renders serialize) — debounce + cancel stale.
+- **Sheet tab — preview cost for big routes** — the drop-time preview now renders
+  the full *selected* layout (e.g. the whole portrait roadbook) as PNG, heavier
+  than the old lightweight `preview` overview. For long routes consider a faster
+  first preview (downscaled, or the `preview` overview until the first Generate).
+- **Table tab — overloaded `Dist.` column** — kept for parity with the markdown:
+  one column that's cumulative miles but flips to `since-gas/total` on fuel-reset
+  and the last row (shows `46/46` even when there was never a fuel stop). Revisit
+  splitting it into clear `Mile` + `Since-gas` columns (the JSON exposes both).
+- **Table tab — edge-marker blanking** — the `G`/`L` marker on the first/last row
+  is suppressed (mirrors `routetable._table_lines`), so a ride that *ends* at a
+  gas stop hides its `G`. The JSON carries the true classification; revisit
+  whether the UI should show true edge markers instead of replicating the blank.
+- **Day card — minor formatting** — backend `_fmt_dur` prints `2h05` while the
+  SPA shows `2h 0m`; fires read "on route" at `dist_mi == 0`, which can be a
+  rounding artifact for a fire just off-route. Reconcile wording / thresholds.
 
 ## Rendering (open)
 
