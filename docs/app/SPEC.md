@@ -59,7 +59,7 @@ v1 unless this doc is updated.
 | **Backend** | **Python 3.12+ / FastAPI**, analysis engine in-process | Async job model for slow OSM/routing/live work. |
 | **Frontend** | **React 19 + TypeScript + Vite + Tailwind**, as an installable **PWA** | Offline-cache the opened plan + map tiles for the staging lot. |
 | **Primary visual** | **Interactive MapLibre GL map** | Route line + numbered stop markers + bail-out markers; tap for detail. Schematic strip is a *later* printable artifact, not v1. |
-| **Auth** | **Email magic-link** (passwordless), **long-lived persistent sessions** | SMTP in compose (MailHog in dev). Not a bank — sessions persist ~1 yr (sliding), persistent cookie, with "sign out everywhere". OAuth later. |
+| **Auth** | **Email magic-link** (passwordless), **long-lived persistent sessions** | SMTP in compose (MailHog in dev). Not a bank — sessions persist ~3 months (sliding), persistent cookie, with "sign out everywhere". OAuth later. |
 | **Accounts/sharing** | **Leader accounts** create/edit plans; **rider view needs no login**; share links are **public, read-by-default, short (QR-friendly)** | Short base62 code at `/r/{code}`. PII (rider names/phones) is **never** on the public link unless the leader opts in per-field; the **leader/sweep packet (PII, bail-outs) uses a separate long unlisted token or auth** (§7). Co-leads invited to edit. |
 | **Data store** | **PostgreSQL + PostGIS** (data + geo queries) + **MinIO/S3** (artifacts) | PostGIS for corridor POIs / nearest-highway / stop scoring. |
 | **Geo backbone** | **Self-hosted in compose:** Overpass + Valhalla + tile server. **Overpass & Valhalla map-matching are HARD dependencies** (see Reliability). | Regional `.osm.pbf` extract. No per-call API keys at runtime. |
@@ -175,6 +175,13 @@ its dependencies ready; pieces marked ⟂ can be built in parallel.
 | 8 | **Frontend PWA** (map, plan editor, share page, offline) | [`06-frontend.md`](components/06-frontend.md) | 5 |
 | 9 | **Artifacts** (briefing PDF, enriched GPX, QR, share render) | [`07-artifacts.md`](components/07-artifacts.md) | 5,6 |
 | 10 | **Deployment** (compose, seeding, env, prod notes) | [`09-deployment.md`](components/09-deployment.md) | all |
+| — | **New-repo bootstrap** (read-only refs, gpxsheet modules to study, pinned choices, spikes) | [`11-new-repo-bootstrap.md`](components/11-new-repo-bootstrap.md) | read first |
+
+> **Building this in a fresh repository?** Read
+> [`components/11-new-repo-bootstrap.md`](components/11-new-repo-bootstrap.md)
+> first: it covers using gpxsheet + gpxsamples as **read-only references** (which
+> modules to study), the cross-repo reference convention, the **pinned** tech
+> choices, and the two spikes to retire early.
 
 ### v1 acceptance (the demo that proves it)
 
@@ -248,7 +255,7 @@ Detailed in [`components/00-conventions.md`](components/00-conventions.md); the 
   features do. The difference between Overpass and weather is **criticality**, not
   shape: Overpass is a *hard* provider (down ⇒ error), weather/fire are *soft*
   (down ⇒ skip + finding).
-- **Sessions:** long-lived & persistent (≈1 yr sliding, persistent cookie) — the
+- **Sessions:** long-lived & persistent (≈3 months sliding, persistent cookie) — the
   rider/leader shouldn't get logged out between rides. Offer "sign out
   everywhere". (Trade-off accepted; see auth §05 and the challenge notes.)
 - **Money/keys:** no runtime third-party keys in v1 (self-hosted geo + keyless

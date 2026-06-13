@@ -23,14 +23,14 @@ GET /v1/auth/callback?token=…
 
 ```
 magic_links: id, user_id→users, token_hash, expires_at, used_at, created_at
-sessions:    id, user_id→users, token_hash, expires_at(+~1yr sliding),
+sessions:    id, user_id→users, token_hash, expires_at(+~3mo sliding),
              user_agent, created_at, last_seen_at
 ```
 Store **hashes** of tokens (`sha256`), compare in constant time. The cookie holds
 the raw session token; rotate `last_seen_at`, slide expiry.
 
 **Long-lived sessions (owner's call — "not a bank").** Use a **persistent**
-cookie (`Max-Age ≈ 1 year`), sliding expiry — leaders/riders shouldn't be logged
+cookie (`Max-Age ≈ 3 months`), sliding expiry — leaders/riders shouldn't be logged
 out between rides. Provide **"sign out everywhere"** (delete all of a user's
 sessions) and per-session rows (with `user_agent`) so a user can review/revoke.
 This is a deliberate convenience-over-strictness trade-off for a non-sensitive
@@ -45,10 +45,11 @@ Recommended mechanism, in priority order:
    public via the short link. So the *only* people who ever authenticate are
    leaders creating/editing, and only on their own device.
 2. **Long sliding session = effectively never re-login on an active device.**
-   A persistent cookie (`Max-Age ≈ 1 yr`) whose expiry **slides on every
+   A persistent cookie (`Max-Age ≈ 3 months`) whose expiry **slides on every
    request**: a leader who plans a ride every few weeks is never logged out. The
-   only re-auth events are a brand-new device or ~a year of total inactivity —
-   both rare — and those just re-run the 15-second magic-link.
+   only re-auth events are a brand-new device or ~3 months of total inactivity —
+   both rare for an active leader — and those just re-run the 15-second
+   magic-link. (3-month window is the owner's call.)
 3. **Optional: passkey (WebAuthn) enrollment after first login** — a *later*
    add, not v1. One biometric tap re-establishes a session on a **new** device
    with no email round-trip. This is the friction-free cross-device story if/when
