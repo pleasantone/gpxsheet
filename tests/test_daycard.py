@@ -125,6 +125,26 @@ def test_renderers_markdown_and_json():
     assert {"index", "miles", "warnings", "moving_minutes"} <= set(data[0])
 
 
+def test_markdown_includes_cautions_and_attribution():
+    # The markdown should carry every section the structured card does, not just
+    # the stats/weather summary it used to.
+    depart = datetime(2026, 7, 4, 15, 0, tzinfo=PT)
+    route = _route(
+        300.0,
+        spans=[RouteSpan(10.0, 13.0, SpanKind.UNPAVED, "Forest Rd")],
+        fuel_stops=[FuelStop(5, "Gas", 37, -121)],
+    )
+    cards = build_day_cards(
+        route, departure=depart, tz=PT, speed=30.0, fuel_range=40.0, osm=False
+    )
+    md = build_day_cards_markdown(cards, tz=PT)
+    assert "Gravel/unpaved:" in md
+    assert "No services:" in md
+    assert "riding after dark" in md  # after-dark detail on the sun line
+    assert "Golden hour:" in md
+    assert "Sources:" in md and "OpenStreetMap" in md  # attribution always present
+
+
 def test_end_to_end_on_cached_fixture(enrich_route_file):
     # Uses the committed OSM cache for enrichment; the day-card POI query degrades
     # offline (cache miss) but the card still builds from the analyzed route.

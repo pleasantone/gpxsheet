@@ -153,8 +153,8 @@ export const DEFAULT_TABLE_OPTIONS: TableOptions = {
 // Day card (per-day read-ahead briefing) — /v1/daycard
 // ---------------------------------------------------------------------------
 
-// The tab renders structured JSON (one card per day); the markdown form rides
-// along for copy/download parity.
+// The tab renders the structured JSON (one card per day) and builds its
+// Markdown/HTML/JSON exports client-side, so it only ever requests `json`.
 export type DayCardFormat = "json" | "markdown";
 
 export interface DayCardOptions {

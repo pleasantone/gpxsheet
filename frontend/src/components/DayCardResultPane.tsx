@@ -1,44 +1,31 @@
-import { useState } from "react";
-import {
-  fmtClock,
-  fmtDistance,
-  fmtDuration,
-  fmtElev,
-  fmtSpeed,
-  fmtTemp,
-} from "../dayCardFormat";
-import type {
-  DayAir,
-  DayCardData,
-  DayFire,
-  DaySun,
-  DayWeather,
-  DayWarning,
-} from "../types";
+import { useMemo, useState } from "react";
+import { buildHtml, buildJson, buildMarkdown } from "../dayCardExport";
+import { buildDayCardModel, type DayCardView } from "../dayCardModel";
+import type { DayCardData } from "../types";
 import { Spinner } from "./Spinner";
 
 interface DayCardResultPaneProps {
   data: DayCardData[] | null;
-  markdown: string | null;
   imperial: boolean;
   loading: boolean;
   error: string | null;
 }
 
-export function DayCardResultPane({
-  data,
-  markdown,
-  imperial,
-  loading,
-  error,
-}: DayCardResultPaneProps) {
-  const baseName = (data && data.length > 0 && data[0].name) || "route";
+export function DayCardResultPane({ data, imperial, loading, error }: DayCardResultPaneProps) {
+  // Rebuilds when the JSON OR the units toggle changes — units is instant, no
+  // backend round-trip. Exports below are built from this same model.
+  const views = useMemo(
+    () => (data && data.length ? buildDayCardModel(data, imperial) : null),
+    [data, imperial],
+  );
+  const baseName = (views && views[0]?.title.replace(/^Day \d+: ?/, "")) || "route";
 
   return (
     <div className="space-y-3">
-      {data && data.length > 0 && (
+      {views && (
         <div className="flex gap-2">
-          <CopyButton testId="copy-daycard-md" label="Copy Markdown" text={markdown} />
+          <CopyButton testId="copy-daycard-md" label="Copy Markdown" build={() => buildMarkdown(views)} />
+          <CopyButton testId="copy-daycard-html" label="Copy HTML" build={() => buildHtml(views)} />
         </div>
       )}
 
@@ -55,33 +42,40 @@ export function DayCardResultPane({
         </div>
       )}
 
-      {!loading && !error && data && data.length > 0 && (
+      {!loading && !error && views && (
         <div data-testid="daycard-output" className="space-y-4">
-          {data.map((day) => (
-            <DayCard key={day.index} day={day} imperial={imperial} />
+          {views.map((v) => (
+            <DayCard key={v.index} view={v} />
           ))}
         </div>
       )}
 
-      {!loading && !error && (!data || data.length === 0) && (
+      {!loading && !error && !views && (
         <div className="rounded-xl border border-slate-200 bg-white min-h-40 flex items-center justify-center">
           <p className="text-sm text-slate-400 py-8">Drop a GPX file to build day cards</p>
         </div>
       )}
 
-      {data && data.length > 0 && (
+      {views && (
         <div className="flex gap-2">
           <DownloadButton
             testId="download-daycard-md"
-            label="Download Markdown"
-            text={markdown}
+            label="Download MD"
+            build={() => buildMarkdown(views)}
             filename={`${baseName}.md`}
             mime="text/markdown"
           />
           <DownloadButton
+            testId="download-daycard-html"
+            label="Download HTML"
+            build={() => buildHtml(views)}
+            filename={`${baseName}.html`}
+            mime="text/html"
+          />
+          <DownloadButton
             testId="download-daycard-json"
             label="Download JSON"
-            text={JSON.stringify(data, null, 2)}
+            build={() => (data ? buildJson(data) : "")}
             filename={`${baseName}.daycard.json`}
             mime="application/json"
           />
@@ -91,219 +85,72 @@ export function DayCardResultPane({
   );
 }
 
-function DayCard({ day, imperial }: { day: DayCardData; imperial: boolean }) {
-  const title = `Day ${day.index + 1}${day.name ? `: ${day.name}` : ""}`;
-  const dateLabel = day.date ? day.date.slice(0, 10) : null;
-
-  const stats: string[] = [
-    fmtDistance(day.miles, imperial),
-    `moving ${fmtDuration(day.moving_minutes)}`,
-  ];
-  if (day.arrive) stats.push(`arrive ~${fmtClock(day.arrive)}`);
-
+function DayCard({ view }: { view: DayCardView }) {
   return (
     <section
-      data-testid={`daycard-day-${day.index}`}
+      data-testid={`daycard-day-${view.index}`}
       className="rounded-xl border border-slate-200 bg-white p-4 space-y-3"
     >
       <header className="flex items-baseline justify-between gap-3 border-b border-slate-100 pb-2">
-        <h3 className="text-base font-semibold text-slate-800">{title}</h3>
-        {dateLabel && <span className="text-sm text-slate-400">{dateLabel}</span>}
+        <h3 className="text-base font-semibold text-slate-800">{view.title}</h3>
+        {view.date && <span className="text-sm text-slate-400">{view.date}</span>}
       </header>
 
-      <p className="text-sm text-slate-600">{stats.join("  ·  ")}</p>
+      <p className="text-sm text-slate-600">{view.stats}</p>
 
-      {day.elevation_gain_ft != null && (
-        <Line
-          icon="⛰"
-          text={
-            `Climb: ${fmtElev(day.elevation_gain_ft, imperial)} gain` +
-            (day.elevation_max_ft != null
-              ? `, max ${fmtElev(day.elevation_max_ft, imperial)}`
-              : "")
-          }
-        />
+      {view.lines.map((line, i) => (
+        <p key={i} className="text-sm text-slate-600 flex gap-2">
+          <span aria-hidden className="shrink-0">
+            {line.icon}
+          </span>
+          <span>{line.text}</span>
+        </p>
+      ))}
+
+      {view.hint && <p className="text-xs text-slate-400 italic">{view.hint}</p>}
+
+      {view.warnings.length > 0 && (
+        <ul className="space-y-1 border-t border-slate-100 pt-2">
+          {view.warnings.map((w, i) => (
+            <li
+              key={i}
+              className={`text-sm flex gap-2 ${
+                w.level === "warning" ? "text-amber-700" : "text-slate-500"
+              }`}
+            >
+              <span aria-hidden className="shrink-0">
+                {w.level === "warning" ? "⚠" : "·"}
+              </span>
+              <span>{w.message}</span>
+            </li>
+          ))}
+        </ul>
       )}
 
-      {day.sun && <SunLine sun={day.sun} imperial={imperial} />}
-
-      {day.passes.length > 0 && (
-        <Line
-          icon="🏔"
-          text={`Passes: ${day.passes
-            .map((p) =>
-              p.elevation_ft != null
-                ? `${p.name} (${fmtElev(p.elevation_ft, imperial)})`
-                : p.name,
-            )
-            .join(", ")}`}
-        />
-      )}
-
-      {day.scenic.length > 0 && (
-        <Line icon="📷" text={`Scenic: ${day.scenic.map((p) => p.name).join(", ")}`} />
-      )}
-
-      {day.weather && <WeatherLine weather={day.weather} imperial={imperial} />}
-      {day.air && <AirLine air={day.air} />}
-      {day.fire.length > 0 && <FireLine fires={day.fire} imperial={imperial} />}
-
-      {day.gravel.length > 0 && (
-        <Line
-          icon="🟫"
-          text={`Gravel/unpaved: ${day.gravel
-            .map(
-              (g) =>
-                `${fmtDistance(g.start_mile, imperial)}–${fmtDistance(g.end_mile, imperial)}`,
-            )
-            .join(", ")}`}
-        />
-      )}
-
-      {day.construction.length > 0 && (
-        <Line
-          icon="🚧"
-          text={`Construction: ${day.construction.map((p) => p.name).join(", ")}`}
-        />
-      )}
-
-      {day.wildlife.length > 0 && (
-        <Line icon="🦌" text={`Wildlife: ${day.wildlife.map((p) => p.name).join(", ")}`} />
-      )}
-
-      {day.no_services.length > 0 && (
-        <Line
-          icon="⛽"
-          text={`No services: ${day.no_services
-            .map(
-              (g) =>
-                `${fmtDistance(g.start_mile, imperial)}–${fmtDistance(g.end_mile, imperial)}` +
-                ` (${fmtDistance(g.end_mile - g.start_mile, imperial)})`,
-            )
-            .join(", ")}`}
-        />
-      )}
-
-      {!day.date && (
-        <p className="text-xs text-slate-400 italic">
-          Add a departure time for sun + weather.
+      {view.attributions.length > 0 && (
+        <p data-testid="daycard-sources" className="text-xs text-slate-400 border-t border-slate-100 pt-2">
+          Sources: {view.attributions.join(" · ")}
         </p>
       )}
-
-      {day.warnings.length > 0 && <Warnings warnings={day.warnings} />}
     </section>
-  );
-}
-
-function Line({ icon, text }: { icon: string; text: string }) {
-  return (
-    <p className="text-sm text-slate-600 flex gap-2">
-      <span aria-hidden className="shrink-0">
-        {icon}
-      </span>
-      <span>{text}</span>
-    </p>
-  );
-}
-
-function SunLine({ sun, imperial }: { sun: DaySun; imperial: boolean }) {
-  const parts: string[] = [];
-  if (sun.sunrise) parts.push(`↑ ${fmtClock(sun.sunrise)}`);
-  if (sun.sunset) parts.push(`↓ ${fmtClock(sun.sunset)}`);
-  let text = `Sun: ${parts.join("  ")}`;
-  if (sun.after_dark) {
-    text +=
-      sun.dark_from_mile != null
-        ? ` — riding after dark from ${fmtDistance(sun.dark_from_mile, imperial)}`
-        : " — finishes after dark";
-  }
-  if (parts.length === 0 && !sun.after_dark) return null;
-  return <Line icon="☀" text={text} />;
-}
-
-function range(values: (number | null)[]): [number, number] | null {
-  const nums = values.filter((v): v is number => v != null);
-  if (nums.length === 0) return null;
-  return [Math.min(...nums), Math.max(...nums)];
-}
-
-function WeatherLine({ weather, imperial }: { weather: DayWeather; imperial: boolean }) {
-  if (weather.samples.length === 0) {
-    return <Line icon="🌦" text={`Weather: ${weather.note ?? "unavailable"}`} />;
-  }
-  const parts: string[] = [];
-  const temp = range(weather.samples.map((s) => s.temp_f));
-  if (temp) {
-    parts.push(
-      temp[0] === temp[1]
-        ? fmtTemp(temp[0], imperial)
-        : `${fmtTemp(temp[0], imperial)}–${fmtTemp(temp[1], imperial)}`,
-    );
-  }
-  const wind = range(weather.samples.map((s) => s.wind_mph));
-  if (wind) parts.push(`wind ≤${fmtSpeed(wind[1], imperial)}`);
-  const cross = range(weather.samples.map((s) => s.crosswind_mph));
-  if (cross && cross[1] > 0) parts.push(`crosswind ≤${fmtSpeed(cross[1], imperial)}`);
-  const precip = range(weather.samples.map((s) => s.precip_prob));
-  if (precip && precip[1] > 0) parts.push(`precip ≤${Math.round(precip[1])}%`);
-  return <Line icon="🌦" text={`Weather: ${parts.join(", ")}`} />;
-}
-
-function AirLine({ air }: { air: DayAir }) {
-  const parts: string[] = [];
-  if (air.max_aqi != null) parts.push(`AQI ${air.max_aqi}`);
-  if (air.max_pm25 != null) parts.push(`PM2.5 ${Math.round(air.max_pm25)}`);
-  if (air.smoke) parts.push("smoke");
-  if (parts.length === 0) return null;
-  return <Line icon="🌫" text={`Air: ${parts.join(", ")}`} />;
-}
-
-function FireLine({ fires, imperial }: { fires: DayFire[]; imperial: boolean }) {
-  const text = fires
-    .map(
-      (f) =>
-        `${f.name} (${fmtDistance(f.dist_mi, imperial)}${f.status ? `, ${f.status}` : ""})`,
-    )
-    .join(", ");
-  return <Line icon="🔥" text={`Wildfire: ${text}`} />;
-}
-
-function Warnings({ warnings }: { warnings: DayWarning[] }) {
-  return (
-    <ul className="space-y-1 border-t border-slate-100 pt-2">
-      {warnings.map((w, i) => (
-        <li
-          key={i}
-          className={`text-sm flex gap-2 ${
-            w.level === "warning" ? "text-amber-700" : "text-slate-500"
-          }`}
-        >
-          <span aria-hidden className="shrink-0">
-            {w.level === "warning" ? "⚠" : "·"}
-          </span>
-          <span>{w.message}</span>
-        </li>
-      ))}
-    </ul>
   );
 }
 
 function DownloadButton({
   label,
-  text,
+  build,
   filename,
   mime,
   testId,
 }: {
   label: string;
-  text: string | null;
+  build: () => string;
   filename: string;
   mime: string;
   testId: string;
 }) {
   function download() {
-    if (!text) return;
-    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const url = URL.createObjectURL(new Blob([build()], { type: mime }));
     const a = document.createElement("a");
     a.href = url;
     a.download = filename;
@@ -315,8 +162,7 @@ function DownloadButton({
     <button
       data-testid={testId}
       onClick={download}
-      disabled={!text}
-      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white hover:bg-brand-dark transition-colors"
     >
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
@@ -333,19 +179,18 @@ function DownloadButton({
 
 function CopyButton({
   label,
-  text,
+  build,
   testId,
 }: {
   label: string;
-  text: string | null;
+  build: () => string;
   testId: string;
 }) {
   const [copied, setCopied] = useState(false);
 
   async function copy() {
-    if (!text) return;
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(build());
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -357,8 +202,7 @@ function CopyButton({
     <button
       data-testid={testId}
       onClick={copy}
-      disabled={!text}
-      className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      className="flex-1 rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
     >
       {copied ? "Copied!" : label}
     </button>
