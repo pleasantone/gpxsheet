@@ -56,6 +56,13 @@ exposes it under a **Table** tab (vs the **Sheet** tab). `format` is
 `TableDocument` of per-day sections→rows) is **always imperial** (1-decimal, ISO
 datetimes) and always carries lat/lon + the cue, so `units`/`coordinates`/`cue`
 only affect md/HTML. Both md and JSON render from one shared `_day_slices` seam.
+The **Table tab consumes `format=json`** and renders a native React table
+(`frontend/src/components/TableResultPane.tsx`), with `units`/`coordinates`/`cue`
+as **client-side** display toggles (no re-fetch; only departure/speed/timezone/osm
+re-run the job) — one `tableModel.ts` display seam feeds the on-screen table and
+the client-built Markdown/HTML/JSON exports (`tableExport.ts`), so they never
+drift. It mirrors the markdown's edge-blanked G/L markers and overloaded Dist.
+column.
 
 `src/gpxsheet/daycard.py` is the **day card** — a per-day, *read-ahead* briefing
 (distance/climb, sunset + riding-after-dark, passes/scenic, gravel/construction/
