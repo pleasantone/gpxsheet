@@ -21,6 +21,7 @@ import type {
   AnalyzeResult,
   DayCardData,
   DayCardOptions,
+  Format,
   Mode,
   RenderOptions,
   TableDocData,
@@ -29,6 +30,35 @@ import type {
 import { DEFAULT_DAYCARD_OPTIONS, DEFAULT_OPTIONS, DEFAULT_TABLE_OPTIONS } from "./types";
 
 type Phase = "idle" | "ready";
+
+// preview/strip are single on-screen images that only exist as PNG.
+function isFixedLayout(o: RenderOptions): boolean {
+  return o.layout === "preview" || o.layout === "strip";
+}
+
+// The format actually rendered: PNG is forced for the fixed layouts, so the
+// user's pdf/png choice is preserved in state across layout switches (it just
+// doesn't apply while a fixed layout is selected).
+function effectiveFormat(o: RenderOptions): Format {
+  return isFixedLayout(o) ? "png" : o.format;
+}
+
+// Options for the downloadable render (the selected layout + effective format).
+function renderOpts(o: RenderOptions): RenderOptions {
+  return { ...o, format: effectiveFormat(o) };
+}
+
+// Options for the inline preview: the SELECTED layout, always as PNG so it can be
+// shown inline (a PDF can't). This makes the preview reflect the chosen layout
+// and knobs instead of a fixed overview.
+function previewOpts(o: RenderOptions): RenderOptions {
+  return { ...o, format: "png" };
+}
+
+// A filesystem-safe download name (the route name can contain slashes etc.).
+function safeFilename(name: string): string {
+  return name.replace(/[<>:"/\\|?*%]/g, "-").trim() || "route";
+}
 
 interface ReadyState {
   file: File;
@@ -137,10 +167,18 @@ export default function App() {
       .catch((e) => setSubmitError(e instanceof Error ? e.message : "analyze failed"));
   }
 
-  // Sheet drop/switch: warm analysis + a live preview.
+  // Sheet drop/switch: warm analysis + an inline preview of the selected layout.
   function runSheet(file: File) {
     warmAnalysis(file);
-    submitRender(file, { ...opts, layout: "preview", format: "png" })
+    refreshPreview(file, opts);
+  }
+
+  // Render the SELECTED layout as a PNG for the inline preview, so it reflects
+  // the chosen layout and knobs (not a fixed overview). Reset previewJobId first
+  // so a dedup to the same job id still re-fetches.
+  function refreshPreview(file: File, o: RenderOptions) {
+    setReady((prev) => (prev ? { ...prev, previewJobId: null } : prev));
+    submitRender(file, previewOpts(o))
       .then((job) => setReady((prev) => (prev ? { ...prev, previewJobId: job.id } : prev)))
       .catch(() => {});
   }
@@ -247,11 +285,18 @@ export default function App() {
     setIsGenerating(true);
     setRenderSubmitting(true);
     setReady((prev) => (prev ? { ...prev, renderJobId: null, renderFilename: null } : prev));
+    // Re-run analyze so the header (turns / fuel from the profile) matches the
+    // sheet we're about to render. Reset the ref so a dedup still re-fetches.
+    analyzeJobIdRef.current = null;
+    warmAnalysis(ready.file);
+    // Keep the inline preview in sync with the selected layout. For PNG output
+    // the render itself is shown inline; for PDF we need a separate PNG preview.
+    if (effectiveFormat(opts) !== "png") refreshPreview(ready.file, opts);
     try {
-      const job = await submitRender(ready.file, opts);
-      const ext = opts.format === "pdf" ? "pdf" : "png";
-      const baseName = ready.analyzeResult?.name ?? ready.file.name.replace(/\.gpx$/i, "");
-      const filename = `${baseName}.${ext}`;
+      const job = await submitRender(ready.file, renderOpts(opts));
+      const ext = effectiveFormat(opts) === "pdf" ? "pdf" : "png";
+      const rawName = ready.analyzeResult?.name ?? ready.file.name.replace(/\.gpx$/i, "");
+      const filename = `${safeFilename(rawName)}.${ext}`;
       setReady((prev) =>
         prev ? { ...prev, renderJobId: job.id, renderFilename: filename } : prev
       );

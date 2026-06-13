@@ -39,6 +39,9 @@ test.describe("comprehensive: full upload flow", () => {
 
     await page.getByTestId("opt-layout").selectOption("portrait");
     await expect(page.getByTestId("opt-format")).toBeEnabled();
+    // The pdf choice survives the round-trip through the png-only layouts
+    // (constraints are applied at render time, not by mutating state).
+    await expect(page.getByTestId("opt-format")).toHaveValue("pdf");
   });
 
   test("options visibility: portrait shows paper + lanes; preview hides them", async ({ page }) => {
@@ -66,14 +69,16 @@ test.describe("comprehensive: full upload flow", () => {
     expect(download).toMatch(/\.pdf$/i);
   });
 
-  test("generate preview PNG — result shown inline", async ({ page }) => {
+  test("generate preview PNG — result shown inline + downloadable", async ({ page }) => {
     await uploadFile(page, GPX);
     await expect(page.getByTestId("route-name")).toBeVisible({ timeout: 30_000 });
     await page.getByTestId("opt-layout").selectOption("preview");
     await page.getByTestId("btn-generate").click();
-    // PNG result replaces the preview image inline; no download link
+    // The PNG result is shown inline AND offered as a download (.png).
     await expect(page.getByTestId("preview-image")).toHaveAttribute("src", /^blob:/, { timeout: 60_000 });
-    await expect(page.getByTestId("download-link")).not.toBeVisible();
+    const link = page.getByTestId("download-link");
+    await expect(link).toBeVisible({ timeout: 60_000 });
+    expect(await link.getAttribute("download")).toMatch(/\.png$/i);
   });
 
   test("re-upload via compact drop zone", async ({ page }) => {

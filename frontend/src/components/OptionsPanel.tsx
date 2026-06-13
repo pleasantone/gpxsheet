@@ -11,15 +11,15 @@ export function OptionsPanel({ opts, onChange, disabled }: OptionsPanelProps) {
   const isPaginated = opts.layout === "portrait" || opts.layout === "landscape";
   const isFixed = opts.layout === "preview" || opts.layout === "strip";
 
+  // Non-destructive: the layout's constraints (PNG-only for fixed layouts; lanes
+  // only for portrait) are applied at render time, so the user's format/lanes
+  // choices survive a round-trip through other layouts.
   function set<K extends keyof RenderOptions>(key: K, value: RenderOptions[K]) {
-    let next = { ...opts, [key]: value };
-    if (key === "layout") {
-      const layout = value as Layout;
-      if (layout === "preview" || layout === "strip") next = { ...next, format: "png" };
-      if (layout !== "portrait") next = { ...next, lanes_per_page: 4 };
-    }
-    onChange(next);
+    onChange({ ...opts, [key]: value });
   }
+
+  // What the (disabled) Format control shows for a fixed layout.
+  const shownFormat: Format = isFixed ? "png" : opts.format;
 
   return (
     <div className="space-y-4">
@@ -54,7 +54,7 @@ export function OptionsPanel({ opts, onChange, disabled }: OptionsPanelProps) {
       <Row label="Format">
         <Select
           testId="opt-format"
-          value={opts.format}
+          value={shownFormat}
           onChange={(v) => set("format", v as Format)}
           disabled={disabled || isFixed}
           options={[
